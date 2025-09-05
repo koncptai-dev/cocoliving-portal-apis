@@ -9,6 +9,7 @@ const upload = require('../middleware/upload');
 router.post('/register',validateSignup,validate,UserController.registerUser);
 router.put('/update-profile/:id',editUserProfileValidator,validate,authenticateToken, upload.single('profileImage'),UserController.editUserProfile);
 router.delete('/delete-account/:id', authenticateToken, UserController.deleteAccount);
+router.get('/getUser/:id', authenticateToken, UserController.getUserById);
 
 // router.post('/login', UserController.loginUser);
 // router.post('/forgot-password', UserController.sendResetCode);
