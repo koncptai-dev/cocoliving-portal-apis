@@ -10,7 +10,6 @@ exports.login=async (req, res) => {
     try{
     const {email,password}=req.body;
 
-
     //check user exists
     const account=await User.findOne({where:{email}})
     if(!account){
@@ -32,7 +31,7 @@ exports.login=async (req, res) => {
     //generate token
     const token=jwt.sign({id:account.id,email:account.email,role:account.role,userType:account.userType},process.env.JWT_SECRET,{expiresIn:'1d'});
 
-    res.status(200).json({message:'Login Successful',token,account});
+    res.status(200).json({success: true,message:'Login Successful',token,account});
     }catch(err){
             res.status(500).json({ message: 'Login error', error: err.message });
 

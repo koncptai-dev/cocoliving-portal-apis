@@ -1,26 +1,33 @@
 const sequelize = require('../config/database');
 const Rooms = require('../models/rooms');
 const Booking=require('../models/bookRoom');
+const Property=require('../models/property');
 const { Op } = require('sequelize');
 
 
-//Add Rooms 
+//Add Rooms  for admin
 exports.AddRooms=async(req,res)=>{
     try{
-        const{roomNumber,roomType,capacity,floorNumber,monthlyRent,depositAmount,preferredUserType,amenities,description,availableForBooking}=req.body;
+        const{propertyId,roomNumber,roomType,capacity,floorNumber,monthlyRent,depositAmount,preferredUserType,amenities,description,availableForBooking}=req.body;
+
+        //check property exist or not
+        const property = await Property.findByPk(propertyId);
+        if (!property) {
+            return res.status(404).json({ message: "Property not found" });
+        }
 
         //check rooms are exist -> unique room number
-
-        const existingRoom=await Rooms.findOne({where:{roomNumber}});
+        const existingRoom=await Rooms.findOne({where:{roomNumber,propertyId}});
         if(existingRoom){
-            return res.status(400).json({message:"Room already exists"});
+            return res.status(400).json({message:"Room already exists for this property"});
         }
 
         const status=availableForBooking?"available":"sold";
+        const amenitiesArray = Array.isArray(amenities) ? amenities : amenities?.split(",").map(a => a.trim()) || [];
 
         const newRooms=await Rooms.create({
-            roomNumber,roomType, capacity, floorNumber,  monthlyRent, depositAmount, preferredUserType,
-             amenities, description,status
+            propertyId,roomNumber,roomType, capacity, floorNumber,  monthlyRent, depositAmount, preferredUserType,
+             amenities: amenitiesArray, description,status
         })
 
         res.status(201).json({message:'Rooms added successfully', room:newRooms})
@@ -34,62 +41,62 @@ exports.AddRooms=async(req,res)=>{
 }
 
 //Edit Rooms
-exports.EditRooms=async(req,res)=>{
-    try{
-        const {id}=req.params;
-        const updatedData=req.body;
+// exports.EditRooms=async(req,res)=>{
+//     try{
+//         const {id}=req.params;
+//         const updatedData=req.body;
 
-        //find existing room
-        const room= await Rooms.findByPk(id);
-        if(!room){
-            return res.status(404).json({message:"Room not found"});
-        }
+//         //find existing room
+//         const room= await Rooms.findByPk(id);
+//         if(!room){
+//             return res.status(404).json({message:"Room not found"});
+//         }
 
-        //check duplicate room number 
-        if(updatedData.roomNumber && updatedData.roomNumber !== room.roomNumber){
-            const exist = await Rooms.findOne({where:{roomNumber:updatedData.roomNumber}});
-            if(exist){
-                return res.status(400).json({message:"Room number already exists"});
-            }
-        }
+//         //check duplicate room number 
+//         if(updatedData.roomNumber && updatedData.roomNumber !== room.roomNumber){
+//             const exist = await Rooms.findOne({where:{roomNumber:updatedData.roomNumber}});
+//             if(exist){
+//                 return res.status(400).json({message:"Room number already exists"});
+//             }
+//         }
 
-        // Update status if availableForBooking is passed
-        if (updatedData.availableForBooking !== undefined) {
-            updatedData.status = updatedData.availableForBooking ? "available" : "sold";
-        }
+//         // Update status if availableForBooking is passed
+//         if (updatedData.availableForBooking !== undefined) {
+//             updatedData.status = updatedData.availableForBooking ? "available" : "sold";
+//         }
 
-        //apply update dynamically
-        await room.update(updatedData);
+//         //apply update dynamically
+//         await room.update(updatedData);
 
-        res.status(200).json({message:"Room updated successfully", room});
+//         res.status(200).json({message:"Room updated successfully", room});
 
-    }catch(err){
-        console.log("error",err);
+//     }catch(err){
+//         console.log("error",err);
         
-        return res.status(500).json({message:"Internal server error"});
-    }
-}
+//         return res.status(500).json({message:"Internal server error"});
+//     }
+// }
 
 //delete Rooms
-exports.DeleteRooms=async(req,res)=>{
-    try{
+// exports.DeleteRooms=async(req,res)=>{
+//     try{
 
-        const{id}=req.params;
+//         const{id}=req.params;
         
-        const room=await Rooms.findByPk(id);
-        if(!room){
-            return res.status(404).json({message:"Room not found"});
-        }
+//         const room=await Rooms.findByPk(id);
+//         if(!room){
+//             return res.status(404).json({message:"Room not found"});
+//         }
 
-        await room.destroy();
-        res.status(200).json({message:"Room deleted successfully"});
+//         await room.destroy();
+//         res.status(200).json({message:"Room deleted successfully"});
 
-    }catch(err){
-        console.log("error",err);
+//     }catch(err){
+//         console.log("error",err);
         
-        return res.status(500).json({message:"Internal server error"});
-    }
-}
+//         return res.status(500).json({message:"Internal server error"});
+//     }
+// }
 
 //get Rooms
 exports.getAllRooms=async(req,res)=>{
@@ -100,7 +107,13 @@ exports.getAllRooms=async(req,res)=>{
                     {
                         model:Booking,
                         as:'bookings',
-                        where:{status:'booked'}
+                        where:{status:'booked'},
+                        required: false
+                    },
+                    {
+                        model:Property,
+                        as:'property',
+
                     }
                 ]
             }
@@ -111,6 +124,8 @@ exports.getAllRooms=async(req,res)=>{
             const occupied=room.bookings ? room.bookings.length : 0;
 
             return{
+                id: room.id,
+                property: room.property ? room.property.name : null,
                 roomNumber: room.roomNumber,
                 roomType: room.roomType,
                 capacity:capacity,

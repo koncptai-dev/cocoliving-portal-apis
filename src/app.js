@@ -12,6 +12,7 @@ const Common=require('./routes/CommonRoutes');
 const UserByAdminRoutes=require('./routes/UserByAdminRoutes');
 const BookRoomRoute=require('./routes/RoomBookRoute');
 const AmmouncementRoute=require('./routes/AnnouncementRoute');
+const PropertyRoute=require('./routes/PropertyRoute');
 
 app.use(cors({
     origin: '*', // Allow only your frontend's IP
@@ -30,6 +31,7 @@ app.use('/api/common', Common);
 app.use('/api/user-by-admin', UserByAdminRoutes);
 app.use('/api/book-room', BookRoomRoute);
 app.use('/api/announcement', AmmouncementRoute); 
+app.use('/api/property', PropertyRoute);
 
 sequelize.sync({ alter: true }) //   ensures new models are created
   .then(() => console.log('✅ Database Synced'))

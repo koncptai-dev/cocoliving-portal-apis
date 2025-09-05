@@ -11,9 +11,7 @@ const path = require('path');
 exports.registerUser=async (req, res) => {
 
    try{
-
     const {fullName,email,userType,password,confirmPassword}=req.body;
-
 
     //match password and confirmPassword
     if(password !==confirmPassword){
@@ -33,7 +31,7 @@ exports.registerUser=async (req, res) => {
     //create new user
     const newUser=await User.create({fullName,email,userType,password:hashedPassword,role:2});
 
-    res.status(201).json({message:'User registered successfully',user:newUser});
+    res.status(201).json({success: true,message:'User registered successfully',user:newUser});
 
    }catch(error){
         return res.status(500).json({message:'Server error',error:error.message});
@@ -146,6 +144,22 @@ exports.deleteAccount=async (req, res) => {
         return res.status(200).json({message:'User account deleted successfully'});
     }catch(err){
         return res.status(500).json({message:'Error deleting user account',error:err.message});
+    }
+}
+
+//get the users by id
+exports.getUserById=async (req, res) => {
+    try{
+       const { id } = req.params;
+       const user=await User.findByPk(id,{where:{status:1},attributes:{exclude:['password']}});
+
+       if (!user ||  user.status === 0) {
+        return res.status(404).json({ message: 'No user found' });
+        }
+
+       return res.status(200).json({success:true, user});
+    }catch(err){
+        return res.status(500).json({message:'Error fetching users',error:err.message});
     }
 }
 
