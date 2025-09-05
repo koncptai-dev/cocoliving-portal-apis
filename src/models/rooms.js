@@ -7,10 +7,19 @@ const Rooms = sequelize.define('Rooms', {
         primaryKey: true,
         autoIncrement: true
     },
+    propertyId:{
+        type:DataTypes.INTEGER,
+        allowNull:false,
+        references:{
+            model: 'Properties',
+            key: 'id'
+        },
+        onDelete:'CASCADE'
+    },
     roomNumber: {
         type: DataTypes.INTEGER,
-        unique: true
-    },
+        allowNull:false 
+   },
     roomType: {
         type: DataTypes.STRING,
         allowNull: false
@@ -24,22 +33,24 @@ const Rooms = sequelize.define('Rooms', {
         allowNull: false
     },
     monthlyRent: {
-        type: DataTypes.FLOAT,
-        allowNull: false
+        type: DataTypes.INTEGER,
+        allowNull: false,
+    
     },
     depositAmount: { 
-        type: DataTypes.FLOAT,
+        type: DataTypes.INTEGER,
          allowNull: false
     },
     preferredUserType: { 
         type: DataTypes.STRING 
     },
-    amenities: { 
-        type: DataTypes.STRING
-     }, // Comma-separated
-    description: { 
-        type: DataTypes.TEXT ,
-        allowNull:true
+     amenities: {
+        type: DataTypes.ARRAY(DataTypes.STRING),
+        allowNull: true,
+    }, // Comma-separated
+    description: {
+        type: DataTypes.TEXT,
+        allowNull: true
     },
     status: { 
         type: DataTypes.STRING, 
