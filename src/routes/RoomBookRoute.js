@@ -3,8 +3,10 @@ const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../middleware/auth');
 
+//user
 router.post('/add', authMiddleware, BookRoomController.createBooking);
+router.get('/getUserBookings', authMiddleware, BookRoomController.getUserBookings);
+router.put("/bookings/:id/cancel", authMiddleware, BookRoomController.cancelBooking);
 
-//admin
-router.get('/admin/getallBookings', BookRoomController.getAllBookings);
+
 module.exports=router

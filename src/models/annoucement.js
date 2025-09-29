@@ -1,5 +1,6 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
+const Property = require('./property');
 
 const Announcement = sequelize.define("Announcement", {
   id: {
@@ -23,14 +24,17 @@ const Announcement = sequelize.define("Announcement", {
   content: {
     type: DataTypes.TEXT,
   },
-  status: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    defaultValue: "Active",
-  },
   created:{
     type: DataTypes.DATEONLY,
     allowNull:true
+  },propertyId: { 
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: { model: Property, key: 'id' }
+    },
+     is_active: { 
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
   }
 }, {
   tableName: "announcements",

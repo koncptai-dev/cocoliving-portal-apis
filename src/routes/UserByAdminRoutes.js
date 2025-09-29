@@ -7,5 +7,6 @@ const validate=require('../middleware/validateResult');
 
 // create Route
 router.post("/add",authMiddleware, addUserValidate, validate, UserByAdminController.AddUser);
+router.get("/getAllUsers",authMiddleware, UserByAdminController.getAllUser);
 
 module.exports = router;

@@ -4,10 +4,10 @@ const authMiddleware = require('../middleware/auth');
 const propertyController=require('../controllers/propertyController');
 const {validateProperty,editPropertyValidate}=require('../middleware/validation');
 const validate=require('../middleware/validateResult');
+const upload = require('../middleware/upload');
 
-
-router.post("/add", validateProperty, validate, authMiddleware, propertyController.createProperty);
+router.post("/add", upload.array('propertyImages', 5),validateProperty, validate, authMiddleware, propertyController.createProperty);
 router.get("/getAll", propertyController.getProperties);
-router.put("/edit/:id", editPropertyValidate, validate, authMiddleware, propertyController.editProperties);
+router.put("/edit/:id",upload.array('propertyImages', 5),editPropertyValidate, validate, authMiddleware, propertyController.editProperties);
 router.delete("/delete/:id", authMiddleware, propertyController.deleteProperty);
 module.exports = router;

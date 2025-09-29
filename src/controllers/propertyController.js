@@ -2,6 +2,8 @@ const sequelize = require('../config/database');
 const { Op } = require('sequelize');
 const Property = require('../models/property');
 const e = require('express');
+const Rooms = require('../models/rooms');
+const Booking = require('../models/bookRoom');
 
 exports.createProperty = async (req, res) => {
   try {
@@ -13,15 +15,17 @@ exports.createProperty = async (req, res) => {
       return res.status(400).json({ message: "Property already exists" });
     }
 
-    // Ensure images and amenities are arrays
-    const imagesArray = Array.isArray(images) ? images : images?.split(",").map(img => img.trim()) || [];
+    // Ensure and amenities are arrays
     const amenitiesArray = Array.isArray(amenities) ? amenities : amenities?.split(",").map(a => a.trim()) || [];
+
+    //handle images
+    const imageUrls = req.files ? req.files.map(file => `/uploads/propertyImages/${file.filename}`) : [];
 
     const property = await Property.create({
       name,
       address,
       description,
-      images: imagesArray,
+      images: imageUrls,
       amenities: amenitiesArray,
       is_active: is_active,
 
@@ -46,59 +50,93 @@ exports.editProperties = async (req, res) => {
 
   try {
     const { id } = req.params;
-    const { name, address, description, images, amenities, is_active } = req.body;
+    let { name, address, description, images, amenities, is_active, removedImages } = req.body;
 
-    const property=await Property.findByPk(id);
-    if(!property){
-      return res.status(404).json({message:"Property not found"});
+    const property = await Property.findByPk(id);
+    if (!property) {
+      return res.status(404).json({ message: "Property not found" });
     }
 
     //check another property with same name 
-    if(name){
-      const existing=await Property.findOne({
-        where:{
-          name,id:{[Op.ne]:id}
+    if (name) {
+      const existing = await Property.findOne({
+        where: {
+          name, id: { [Op.ne]: id }
         }
       })
-      if(existing){
-        return res.status(400).json({message:"Property with same name already exists"});
+      if (existing) {
+        return res.status(400).json({ message: "Property with same name already exists" });
       }
     }
-    // Ensure images and amenities are arrays
-    const imagesArray = Array.isArray(images) ? images : images?.split(",").map(img => img.trim()) || property.images;
+    //  amenities are arrays
     const amenitiesArray = Array.isArray(amenities) ? amenities : amenities?.split(",").map(a => a.trim()) || property.amenities;
+
+
+    //  removedImages to always be an array
+    if (!removedImages) { removedImages = []; }
+    else if (typeof removedImages === "string") {
+      removedImages = [removedImages]; // single string -> array
+    }
+  
+    let updatedImages = [...(property.images || [])];
+
+    // remove selected images
+    if (removedImages.length > 0) {
+      updatedImages = updatedImages.filter(img => !removedImages.includes(img));
+    }
+
+    // add new uploaded images
+    if (req.files && req.files.length > 0) {
+      const newImageUrls = req.files.map(file => `/uploads/propertyImages/${file.filename}`);
+      updatedImages = [...updatedImages, ...newImageUrls];
+    }
 
     await property.update({
       name: name ?? property.name,
       address: address ?? property.address,
       description: description ?? property.description,
-      images: images !== undefined ? imagesArray : property.images,
+      images: updatedImages,
       amenities: amenities !== undefined ? amenitiesArray : property.amenities,
       is_active: is_active !== undefined ? is_active : property.is_active,
     });
     res.status(200).json({ message: "Property updated successfully", property });
 
-  }catch(err){
+  } catch (err) {
     console.error(err);
-    res.status(500).json({message:"Failed to update property"});
+    res.status(500).json({ message: "Failed to update property" });
   }
 
 }
 
 exports.deleteProperty = async (req, res) => {
-  try{
-    const {id}=req.params;
+  try {
+    const { id } = req.params;
 
-    const property=await Property.findByPk(id);
-    if(!property){
-      return res.status(404).json({message:"Property not found"});
+    const property = await Property.findByPk(id,{
+      include:{model:Rooms,as:'rooms',include:{model:Booking,as:'bookings'}}
+    });
+    if (!property) {
+      return res.status(404).json({ message: "Property not found" });
+    } 
+    
+    const today = new Date();
+
+    const hasActiveOrFutureBookings = property.rooms.some(room => 
+      room.bookings.some(booking => 
+        (booking.status === 'approved' || booking.status === 'pending') &&
+        new Date(booking.checkOutDate) >= today
+      )
+    );
+
+    if (hasActiveOrFutureBookings) {
+      return res.status(400).json({ message: "Cannot delete property: some rooms have active or future bookings." });
     }
 
     await property.destroy();
 
-    res.status(200).json({message:"Property deleted successfully"});
-  }catch(err){
+    res.status(200).json({ message: "Property deleted successfully" });
+  } catch (err) {
     console.error(err);
-    res.status(500).json({message:"Failed to delete property"});
+    res.status(500).json({ message: "Failed to delete property" });
   }
 }

@@ -4,7 +4,7 @@ const { Op } = require('sequelize');
 
 exports.AddUser=async (req,res)=>{
     try{
-        const{email,fullName,phone,occupation, userType,dateOfBirth, emergencyContactName,emergencyContactPhone}=req.body;
+        const{email,fullName,phone,occupation, userType,dateOfBirth, gender,emergencyContactName,emergencyContactPhone}=req.body;
 
         if (!email || !fullName || !phone || !dateOfBirth) {
             return res.status(400).json({ message: "Required fields are missing" });
@@ -22,6 +22,7 @@ exports.AddUser=async (req,res)=>{
             userType,
             occupation,
             dateOfBirth,
+            gender,
             emergencyContactName,
             emergencyContactPhone
         });
@@ -35,4 +36,13 @@ exports.AddUser=async (req,res)=>{
         console.error(error);
         res.status(500).json({ message: "Server error", error: error.message });
     }
+}
+
+exports.getAllUser=async(req,res)=>{
+    try {
+    const Users = await User.findAll({ where:{userType:{[Op.ne]:"admin"}} });
+    res.json(Users);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch Users" });
+  }
 }

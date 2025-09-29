@@ -1,5 +1,6 @@
 const {DataTypes}=require('sequelize');
 const sequelize=require('../config/database');
+const Property = require('./property');
 
 const Events=sequelize.define('Events',{
     id:{
@@ -15,7 +16,11 @@ const Events=sequelize.define('Events',{
         type:DataTypes.DATEONLY,
         allowNull:false
     },
-    Location:{
+    eventTime:{
+        type:DataTypes.TIME,
+        allowNull:true,
+    },
+    location:{
         type:DataTypes.TEXT,
         allowNull:false
     },
@@ -26,7 +31,16 @@ const Events=sequelize.define('Events',{
     description:{
         type:DataTypes.TEXT,
         allowNull:true
-    }
+    },
+    propertyId: { 
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: { model: Property, key: 'id' }
+    },
+     is_active: { 
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
+  }
 },{
     tableName:'events'
 }

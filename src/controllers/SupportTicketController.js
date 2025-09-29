@@ -1,45 +1,57 @@
 const sequelize = require('../config/database');
 const SupportTicket = require('../models/supportTicket');
-const Booking=require('../models/bookRoom');
+const Rooms = require('../models/rooms');
+const Booking = require('../models/bookRoom');
 const { Op } = require('sequelize');
 
 //create tickets
 
 exports.createTicket = async (req, res) => {
-    try{
+    try {
         const userId = req.user.id;
 
-        const{roomNumber,date,issue,description,priority}=req.body;
+        const { roomNumber, date, issue, description, priority } = req.body;
 
-        if(!roomNumber || !date || !issue ){
-            return res.status(400).json({message:"Please provide all required fields"});
+        //validation
+        if (!roomNumber || !date || !issue) {
+            return res.status(400).json({ message: "Please provide all required fields" });
         }
-                                                            
+
+        //check room exists
+        const room = await Rooms.findOne({ where: { roomNumber } });
+        if (!room) {
+            return res.status(404).json({ message: "Room not found" });
+        }
+
+        //check user has booked the room 
         const booking = await Booking.findOne({
-            where: {
-                userId: userId,
-                roomNumber: roomNumber,
-                status: 'active' // or 'booked'
-            }
+            where: { userId: userId },
+            include: [{
+                model: Rooms,
+                as: "room",
+                where: { roomNumber: req.body.roomNumber }
+            }]
         });
 
         if (!booking) {
             return res.status(403).json({ message: "You have not booked this room" });
         }
 
-        const ticket=await SupportTicket.create({
-            roomNumber,
+        const ticket = await SupportTicket.create({
+            roomId: room.id,
+            roomNumber: room.roomNumber,
             date,
             issue,
             description,
             priority,
             userId,
-            status:'open'
+            status: 'open'
         })
+
         res.status(201).json({ message: "successfully created", ticket });
     } catch (error) {
         console.log(error);
-        
+
         res.status(500).json({ message: error.message });
     }
 }
@@ -76,8 +88,8 @@ exports.getAllTickets = async (req, res) => {
 //admin updates  ticket status
 exports.updateTicketStatus = async (req, res) => {
     const ticketId = req.params.id;
-    try{
-        const{status,assignedTo}=req.body;
+    try {
+        const { status, assignedTo } = req.body;
 
         const ticket = await SupportTicket.findByPk(ticketId);
 

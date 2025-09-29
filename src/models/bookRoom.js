@@ -40,6 +40,11 @@ const Booking = sequelize.define(
       allowNull: false,
     },
 
+     duration: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    },
+    
     monthlyRent: {
       type: DataTypes.FLOAT,
       allowNull: false,
@@ -58,7 +63,7 @@ const Booking = sequelize.define(
     status: {
       type: DataTypes.STRING,
       allowNull: false,
-      defaultValue: "booked", 
+      defaultValue: "pending", 
     },
   },
   {
