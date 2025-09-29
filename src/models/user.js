@@ -33,10 +33,13 @@ const User=sequelize.define('User',{
     },//for forgot password
     phone:{
         type:DataTypes.STRING,
+        allowNull:true, 
+        defaultValue:null 
+    },
+    gender:{
+        type:DataTypes.STRING,
         allowNull:true,
-        validate:{
-            is:/^\d{10}$/ // Validates a 10-digit phone number
-        }
+        defaultValue:null
     },
     address:{
         type:DataTypes.STRING,
@@ -82,7 +85,8 @@ const User=sequelize.define('User',{
     dateOfBirth:{
         type:DataTypes.DATEONLY,
         allowNull:true
-    }
+    },
+    
 },
 {
     tableName:'users'

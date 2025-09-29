@@ -5,8 +5,7 @@ exports.validateSignup = [
   check('email').isEmail().withMessage('Invalid Email').normalizeEmail(),
   check('userType').notEmpty().withMessage('User type is required'),
   check('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters long'),
-  check('phone').optional().matches(/^\d{10}$/).withMessage('Phone must be a valid 10-digit number'),
-  check('emergencyContact').optional().matches(/^\d{10}$/).withMessage('Emergency contact must be a valid 10-digit number'),
+check('phone').optional({ checkFalsy: true }).matches(/^\d{10}$/).withMessage('Phone must be a valid 10-digit number'),  check('emergencyContact').optional().matches(/^\d{10}$/).withMessage('Emergency contact must be a valid 10-digit number'),
 ]
 
 exports.editUserProfileValidator = [
@@ -36,15 +35,15 @@ exports.validateEvent = [
     }
     return true;
   }),
-  check("Location").notEmpty().withMessage("Location is required").isLength({ min: 2 }).withMessage("Location must be at least 2 characters long"),
+  check("location").notEmpty().withMessage("Location is required").isLength({ min: 2 }).withMessage("Location must be at least 2 characters long"),
   check("maxParticipants").isInt({ min: 1 }).withMessage("Max participants must be a positive Number").notEmpty().withMessage("Max participants is required"),
-  check("description").matches(/^[A-Za-z\s.'-]+$/).withMessage('Contains Characters').notEmpty().withMessage("Description is required").isLength({ max: 500 }).withMessage("Description must be under 500 characters"),
+  check("description").optional({checkFalsy: true}).matches(/^[A-Za-z\s.'-]+$/).withMessage('Contains Characters').isLength({ max: 500 }).withMessage("Description must be under 500 characters"),
 ]
 
 exports.validateRooms = [
   check("propertyId").isInt({ min: 1 }).withMessage("Property ID must be a positive integer").notEmpty().withMessage("Property ID is required"),
   check("roomNumber").isInt({ min: 1 }).withMessage("Room number must be a positive integer").notEmpty().withMessage("Room number is required"),
-  check("roomType").notEmpty().withMessage("Room type is required").isString().withMessage("Room type must be text").matches(/^[A-Za-z\s]+$/).withMessage("Room type must contain only letters and spaces"),
+  check("roomType").notEmpty().withMessage("Room type is required").isString().withMessage("Room type must be text").matches(/^[A-Za-z0-9\s]+$/).withMessage("Room type must contain only letters, numbers, and spaces"),
   check("capacity").isInt({ min: 1 }).withMessage("Capacity must be a positive integer").notEmpty().withMessage("Capacity is required"),
   check("floorNumber").isInt({ min: 0 }).withMessage("Floor number must be a valid number").notEmpty().withMessage("Floor number is required"),
   check("monthlyRent").isFloat({ min: 0 }).withMessage("Monthly rent must be a positive number").notEmpty().withMessage("Monthly rent is required"),
@@ -58,7 +57,7 @@ exports.validateRooms = [
 exports.editRoomsValidate = [
   check("roomNumber").optional().isInt({ min: 1 }).withMessage("Room number must be a positive integer"),
   check("floorNumber").optional().isInt({ min: 0 }).withMessage("Floor number must be a valid non-negative integer"),
-  check("roomType").optional().isString().withMessage("Room type must be text").matches(/^[A-Za-z\s]+$/).withMessage("Room type must contain only letters and spaces"),
+  check("roomType").optional().isString().withMessage("Room type must be text").matches(/^[A-Za-z0-9\s]+$/).withMessage("Room type must contain only letters, numbers, and spaces"),
   check("monthlyRent").optional().isFloat({ min: 1 }).withMessage("Monthly rent must be a valid amount"),
   check("depositAmount").optional().isFloat({ min: 0 }).withMessage("Deposit amount must be a valid amount"),
   check("description").optional().isLength({ max: 500 }).withMessage("Description must be under 500 characters"),
@@ -69,7 +68,7 @@ exports.supportTickValidate = [
   check("roomNumber").isInt({ min: 1 }).withMessage("Room number must be a positive integer").notEmpty().withMessage("Room number is required"),
   check("date").isDate().withMessage("Invalid date").notEmpty().withMessage("Date is required"),
   check("issue").matches(/^[A-Za-z\s]+$/).withMessage("issue must contain only letters and spaces").notEmpty().withMessage("Issue is required"),
-  check("description").isLength({ max: 500 }).withMessage("Description must be under 500 characters").matches(/^[A-Za-z\s]+$/).withMessage("description must contain only letters and spaces"),
+  check("description").optional({ nullable: true }).isLength({ max: 500 }).withMessage("Description must be under 500 characters").matches(/^[A-Za-z\s]*$/).withMessage("description must contain only letters and spaces"),
 ]
 
 exports.addUserValidate = [
@@ -108,7 +107,7 @@ exports.validateAnnouncement = [
 exports.validateProperty = [
   check("name").notEmpty().withMessage("Property name is required").matches(/^[A-Za-z\s]+$/).withMessage('Property name must contain only letters and spaces').isLength({ min: 3, max: 100 }).withMessage("Property name must be between 3 and 100 characters"),
   check("address").notEmpty().withMessage("Address is required").optional().trim().isLength({ max: 100 }).withMessage("Address must be under 100 characters"),
-  check("description").optional({ checkFalsy: true }).isLength({ max: 500 }).withMessage("Description must be under 500 characters").matches(/^[A-Za-z\s]+$/).withMessage('Description must contain only letters and spaces'),
+  check("description").optional({ checkFalsy: true }).isLength({ max: 500 }).withMessage("Description must be under 500 characters"),
   check("images").optional({ checkFalsy: true }).isArray().withMessage("Images must be an array"),
   check("amenities").optional({ checkFalsy: true }).isString().withMessage("Amenities must be a string").matches(/^[A-Za-z\s,]+$/).withMessage('Amenities must contain only letters and spaces'),
   check("status").optional().isString().withMessage("Status must be a string"),

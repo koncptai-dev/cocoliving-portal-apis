@@ -1,5 +1,6 @@
 const {DataTypes}=require('sequelize');
 const sequelize=require('../config/database');
+const Rooms=require('./rooms');
 
 //create ticket model
 const SupportTicket=sequelize.define('SupportTicket',{
@@ -18,6 +19,16 @@ const SupportTicket=sequelize.define('SupportTicket',{
         onUpdate: 'CASCADE',
         onDelete: 'CASCADE'
     },
+    roomId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: Rooms,
+        key: 'id',
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'CASCADE',
+    },
     roomNumber:{
         type:DataTypes.INTEGER,
         allowNull:false
@@ -32,11 +43,12 @@ const SupportTicket=sequelize.define('SupportTicket',{
     },
     description:{
         type:DataTypes.TEXT,
-        allowNull:false
+        allowNull:true
     },
     priority:{
         type:DataTypes.STRING,
-        defaultValue:'medium'
+        allowNull:true,
+        defaultValue:'low'
     },
     status:{
         type:DataTypes.STRING,

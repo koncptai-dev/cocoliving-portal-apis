@@ -13,14 +13,19 @@ const UserByAdminRoutes=require('./routes/UserByAdminRoutes');
 const BookRoomRoute=require('./routes/RoomBookRoute');
 const AmmouncementRoute=require('./routes/AnnouncementRoute');
 const PropertyRoute=require('./routes/PropertyRoute');
+const AdminBooking=require('./routes/AdminBookingRoutes');
+const UserandBokingDetails = require('./routes/UserandBookingRoutes');
+
+const path = require('path');
 
 app.use(cors({
     origin: '*', // Allow only your frontend's IP
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE','PATCH'],
     credentials: true // if you're using cookies/sessions
 }));
 
 app.use(bodyParser.json());
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.use('/api/admin', admin);
 app.use('/api/user', User);
@@ -32,6 +37,8 @@ app.use('/api/user-by-admin', UserByAdminRoutes);
 app.use('/api/book-room', BookRoomRoute);
 app.use('/api/announcement', AmmouncementRoute); 
 app.use('/api/property', PropertyRoute);
+app.use('/api/admin-booking', AdminBooking);
+app.use('/api/user-and-booking', UserandBokingDetails);
 
 sequelize.sync({ alter: true }) //   ensures new models are created
   .then(() => console.log('✅ Database Synced'))
