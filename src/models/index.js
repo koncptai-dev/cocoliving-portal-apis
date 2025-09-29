@@ -7,6 +7,7 @@ const Rooms=require('./rooms')
 const Event = require("./events");
 const EventParticipation = require("./eventParticipation");
 const Property=require('./property');
+const Announcement = require('./annoucement');
 
 User.hasMany(SupportTicket, {foreignKey: "userId", as: "tickets" });
 SupportTicket.belongsTo(User, {foreignKey: "userId", as: "user" });
@@ -15,8 +16,8 @@ SupportTicket.belongsTo(User, {foreignKey: "userId", as: "user" });
 Rooms.hasMany(Booking, { foreignKey: "roomId", as:"bookings" });
 Booking.belongsTo(Rooms, { foreignKey: "roomId", as:"room" });
 
-User.hasMany(Booking, { foreignKey: "userId" });
-Booking.belongsTo(User, { foreignKey: "userId" });
+User.hasMany(Booking, { foreignKey: "userId",as:"bookings" });
+Booking.belongsTo(User, { foreignKey: "userId" ,as:"user"});
 
 Event.hasMany(EventParticipation, { foreignKey: "eventId" });
 EventParticipation.belongsTo(Event, { foreignKey: "eventId" });
@@ -27,6 +28,13 @@ EventParticipation.belongsTo(User, { foreignKey: "userId" });
 Property.hasMany(Rooms,{foreignKey:'propertyId',as:'rooms'});
 Rooms.belongsTo(Property,{foreignKey:'propertyId',as:'property'});
 
+// Property to Event
+Property.hasMany(Event, { foreignKey: 'propertyId', as: 'events' });
+Event.belongsTo(Property, { foreignKey: 'propertyId', as: 'property' });
+
+Property.hasMany(Announcement, { foreignKey: 'propertyId', as: 'announcements' });
+Announcement.belongsTo(Property, { foreignKey: 'propertyId', as: 'property' });
+
 module.exports={
     sequelize,
     SupportTicket,
@@ -35,5 +43,6 @@ module.exports={
     Rooms,
     Event,
     EventParticipation,
-    Property
+    Property,
+    Announcement
 }

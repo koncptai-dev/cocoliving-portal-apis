@@ -1,8 +1,6 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
 
-
-
 const EventParticipation = sequelize.define("EventParticipation", {
    eventId: {
     type: DataTypes.INTEGER,
@@ -19,7 +17,5 @@ const EventParticipation = sequelize.define("EventParticipation", {
 }, {
   tableName: "event_participations"
 });
-
-
 
 module.exports = EventParticipation;

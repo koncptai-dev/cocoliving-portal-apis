@@ -30,7 +30,7 @@ const Property = sequelize.define('Property', {
     is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
-    }
+    },
 })
 
 module.exports = Property;
