@@ -10,5 +10,6 @@ router.post("/create",authMiddleware,supportTickValidate, validate, SupportTicke
 router.get("/get-user-tickets", authMiddleware, SupportTicketController.getUserTickets);
 router.get("/get-all-tickets", authMiddleware, SupportTicketController.getAllTickets);
 router.put("/update-ticket-status/:id", authMiddleware, SupportTicketController.updateTicketStatus);
+router.get('/getroom', authMiddleware,SupportTicketController.getRooms);
 
 module.exports = router;

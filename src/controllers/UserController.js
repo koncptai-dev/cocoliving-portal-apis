@@ -44,50 +44,6 @@ exports.registerUser = async (req, res) => {
     }
 }
 
-// exports.loginUser=async (req, res) => {
-//     try{
-//     const {email,password}=req.body;
-
-//     //check fields required
-//     if (!email || !password) {
-//       return res.status(400).json({ message: 'Email and password are required' });
-//     }
-
-//     //check user exists
-//     const user=await User.findOne({where:{email}})
-//     if(!user){
-//         return res.status(404).json({message:'User Not Found'});
-//     }
-
-//     //display msg if user account deleted 
-//     if(user.status===0){
-//         return res.status(400).json({message:'User Account does not exist or has been deleted'});
-//     }
-
-//     //check password match
-//     const isMatch=await bcrypt.compare (password,user.password);
-
-//     if(!isMatch){
-//         return res.status(401).json({message:'Invalid Email or Password'});
-//     }
-
-//     //generate token
-//     const token=jwt.sign({id:user.id,email:user.email,userType:user.userType},process.env.JWT_SECRET,{expiresIn:'1d'});
-
-//     res.status(200).json({message:'Login Successful',token,user});
-//     }catch(err){
-//             res.status(500).json({ message: 'Login error', error: err.message });
-
-//     }
-// }
-
-
-//Forgot Password - send reset code
-
-
-
-//Edit User Profile
-
 exports.editUserProfile = async (req, res) => {
     try {
         const { id } = req.params;
@@ -109,13 +65,12 @@ exports.editUserProfile = async (req, res) => {
         //if already has profileImage, delete the old one
         if (req.file) {
             if (user.profileImage) {
-                const profileFolder = 'profilePicture';
-                const oldPath = path.join(__dirname, '..', 'uploads', profileFolder, user.profileImage);
+                const oldPath = path.join(__dirname, '..', user.profileImage);
                 if (fs.existsSync(oldPath)) {
                     fs.unlinkSync(oldPath);
                 }
             }
-            user.profileImage = req.file.filename;
+            user.profileImage =  `/uploads/profilePicture/${req.file.filename}`;
         }
         await user.save();
 

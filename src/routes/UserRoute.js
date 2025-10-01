@@ -7,7 +7,7 @@ const authenticateToken =  require('../middleware/auth');
 const upload = require('../middleware/upload');
 
 router.post('/register',validateSignup,validate,UserController.registerUser);
-router.put('/update-profile/:id',editUserProfileValidator,validate,authenticateToken, upload.single('profileImage'),UserController.editUserProfile);
+router.put('/update-profile/:id', upload.single('profileImage'),editUserProfileValidator,validate,authenticateToken,UserController.editUserProfile);
 router.delete('/delete-account/:id', authenticateToken, UserController.deleteAccount);
 router.get('/getUser/:id', authenticateToken, UserController.getUserById);
 

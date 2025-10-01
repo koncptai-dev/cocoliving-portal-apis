@@ -60,10 +60,7 @@ const User=sequelize.define('User',{
         type:DataTypes.STRING,
         allowNull:true
     },
-    livingPreferences:{
-        type:DataTypes.TEXT,
-        allowNull:true
-    },
+   
     profileImage: {
     type: DataTypes.STRING, // store file path or filename
     allowNull: true
