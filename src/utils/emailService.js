@@ -31,3 +31,33 @@ exports.sendResetEmail = async (email, code) => {
     }
 }
 
+//mail sender
+const mailsender=async (email,title,body)=>{
+
+    try{
+        let transporter=nodemailer.createTransport({
+            host:process.env.SMTP_HOST,
+            port:465,
+            secure:true,
+            auth:{
+                user:process.env.SMTP_USER,
+                pass:process.env.SMTP_PASS
+            }
+        })
+        let info=await transporter.sendMail({
+            from:'COCO_LIVING',
+            to:`${email}`,
+            subject:`${title}`,
+            html:`${body}`,
+        })
+        // console.log('information',info);
+        return info;
+    }
+    catch(err){
+        console.log("Email Sendin Failed:",err.message);
+        throw err;
+    }
+}
+module.exports={
+    mailsender,
+};

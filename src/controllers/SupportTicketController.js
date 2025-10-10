@@ -2,6 +2,7 @@ const sequelize = require('../config/database');
 const SupportTicket = require('../models/supportTicket');
 const Rooms = require('../models/rooms');
 const Booking = require('../models/bookRoom');
+const Property = require('../models/property');
 const { Op } = require('sequelize');
 
 //create tickets
@@ -77,7 +78,22 @@ exports.getUserTickets = async (req, res) => {
 //admin view tickets
 exports.getAllTickets = async (req, res) => {
     try {
-        const tickets = await SupportTicket.findAll();
+        const tickets = await SupportTicket.findAll({
+            include: [
+                {
+                    model: Rooms,
+                    as: 'room',      // Make sure your association is defined: SupportTicket.belongsTo(Rooms, { as: 'room', foreignKey: 'roomId' })
+                    attributes: ['id', 'roomNumber', 'propertyId'],
+                    include: [
+                        {
+                            model: Property,
+                            as: 'property', // Make sure Rooms.belongsTo(Property, { as: 'property', foreignKey: 'propertyId' })
+                            attributes: ['id', 'name']
+                        }
+                    ]
+                }
+            ]
+        });
         res.status(200).json({ tickets });
     } catch (error) {
         console.log(error);
@@ -108,3 +124,45 @@ exports.updateTicketStatus = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 }
+
+// GET /api/rooms?status=active
+exports.getRooms = async (req, res) => {
+    try {
+        const today = new Date();
+        const userId = req.user.id;
+        // Find bookings that are approved and currently active
+        const activeBookings = await Booking.findAll({
+            where: {
+                status: 'approved',
+                userId: userId,
+                checkInDate: { [Op.lte]: today },
+                checkOutDate: { [Op.gte]: today },
+            },
+            include: [
+                {
+                    model: Rooms,
+                    as: 'room',
+                    attributes: ['roomNumber'], // only need roomNumber
+                    include: [
+                        {
+                            model: Property,
+                            as: 'property',
+                            attributes: ['name'], // include property name
+                        }
+                    ]
+                },
+            ],
+        });
+
+        // Extract unique room numbers
+        const rooms = activeBookings
+            .map(b => b.room)
+            .filter(Boolean)
+            .map(r => ({ id: r.id, roomNumber: r.roomNumber ,propertyName: r.property?.name  || "",}));
+
+        res.status(200).json({ rooms });
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ message: error.message });
+    }
+};

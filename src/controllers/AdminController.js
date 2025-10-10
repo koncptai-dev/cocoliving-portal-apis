@@ -10,7 +10,7 @@ exports.registerAdmin = async (req, res) => {
         const existingAdmin = await User.findOne({ where: { email } });
 
         if (existingAdmin) {
-            return res.status(400).json({ message: 'Admin already exists' });
+            return res.status(400).json({ message: 'super admin already exists' });
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -20,10 +20,10 @@ exports.registerAdmin = async (req, res) => {
                 email,
                 password: hashedPassword, 
                 role: 1,
-                fullName: "admin",
-                userType: "admin"
+                fullName: "super admin",
+                userType: "super-admin"
             });
-        res.status(201).json({ message: 'Admin registered successfully', admin: newAdmin });
+        res.status(201).json({ message: 'super admin registered successfully', admin: newAdmin });
 
     } catch (error) {
         res.status(500).json({ message: "Server error", error: error.message });
