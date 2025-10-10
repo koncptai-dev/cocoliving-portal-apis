@@ -9,4 +9,9 @@ const validate=require('../middleware/validateResult');
 router.post("/add",authMiddleware, addUserValidate, validate, UserByAdminController.AddUser);
 router.get("/getAllUsers",authMiddleware, UserByAdminController.getAllUser);
 
+
+//for admin user
+router.post('/create-admin-user', authMiddleware, UserByAdminController.createAdminUser);
+router.get("/getAlladminUsers",authMiddleware, UserByAdminController.getAllAdminUsers);
+
 module.exports = router;
