@@ -4,6 +4,8 @@ const Property = require('../models/property');
 const e = require('express');
 const Rooms = require('../models/rooms');
 const Booking = require('../models/bookRoom');
+const fs = require('fs');
+const path = require('path');
 
 exports.createProperty = async (req, res) => {
   try {
@@ -20,6 +22,11 @@ exports.createProperty = async (req, res) => {
 
     //handle images
     const imageUrls = req.files ? req.files.map(file => `/uploads/propertyImages/${file.filename}`) : [];
+
+    // Check limit
+    if (imageUrls.length > 20) {
+      return res.status(400).json({ message: "You can upload a maximum of 20 images." });
+    }
 
     const property = await Property.create({
       name,
@@ -78,16 +85,26 @@ exports.editProperties = async (req, res) => {
       removedImages = [removedImages]; // single string -> array
     }
   
+   // Start with current images
     let updatedImages = [...(property.images || [])];
 
-    // remove selected images
-    if (removedImages.length > 0) {
-      updatedImages = updatedImages.filter(img => !removedImages.includes(img));
+    // Remove selected old images from disk
+    updatedImages = updatedImages.filter(img => !removedImages.includes(img));
+    for (const imgUrl of removedImages) {
+      try {
+        const filePath = path.join(__dirname, '..', imgUrl.replace(/^\//, ''));
+        if (fs.existsSync(filePath)) await fs.promises.unlink(filePath);
+      } catch (err) {
+        console.error(`Failed to delete file ${imgUrl}:`, err);
+      }
     }
 
-    // add new uploaded images
+    // Add new uploaded images (only File objects)
     if (req.files && req.files.length > 0) {
-      const newImageUrls = req.files.map(file => `/uploads/propertyImages/${file.filename}`);
+      const newImageUrls = req.files.map(f => `/uploads/propertyImages/${f.filename}`);
+      if (updatedImages.length + newImageUrls.length > 20)
+        return res.status(400).json({ message: `Cannot have more than 20 images. Currently: ${updatedImages.length}` });
+
       updatedImages = [...updatedImages, ...newImageUrls];
     }
 

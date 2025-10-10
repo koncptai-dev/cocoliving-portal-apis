@@ -3,7 +3,8 @@ const Rooms = require('../models/rooms');
 const Booking = require('../models/bookRoom');
 const Property = require('../models/property');
 const { Op } = require('sequelize');
-
+const fs = require('fs');
+const path = require('path');
 
 //Add Rooms  for admin
 exports.AddRooms = async (req, res) => {
@@ -27,6 +28,11 @@ exports.AddRooms = async (req, res) => {
 
         //handle images
         const imageUrls = req.files ? req.files.map(file => `/uploads/roomImages/${file.filename}`) : [];
+
+        // Check limit
+        if (imageUrls.length > 20) {
+            return res.status(400).json({ message: "You can upload a maximum of 20 images per room" });
+        }
 
         const newRooms = await Rooms.create({
             propertyId, roomNumber, roomType, capacity, floorNumber, images: imageUrls, monthlyRent, depositAmount, preferredUserType,
@@ -75,21 +81,41 @@ exports.EditRooms = async (req, res) => {
                 : updatedData.amenities.split(',').map(a => a.trim()).filter(a => a);
         }
 
-        // remove selected images
-        if (updatedData.removedImages && Array.isArray(updatedData.removedImages)) {
-            updatedData.images = room.images.filter(img => !updatedData.removedImages.includes(img));
+        // already stored images
+        let updatedImages = room.images || [];
+
+        // removedImages passed from frontend
+        let removedImages = updatedData.removedImages || [];
+        if (typeof removedImages === "string") removedImages = [removedImages]; // single string -> array
+
+        // Remove selected images from array
+        updatedImages = updatedImages.filter(img => !removedImages.includes(img));
+
+        // Delete files from folder
+        for (const imgUrl of removedImages) {
+            const filePath = path.join(__dirname, "..", imgUrl.replace(/^\//, ""));
+            if (fs.existsSync(filePath)) await fs.promises.unlink(filePath);
         }
 
-        // add new uploaded images
+        // Add new uploaded images
         if (req.files && req.files.length > 0) {
-            const newImageUrls = req.files.map(file => `/uploads/roomImages/${file.filename}`);
-            updatedData.images = updatedData.images
-                ? [...updatedData.images, ...newImageUrls]
-                : [...room.images, ...newImageUrls];
+            const newImageUrls = req.files.map(f => `/uploads/roomImages/${f.filename}`);
+            if (updatedImages.length + newImageUrls.length > 20) {
+                return res.status(400).json({
+                    message: `Cannot upload images. Room already has ${updatedImages.length} images. Maximum allowed is 20.`
+                });
+            }
+            updatedImages = [...updatedImages, ...newImageUrls];
         }
+
+        // Save final array
+        updatedData.images = updatedImages;
 
         //apply update dynamically
-        await room.update(updatedData);
+        await room.update({
+            ...updatedData,  // keep other updates
+            images: updatedImages  //  images field to update
+        });
 
         res.status(200).json({ message: "Room updated successfully", room });
 
@@ -123,6 +149,16 @@ exports.DeleteRooms = async (req, res) => {
         if (hasActiveOrFutureBookings) {
             return res.status(400).json({ message: "Room cannot be deleted, it has active or future bookings" });
         }
+
+        
+        // Delete all images from folder
+        if (room.images && room.images.length > 0) {
+            for (const imgUrl of room.images) {
+                const filePath = path.join(__dirname, "..", imgUrl.replace(/^\//, ""));
+                if (fs.existsSync(filePath)) await fs.promises.unlink(filePath);
+            }
+        }
+
 
         await room.destroy();
         res.status(200).json({ message: "Room deleted successfully" });

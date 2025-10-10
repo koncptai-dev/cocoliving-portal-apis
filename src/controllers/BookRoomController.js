@@ -40,7 +40,7 @@ exports.createBooking = async (req, res) => {
 
     const overlappingBooking = await Booking.findOne({
       where: {
-        userId, status: ["approved", "active"], [Op.or]: [
+        userId, status: ["approved", "active","pending"], [Op.or]: [
           {
             checkOutDate: { [Op.is]: null }, // open-ended booking
             checkInDate: { [Op.lte]: checkOutDateFormatted || checkInDateFormatted }

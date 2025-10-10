@@ -102,7 +102,7 @@ exports.getAllUserTypes = async (req, res) => {
   try {
     const userTypes = await User.findAll({
       attributes: [[sequelize.fn("DISTINCT", sequelize.col("userType")), "userType"]],
-      where: { userType: { [Op.ne]: "admin" } } // exclude admin
+      where: { userType: { [Op.ne]: "super-admin" } } // exclude admin
     });
     res.json(userTypes.map(u => u.userType));
   } catch (error) {
