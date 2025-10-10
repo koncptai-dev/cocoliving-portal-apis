@@ -10,6 +10,7 @@ router.post('/register',validateSignup,validate,UserController.registerUser);
 router.put('/update-profile/:id', upload.single('profileImage'),editUserProfileValidator,validate,authenticateToken,UserController.editUserProfile);
 router.delete('/delete-account/:id', authenticateToken, UserController.deleteAccount);
 router.get('/getUser/:id', authenticateToken, UserController.getUserById);
+router.post('/send-otp',UserController.sendOTP)
 
 // router.post('/login', UserController.loginUser);
 // router.post('/forgot-password', UserController.sendResetCode);

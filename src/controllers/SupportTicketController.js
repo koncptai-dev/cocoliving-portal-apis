@@ -78,7 +78,22 @@ exports.getUserTickets = async (req, res) => {
 //admin view tickets
 exports.getAllTickets = async (req, res) => {
     try {
-        const tickets = await SupportTicket.findAll();
+        const tickets = await SupportTicket.findAll({
+            include: [
+                {
+                    model: Rooms,
+                    as: 'room',      // Make sure your association is defined: SupportTicket.belongsTo(Rooms, { as: 'room', foreignKey: 'roomId' })
+                    attributes: ['id', 'roomNumber', 'propertyId'],
+                    include: [
+                        {
+                            model: Property,
+                            as: 'property', // Make sure Rooms.belongsTo(Property, { as: 'property', foreignKey: 'propertyId' })
+                            attributes: ['id', 'name']
+                        }
+                    ]
+                }
+            ]
+        });
         res.status(200).json({ tickets });
     } catch (error) {
         console.log(error);
