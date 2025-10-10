@@ -8,6 +8,7 @@ const Event = require("./events");
 const EventParticipation = require("./eventParticipation");
 const Property=require('./property');
 const Announcement = require('./annoucement');
+const UserPermission=require('./userPermissoin');
 
 User.hasMany(SupportTicket, {foreignKey: "userId", as: "tickets" });
 SupportTicket.belongsTo(User, {foreignKey: "userId", as: "user" });
@@ -35,6 +36,13 @@ Event.belongsTo(Property, { foreignKey: 'propertyId', as: 'property' });
 Property.hasMany(Announcement, { foreignKey: 'propertyId', as: 'announcements' });
 Announcement.belongsTo(Property, { foreignKey: 'propertyId', as: 'property' });
 
+User.hasOne(UserPermission, { foreignKey: 'userId', as: 'permission' });
+UserPermission.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+// Link SupportTicket to Room
+Rooms.hasMany(SupportTicket, { foreignKey: 'roomId', as: 'tickets' });
+SupportTicket.belongsTo(Rooms, { foreignKey: 'roomId', as: 'room' });
+
 module.exports={
     sequelize,
     SupportTicket,
@@ -44,5 +52,6 @@ module.exports={
     Event,
     EventParticipation,
     Property,
-    Announcement
+    Announcement,
+    UserPermission
 }
