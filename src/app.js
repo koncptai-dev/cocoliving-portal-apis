@@ -26,7 +26,7 @@ app.use(cors({
 }));
 
 app.use(bodyParser.json());
-app.use('/src/uploads', express.static(path.join(__dirname, 'src', 'uploads')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.use('/api/admin', admin);
 app.use('/api/user', User);
