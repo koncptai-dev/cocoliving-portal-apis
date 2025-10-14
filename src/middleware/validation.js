@@ -150,8 +150,12 @@ exports.editPropertyValidate = [
     .isLength({ min: 3, max: 100 }).withMessage("Property name must be between 3 and 100 characters"),
 
   check("address").optional().trim().isLength({ max: 100 }).withMessage("Address must be under 100 characters"),
-  check("description").optional({ checkFalsy: true }).isLength({ max: 500 }).withMessage("Description must be under 500 characters")
-    .matches(/^[A-Za-z\s]+$/).withMessage("Description must contain only letters and spaces"),
+check("description")
+  .optional({ checkFalsy: true })
+  .matches(/^[A-Za-z0-9\s.,'()-]+$/)
+  .withMessage('Description contains invalid characters')
+  .isLength({ max: 500 })
+  .withMessage("Description must be under 500 characters"),
   check("images").optional({ checkFalsy: true }).isArray().withMessage("Images must be an array").custom((images) => {
     if (images.length > 20) {
       throw new Error("You can upload a maximum of 20 images only");

@@ -127,6 +127,7 @@ exports.registerUser = async (req, res) => {
 
 exports.editUserProfile = async (req, res) => {
     try {
+       
         const { id } = req.params;
         const updates = req.body;
 
@@ -155,7 +156,7 @@ exports.editUserProfile = async (req, res) => {
         //if already has profileImage, delete the old one
         if (req.file) {
             if (user.profileImage) {
-                const oldPath = path.join(__dirname, '..', user.profileImage);
+                const oldPath = path.join(__dirname, '..', user.profileImage.replace(/^\//, ''));
                 if (fs.existsSync(oldPath)) {
                     fs.unlinkSync(oldPath);
                 }
@@ -163,8 +164,6 @@ exports.editUserProfile = async (req, res) => {
             user.profileImage = `/uploads/profilePicture/${req.file.filename}`;
         }
         await user.save();
-
-        console.log(user);
         
         return res.status(200).json({
             message: 'Profile updated successfully',
