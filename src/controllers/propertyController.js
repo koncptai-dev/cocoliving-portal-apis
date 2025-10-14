@@ -101,12 +101,28 @@ exports.editProperties = async (req, res) => {
 
     // Add new uploaded images (only File objects)
     if (req.files && req.files.length > 0) {
-      const newImageUrls = req.files.map(f => `/uploads/propertyImages/${f.filename}`);
-      if (updatedImages.length + newImageUrls.length > 20)
-        return res.status(400).json({ message: `Cannot have more than 20 images. Currently: ${updatedImages.length}` });
+  const newImageUrls = req.files.map(f => `/uploads/propertyImages/${f.filename}`);
 
-      updatedImages = [...updatedImages, ...newImageUrls];
-    }
+  // Calculate total number of images after adding new ones
+  const totalImages = updatedImages.length + newImageUrls.length;
+
+  // Check limit
+  if (totalImages > 20) {
+    // Delete newly uploaded files to prevent folder overflow
+    req.files.forEach(f => {
+      const filePath = path.join(__dirname, '..', 'uploads/propertyImages', f.filename);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    });
+
+    return res.status(400).json({
+      message: `You can upload up to 20 images only. Currently: ${updatedImages.length} existing + ${newImageUrls.length} new = ${totalImages}.`
+    });
+  }
+
+  // Merge new images with existing ones
+  updatedImages = [...updatedImages, ...newImageUrls];
+}
+
 
     await property.update({
       name: name ?? property.name,
@@ -124,7 +140,6 @@ exports.editProperties = async (req, res) => {
   }
 
 }
-
 exports.deleteProperty = async (req, res) => {
   try {
     const { id } = req.params;
