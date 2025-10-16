@@ -9,6 +9,7 @@ const EventParticipation = require("./eventParticipation");
 const Property=require('./property');
 const Announcement = require('./annoucement');
 const UserPermission=require('./userPermissoin');
+const PropertyRateCard=require('./propertyRateCard');
 
 User.hasMany(SupportTicket, {foreignKey: "userId", as: "tickets" });
 SupportTicket.belongsTo(User, {foreignKey: "userId", as: "user" });
@@ -43,6 +44,10 @@ UserPermission.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 Rooms.hasMany(SupportTicket, { foreignKey: 'roomId', as: 'tickets' });
 SupportTicket.belongsTo(Rooms, { foreignKey: 'roomId', as: 'room' });
 
+//propertyCard
+PropertyRateCard.belongsTo(Property, { foreignKey: 'propertyId', as: 'property' });
+Property.hasMany(PropertyRateCard, { foreignKey: 'propertyId', as: 'rateCard' });
+
 module.exports={
     sequelize,
     SupportTicket,
@@ -53,5 +58,6 @@ module.exports={
     EventParticipation,
     Property,
     Announcement,
-    UserPermission
+    UserPermission,
+    PropertyRateCard
 }
