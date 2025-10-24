@@ -34,8 +34,11 @@ exports.AddRooms = async (req, res) => {
             return res.status(400).json({ message: "You can upload a maximum of 20 images per room" });
         }
 
+        //calculate deposite amount 
+        const calculatedDeposit = monthlyRent * 2;
+
         const newRooms = await Rooms.create({
-            propertyId, roomNumber, roomType, capacity, floorNumber, images: imageUrls, monthlyRent, depositAmount, preferredUserType,
+            propertyId, roomNumber, roomType, capacity, floorNumber, images: imageUrls, monthlyRent, depositAmount: calculatedDeposit, preferredUserType,
             amenities: amenitiesArray, description, status
         })
 
@@ -111,6 +114,11 @@ exports.EditRooms = async (req, res) => {
         // Save final array
         updatedData.images = updatedImages;
 
+        //recalculate deposit if rent changes
+        if (updatedData.monthlyRent !== null && updatedData.monthlyRent !== undefined) {
+            updatedData.depositAmount = updatedData.monthlyRent * 2;
+        }
+
         //apply update dynamically
         await room.update({
             ...updatedData,  // keep other updates
@@ -150,7 +158,7 @@ exports.DeleteRooms = async (req, res) => {
             return res.status(400).json({ message: "Room cannot be deleted, it has active or future bookings" });
         }
 
-        
+
         // Delete all images from folder
         if (room.images && room.images.length > 0) {
             for (const imgUrl of room.images) {
@@ -173,7 +181,11 @@ exports.DeleteRooms = async (req, res) => {
 //get Rooms
 exports.getAllRooms = async (req, res) => {
     try {
-        const rooms = await Rooms.findAll(
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = (page - 1) * limit;
+
+        const { rows: rooms, count } = await Rooms.findAndCountAll(
             {
                 include: [
                     {
@@ -186,50 +198,11 @@ exports.getAllRooms = async (req, res) => {
                         model: Property,
                         as: 'property',
                     }
-                ]
+                ],
+                limit,
+                offset,order:[['createdAt', 'DESC']]
             }
         )
-
-        //         const formattedRooms=rooms.map((room)=>{
-        //             const capacity=room.capacity;
-        //             const occupied=room.bookings ? room.bookings.length : 0;
-        // let status = room.status;
-
-        //   if (status === "available" && occupied >= capacity) {
-        //     status = "booked";
-        //   }
-
-        //   const availableForBooking = status === "available";
-        //             // const availableForBooking = room.status==='available' && occupied < capacity
-
-        //             console.log(availableForBooking);
-
-        //             return{
-        //                 id: room.id,
-        //                 propertyId: room.propertyId,
-        //                 roomNumber: room.roomNumber,
-        //                 roomType: room.roomType,
-        //                 capacity:capacity,
-        //                 floorNumber: room.floorNumber,
-        //                 monthlyRent: room.monthlyRent,
-        //                 depositAmount: room.depositAmount,
-        //                 preferredUserType: room.preferredUserType,
-        //                 amenities: room.amenities || [],        
-        //                 description: room.description,
-        //                 availableForBooking,
-        //                 status,
-        //                 // availableForBooking: availableForBooking,
-        //                 // status: room.status,
-        //                 occupancy:`${occupied}/${capacity}`,
-        //                  property: room.property ? {
-        //                     id: room.property.id,
-        //                     name: room.property.name,
-        //                     address: room.property.address,
-        //                     amenities: room.property.amenities,
-        //                     images: room.property.images,
-        //                     } : null
-        //                             }
-        //         })
 
         const formattedRooms = rooms.map((room) => {
             const capacity = room.capacity;
@@ -273,7 +246,9 @@ exports.getAllRooms = async (req, res) => {
             };
         });
 
-        res.status(200).json({ rooms: formattedRooms });
+        const totalPages=Math.ceil(count / limit);
+
+        res.status(200).json({ rooms: formattedRooms,currentPage: page, totalPages, totalRooms: count });
     } catch (err) {
         console.log("error", err);
 

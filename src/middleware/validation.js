@@ -1,4 +1,4 @@
-const { check } = require('express-validator');
+const { check,body } = require('express-validator');
 
 exports.validateSignup = [
   check('fullName').trim().isLength({ min: 2 }).withMessage("Full name must be at least 2 characters").notEmpty().withMessage('Full name is required').matches(/^[A-Za-z\s]+$/).withMessage('Full name must contain only letters and spaces'),
@@ -120,7 +120,7 @@ exports.validateAnnouncement = [
   check("title").notEmpty().withMessage("Title is required").isLength({ min: 3, max: 100 }).withMessage("Title must be between 3 and 100 characters")
     .matches(/^[A-Za-z0-9\s.'-]+$/).withMessage("Title must contain only letters, numbers, spaces, and basic punctuation"),
 
-  check("priority").notEmpty().withMessage("Priority is required").isString().withMessage("Priority must be a string")
+  body("priority").notEmpty().withMessage("Priority is required").isString().withMessage("Priority must be a string")
     .matches(/^[A-Za-z\s]+$/).withMessage("Priority must contain only alphabets").trim(),
 
   check("audience").notEmpty().withMessage("Audience is required").isString().withMessage("Audience must be a string")
