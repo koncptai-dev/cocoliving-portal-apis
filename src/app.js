@@ -16,6 +16,7 @@ const PropertyRoute=require('./routes/PropertyRoute');
 const AdminBooking=require('./routes/AdminBookingRoutes');
 const UserandBokingDetails = require('./routes/UserandBookingRoutes');
 const PagesRoute = require('./routes/pagesRoute');
+const FoodMenuRoute = require('./routes/FoodMenuRoute');
 
 const path = require('path');
 
@@ -41,6 +42,7 @@ app.use('/api/property', PropertyRoute);
 app.use('/api/admin-booking', AdminBooking);
 app.use('/api/user-and-booking', UserandBokingDetails);
 app.use('/api/pages', PagesRoute);
+app.use('/api/food-menu', FoodMenuRoute);
 
 sequelize.sync({ alter: true }) //   ensures new models are created
   .then(() => console.log('✅ Database Synced'))

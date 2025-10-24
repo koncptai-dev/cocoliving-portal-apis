@@ -42,8 +42,19 @@ exports.AddUser = async (req, res) => {
 
 exports.getAllUser = async (req, res) => {
     try {
-        const Users = await User.findAll({ where: { userType: { [Op.notIn]: ["super-admin", "admin"] } } });
-        res.json(Users);
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = (page - 1) * limit;
+
+        //fetch users with count
+        const { rows: users, count } = await User.findAndCountAll({
+            where: { userType: { [Op.notIn]: ["super-admin", "admin"] } },
+            order: [['createdAt', 'DESC']],
+            limit,
+            offset
+        });
+
+        res.json({ users, curretnPage: page, totalPages: Math.ceil(count / limit), totalUsers: count });
     } catch (error) {
         res.status(500).json({ message: "Failed to fetch Users" });
     }
@@ -60,13 +71,13 @@ exports.createAdminUser = async (req, res) => {
         const newAdminUser = await User.create({
             email, fullName, phone, password: hashedPassword, role: 3, roleName, userType: "admin",
         })
-        const userpermision=await UserPermission.create({
+        const userpermision = await UserPermission.create({
             userId: newAdminUser.id,   // link to created user
-            pages: pages ,
-            permissions: permissions ,
+            pages: pages,
+            permissions: permissions,
             properties: properties
         });
-        res.status(201).json({ message: "Admin created successfully", admin: newAdminUser,permision:userpermision });
+        res.status(201).json({ message: "Admin created successfully", admin: newAdminUser, permision: userpermision });
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: "Error creating admin", error });
@@ -75,7 +86,11 @@ exports.createAdminUser = async (req, res) => {
 
 exports.getAllAdminUsers = async (req, res) => {
     try {
-        const adminUsers = await User.findAll({
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = (page - 1) * limit;
+
+        const { rows: adminUsers, count } = await User.findAndCountAll({
             where: {
                 [Op.or]: [
                     { userType: "admin" },
@@ -85,10 +100,18 @@ exports.getAllAdminUsers = async (req, res) => {
             include: {
                 model: UserPermission,
                 as: 'permission'
-            }
+            },
+            order: [["createdAt", "DESC"]],
+            limit,
+            offset
         });
-        res.json(adminUsers);
-    } catch (error) {   
+        res.json({
+            adminUsers,
+            currentPage: page,
+            totalPages: Math.ceil(count / limit),
+            totalAdmins: count
+        });
+    } catch (error) {
         console.error(error);
         res.status(500).json({ message: "Server error", error: error.message });
     }

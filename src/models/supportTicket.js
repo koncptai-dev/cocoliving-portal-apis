@@ -58,6 +58,9 @@ const SupportTicket=sequelize.define('SupportTicket',{
         type:DataTypes.TEXT,
         allowNull:true
     }
+    // },image: {
+    // type: DataTypes.ARRAY(DataTypes.STRING),  //  To store image path or URL
+    // allowNull: true}
 },
 {
     tableName:'support_tickets'
