@@ -15,6 +15,7 @@
             if (file.fieldname === 'profileImage') folder = 'profilePicture';
             else if (file.fieldname === 'roomImages') folder = 'roomImages';
             else if (file.fieldname === 'propertyImages') folder = 'propertyImages';
+            else if (file.fieldname === 'ticketImage') folder = 'ticketImages';
             const uploadDir = path.join(__dirname, '..', 'uploads',folder);
             if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 

@@ -38,6 +38,13 @@ exports.createTicket = async (req, res) => {
             return res.status(403).json({ message: "You have not booked this room" });
         }
 
+        //for images up to 10
+        // const imageUrls = req.files ? req.files.map((file) => `/uploads/ticketImages/${file.filename}`) : [];
+
+        // if (imageUrls.length > 10) {
+        //     return res.status(400).json({ message: "You can upload a maximum of 10 images." });
+        // }
+
         const ticket = await SupportTicket.create({
             roomId: room.id,
             roomNumber: room.roomNumber,
@@ -46,7 +53,8 @@ exports.createTicket = async (req, res) => {
             description,
             priority,
             userId,
-            status: 'open'
+            status: 'open',
+            // image:imageUrls
         })
 
         res.status(201).json({ message: "successfully created", ticket });
@@ -107,15 +115,25 @@ exports.updateTicketStatus = async (req, res) => {
     try {
         const { status, assignedTo } = req.body;
 
+        const userId = req.user.id;
+        const userRole = req.user.role;
+
         const ticket = await SupportTicket.findByPk(ticketId);
 
         if (!ticket) {
             return res.status(404).json({ message: "Ticket not found" });
         }
 
-        ticket.status = status;
-        ticket.assignedTo = assignedTo || ticket.assignedTo;
-
+        if (userRole === 1) {
+            if (status) ticket.status = status;
+            if (assignedTo) ticket.assignedTo = assignedTo;
+        }
+        else if (userRole === 3) {
+            if (ticket.assignedTo !== userId) {
+                return res.status(403).json({ message: "You are not assigned to this ticket" });
+            }
+            if (status) ticket.status = status;
+        }
         await ticket.save();
 
         res.status(200).json({ message: "Ticket updated successfully", ticket });
@@ -158,7 +176,7 @@ exports.getRooms = async (req, res) => {
         const rooms = activeBookings
             .map(b => b.room)
             .filter(Boolean)
-            .map(r => ({ id: r.id, roomNumber: r.roomNumber ,propertyName: r.property?.name  || "",}));
+            .map(r => ({ id: r.id, roomNumber: r.roomNumber, propertyName: r.property?.name || "", }));
 
         res.status(200).json({ rooms });
     } catch (error) {
