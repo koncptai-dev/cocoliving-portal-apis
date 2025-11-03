@@ -11,7 +11,7 @@ const PropertyRateCard = require('../models/propertyRateCard');
 
 exports.createProperty = async (req, res) => {
   try {
-    const { name, address, description,images, amenities, is_active, rateCard } = req.body;
+    const { name, address, description, images, amenities, is_active, rateCard } = req.body;
 
     // Check if property already exists
     const existing = await Property.findOne({ where: { name, address } });
@@ -63,14 +63,22 @@ exports.createProperty = async (req, res) => {
     res.status(500).json({ message: "Failed to create property" });
   }
 };
+
 exports.getProperties = async (req, res) => {
   try {
-    const properties = await Property.findAll({
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const { rows: properties, count } = await Property.findAndCountAll({
       order: [["createdAt", "DESC"]],
-      include: [{ model: PropertyRateCard, as: "rateCard" }]
+      include: [{ model: PropertyRateCard, as: "rateCard" }],
+      limit,
+      offset
     });
+    const totalPages=Math.ceil(count / limit);
     //for frontend
-    res.json(properties);
+    res.json({ properties, currentPage: page, totalPages });
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch properties" });
   }
@@ -80,7 +88,7 @@ exports.editProperties = async (req, res) => {
 
   try {
     const { id } = req.params;
-    let { name, address, description, images,amenities, is_active, removedImages, rateCard } = req.body;
+    let { name, address, description, images, amenities, is_active, removedImages, rateCard } = req.body;
 
     const property = await Property.findByPk(id);
     if (!property) {
@@ -172,13 +180,13 @@ exports.editProperties = async (req, res) => {
       }
 
       //for updating existing and add new 
-      for(const rc of rateCardArray){
-        const existing=existingRateCard.find(r=>r.roomType.toLowerCase() === rc.roomType.toLowerCase());
-        if(existing){
-          await existing.update({rent:rc.rent})
+      for (const rc of rateCardArray) {
+        const existing = existingRateCard.find(r => r.roomType.toLowerCase() === rc.roomType.toLowerCase());
+        if (existing) {
+          await existing.update({ rent: rc.rent })
         }
-        else{
-               await PropertyRateCard.create({ propertyId: id, roomType: rc.roomType, rent: rc.rent });
+        else {
+          await PropertyRateCard.create({ propertyId: id, roomType: rc.roomType, rent: rc.rent });
         }
       }
     }
@@ -247,3 +255,4 @@ exports.checkRateCardDeletion = async (req, res) => {
     res.status(500).json({ message: "Failed to check deletion" });
   }
 };
+

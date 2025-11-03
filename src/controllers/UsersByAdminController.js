@@ -2,11 +2,12 @@ const sequelize = require('../config/database');
 const User = require('../models/user');
 const UserPermission = require('../models/userPermissoin');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { Op } = require('sequelize');
 
 exports.AddUser = async (req, res) => {
     try {
-        const { email, fullName, phone, occupation, userType, dateOfBirth, gender } = req.body;
+        const { email, fullName, phone, userType, dateOfBirth, gender } = req.body;
 
         if (!email || !fullName || !phone || !dateOfBirth) {
             return res.status(400).json({ message: "Required fields are missing" });
@@ -17,14 +18,20 @@ exports.AddUser = async (req, res) => {
             return res.status(400).json({ message: "Email already exists" });
         }
 
+        //  Generate a random 8-character password
+        const plainPassword = crypto.randomBytes(4).toString("hex"); // e.g. "a3b4c5d6"
+
+        //  Hash the password before storing
+        const hashedPassword = await bcrypt.hash(plainPassword, 10);
+
         const newUser = await User.create({
             email,
             fullName,
             phone,
             userType,
-            occupation,
             dateOfBirth,
             gender,
+            password: hashedPassword,
             // emergencyContactName,
             // emergencyContactPhone
         });
@@ -116,3 +123,34 @@ exports.getAllAdminUsers = async (req, res) => {
         res.status(500).json({ message: "Server error", error: error.message });
     }
 }
+
+exports.getAdminById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Fetch admin by primary key
+    const admin = await User.findOne({
+      where: {
+        id,
+        [Op.or]: [
+          { userType: "admin" },
+          { role: 3 }
+        ]
+      },
+      include: {
+        model: UserPermission,
+        as: 'permission'
+      }
+    });
+
+    if (!admin) {
+      return res.status(404).json({ message: "Admin not found" });
+    }
+
+    res.json({ admin });
+  } catch (error) {
+    console.error("Error fetching admin by ID:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+

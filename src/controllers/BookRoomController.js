@@ -2,6 +2,7 @@ const sequelize = require('../config/database');
 const Booking = require('../models/bookRoom');
 const Rooms = require('../models/rooms');
 const User = require('../models/user');
+const { logActivity } = require("../helpers/activityLogger");
 const { Op } = require('sequelize');
 const moment = require('moment');
 const { Property } = require('../models');
@@ -12,7 +13,7 @@ const e = require('cors');
 exports.createBooking = async (req, res) => {
   try {
 
-    const { roomId, checkInDate, duration, notes } = req.body;
+    const { roomId, checkInDate, duration } = req.body;
     const userId = req.user.id;
 
     let checkInDateFormatted = moment(checkInDate, ["DD-MM-YYYY", "YYYY-MM-DD"]).format("YYYY-MM-DD");
@@ -29,18 +30,9 @@ exports.createBooking = async (req, res) => {
       return res.status(404).json({ message: "Room not found" });
     }
 
-    //check if same user already booked this room 
-    // const existingBooking = await Booking.findOne({
-    //   where: { userId, roomId, status: "booked" }
-    // });
-
-    // if (existingBooking) {
-    //   return res.status(400).json({ message: "You have already booked this room" });
-    // }
-
     const overlappingBooking = await Booking.findOne({
       where: {
-        userId, status: ["approved", "active","pending"], [Op.or]: [
+        userId, status: ["approved", "active", "pending"], [Op.or]: [
           {
             checkOutDate: { [Op.is]: null }, // open-ended booking
             checkInDate: { [Op.lte]: checkOutDateFormatted || checkInDateFormatted }
@@ -69,16 +61,6 @@ exports.createBooking = async (req, res) => {
       return res.status(400).json({ message: "Room is fully booked" });
     }
 
-    //decide status for this room
-    // let status = "pending";
-    // const existingActiveBooking = await Booking.findOne({
-    //   where: {
-    //     userId, status: ["approved", "active"],
-    //     checkInDate: { [Op.lte]: moment().format("YYYY-MM-DD") },
-    //     checkOutDate:   { [Op.gte]: moment().format("YYYY-MM-DD") }
-    //   }
-    // })
-
     const totalRent = room.monthlyRent * duration;
     const totalPrice = totalRent + room.depositAmount;
 
@@ -90,7 +72,6 @@ exports.createBooking = async (req, res) => {
       duration,
       monthlyRent: room.monthlyRent,
       depositAmount: room.depositAmount,
-      notes,
       status: "pending",
     });
 
@@ -100,6 +81,21 @@ exports.createBooking = async (req, res) => {
     });
     room.status = currentBookings >= room.capacity ? "booked" : "available";
     await room.save();
+
+    //for log activity getting user details
+    const user = await User.findByPk(req.user.id, { attributes: ['fullName'] });
+    if (!user) { return res.status(404).json({ message: "User not found" }); }
+
+    //log activity after successful booking creation
+    await logActivity({
+      userId: req.user.id,
+      name: user.fullName,
+      role: req.user.role,
+      action: "New Booking",
+      entityType: "Booking",
+      entityId: booking.id,
+      details: { roomNumber: room.roomNumber, duration },
+    });
 
     res.status(201).json({ message: "Booking successful", booking });
   } catch (error) {
@@ -111,13 +107,19 @@ exports.createBooking = async (req, res) => {
 exports.getUserBookings = async (req, res) => {
   try {
     const userId = req.user.id;
-    const bookings = await Booking.findAll({
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const { rows: bookings, count } = await Booking.findAndCountAll({
       where: { userId },
       include: [{ model: Rooms, as: "room", include: [{ model: Property, as: "property" }] }],
-      order: [['createdAt', 'DESC']]
+      order: [['createdAt', 'DESC']],
+      limit,
+      offset
     })
 
-     const today = moment().startOf('day');
+    const today = moment().startOf('day');
     const formattedBookings = bookings.map(b => {
       const checkIn = moment(b.checkInDate);
       let displayStatus = b.status;
@@ -127,12 +129,13 @@ exports.getUserBookings = async (req, res) => {
         displayStatus = 'upcoming';
       }
 
-       return {
+      return {
         ...b.toJSON(),
         displayStatus
       };
     });
-    res.status(200).json({ bookings:formattedBookings });
+    const totalPages = Math.ceil(count / limit);
+    res.status(200).json({ bookings: formattedBookings, currentPage: page, totalPages, totalBookings: count });
   }
   catch (err) {
     console.log("error", err);
@@ -140,10 +143,10 @@ exports.getUserBookings = async (req, res) => {
   }
 }
 
-exports.cancelBooking=async(req,res)=>{
-  try{
-    const bookingId=req.params.id;
-    const userId=req.user.id;
+exports.cancelBooking = async (req, res) => {
+  try {
+    const bookingId = req.params.id;
+    const userId = req.user.id;
 
     // ..find booking
     const booking = await Booking.findOne({
@@ -163,11 +166,10 @@ exports.cancelBooking=async(req,res)=>{
     booking.status = "cancelled";
     await booking.save();
 
-        return res.status(200).json({ message: "Booking cancelled successfully", booking });
+    return res.status(200).json({ message: "Booking cancelled successfully", booking });
   } catch (error) {
     console.error("Cancel booking error:", error);
     return res.status(500).json({ message: "Internal server error", error: error.message });
   }
 
-  
 }

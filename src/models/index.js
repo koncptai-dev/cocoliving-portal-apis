@@ -10,6 +10,7 @@ const Property=require('./property');
 const Announcement = require('./annoucement');
 const UserPermission=require('./userPermissoin');
 const PropertyRateCard=require('./propertyRateCard');
+const FoodMenu = require('./foodMenu');
 
 User.hasMany(SupportTicket, {foreignKey: "userId", as: "tickets" });
 SupportTicket.belongsTo(User, {foreignKey: "userId", as: "user" });
@@ -48,6 +49,10 @@ SupportTicket.belongsTo(Rooms, { foreignKey: 'roomId', as: 'room' });
 PropertyRateCard.belongsTo(Property, { foreignKey: 'propertyId', as: 'property' });
 Property.hasMany(PropertyRateCard, { foreignKey: 'propertyId', as: 'rateCard' });
 
+//property to food menu
+Property.hasMany(FoodMenu, { foreignKey: 'propertyId', as: 'foodMenus', });
+FoodMenu.belongsTo(Property, { foreignKey: 'propertyId', as:'property' });
+
 module.exports={
     sequelize,
     SupportTicket,
@@ -59,5 +64,6 @@ module.exports={
     Property,
     Announcement,
     UserPermission,
-    PropertyRateCard
+    PropertyRateCard,
+    FoodMenu
 }

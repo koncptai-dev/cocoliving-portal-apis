@@ -121,10 +121,11 @@ exports.login = async (req, res) => {
 
         // Generate JWT token
         const token = jwt.sign(
-            { id: account.id, email: account.email, role: account.role, userType: account.userType },
+            { id: account.id, email: account.email,  role: account.role, userType: account.userType },
             process.env.JWT_SECRET,
             { expiresIn: '1d' }
         );
+        
 
         // Role-based label
         let roleLabel = 'User';
