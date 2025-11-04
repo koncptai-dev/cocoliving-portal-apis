@@ -2,12 +2,12 @@ const SupportTicket = require('../models/supportTicket');
 
 exports.generateSupportTicketCode = async () => {
   try {
-    // Fetch all existing support codes
+    // Fetch all existing support codes 
     const tickets = await SupportTicket.findAll({
       attributes: ['supportCode']
     });
 
-    // Find the highest sequence number
+    // Find the highest sequence number unique
     let maxSeq = 0;
     tickets.forEach(ticket => {
       const match = ticket.supportCode?.match(/SUPP-(\d+)/);
