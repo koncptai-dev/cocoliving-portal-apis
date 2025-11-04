@@ -1,12 +1,13 @@
 const sequelize = require('../config/database');
 const SupportTicket = require('../models/supportTicket');
 const Rooms = require('../models/rooms');
+const User = require('../models/user');
 const Booking = require('../models/bookRoom');
 const Property = require('../models/property');
 const { Op } = require('sequelize');
+const {generateSupportTicketCode} = require('../helpers/SupportTicketCode');
 
 //create tickets
-
 exports.createTicket = async (req, res) => {
     try {
         const userId = req.user.id;
@@ -38,14 +39,22 @@ exports.createTicket = async (req, res) => {
             return res.status(403).json({ message: "You have not booked this room" });
         }
 
-        //for images up to 10
-        // const imageUrls = req.files ? req.files.map((file) => `/uploads/ticketImages/${file.filename}`) : [];
+        //for images&video up to 10
+        const imageUrls = req.files?.ticketImage?.map(file => `/uploads/ticketImages/${file.filename}`) || [];
+        const videoUrls = req.files?.ticketVideo?.map(file => `/uploads/ticketVideos/${file.filename}`) || [];
 
-        // if (imageUrls.length > 10) {
-        //     return res.status(400).json({ message: "You can upload a maximum of 10 images." });
-        // }
+
+        if (imageUrls.length > 10) {
+            return res.status(400).json({ message: "You can upload a maximum of 10 images." });
+        }
+        if (videoUrls.length > 3) {
+            return res.status(400).json({ message: "You can upload a maximum of 3 videos." });
+        }
+
+        const supportCode = await generateSupportTicketCode(room.roomNumber);
 
         const ticket = await SupportTicket.create({
+            supportCode,
             roomId: room.id,
             roomNumber: room.roomNumber,
             date,
@@ -54,7 +63,8 @@ exports.createTicket = async (req, res) => {
             priority,
             userId,
             status: 'open',
-            // image:imageUrls
+            image: imageUrls,
+            videos: videoUrls
         })
 
         res.status(201).json({ message: "successfully created", ticket });
@@ -68,15 +78,23 @@ exports.createTicket = async (req, res) => {
 //users view own tickets 
 exports.getUserTickets = async (req, res) => {
     try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = (page - 1) * limit;
+
         const userId = req.user.id;
 
-        const tickets = await SupportTicket.findAll({
+        const { rows: tickets, count } = await SupportTicket.findAndCountAll({
             where: {
                 userId: userId
-            }
+            }, 
+            limit,
+            offset,
+            order: [['createdAt', 'DESC']]
         });
+        const totalPages=Math.ceil(count / limit);
 
-        res.status(200).json({ tickets });
+        res.status(200).json({ tickets, currentPage: page, totalPages, totalTickets: count });
     } catch (error) {
         console.log(error);
         res.status(500).json({ message: error.message });
@@ -86,7 +104,11 @@ exports.getUserTickets = async (req, res) => {
 //admin view tickets
 exports.getAllTickets = async (req, res) => {
     try {
-        const tickets = await SupportTicket.findAll({
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = (page - 1) * limit;
+
+        const { rows: tickets, count } = await SupportTicket.findAndCountAll({
             include: [
                 {
                     model: Rooms,
@@ -99,10 +121,19 @@ exports.getAllTickets = async (req, res) => {
                             attributes: ['id', 'name']
                         }
                     ]
+                },
+                {
+                    model: User,
+                    as: 'user',
+                    attributes: ['id', 'fullName', 'email']
                 }
-            ]
+            ],
+            limit,
+            offset, order: [['createdAt', 'DESC']]
         });
-        res.status(200).json({ tickets });
+        const totalPages = Math.ceil(count / limit);
+
+        res.status(200).json({ tickets, totalPages });
     } catch (error) {
         console.log(error);
         res.status(500).json({ message: error.message });
@@ -184,3 +215,4 @@ exports.getRooms = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
+    

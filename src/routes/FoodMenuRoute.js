@@ -8,5 +8,6 @@ router.post('/add', authMiddleware, FoodMenuController.createFoodMenu);
 router.put('/edit/:id', authMiddleware, FoodMenuController.editFoodMenu);
 router.get('/list', authMiddleware, FoodMenuController.getFoodMenus);
 router.delete('/delete/:id', authMiddleware, FoodMenuController.deleteFoodMenu);
+router.get('/user-menus', authMiddleware, FoodMenuController.getUserMenus);
 
 module.exports = router
