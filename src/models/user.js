@@ -64,10 +64,6 @@ const User=sequelize.define('User',{
         type: DataTypes.STRING,
         allowNull: true,
     },
-    occupation:{
-        type:DataTypes.STRING,
-        allowNull:true
-    },
     dateOfBirth:{
         type:DataTypes.DATEONLY,
         allowNull:true

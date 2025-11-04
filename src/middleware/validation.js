@@ -95,7 +95,7 @@ exports.supportTickValidate = [
   check("roomNumber").isInt({ min: 1 }).withMessage("Room number must be a positive integer").notEmpty().withMessage("Room number is required"),
   check("date").isDate().withMessage("Invalid date").notEmpty().withMessage("Date is required"),
   check("issue").matches(/^[A-Za-z\s]+$/).withMessage("issue must contain only letters and spaces").notEmpty().withMessage("Issue is required"),
-  check("description").optional({ nullable: true }).isLength({ max: 500 }).withMessage("Description must be under 500 characters").matches(/^[A-Za-z\s]*$/).withMessage("description must contain only letters and spaces"),
+  check("description").optional({ nullable: true }).isLength({ max: 500 }).withMessage("Description must be under 500 characters").matches(/^[A-Za-z\s,]*$/).withMessage("description must contain only letters and spaces"),
 ]
 
 exports.addUserValidate = [

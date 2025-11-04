@@ -13,5 +13,7 @@ router.get("/getAllUsers",authMiddleware, UserByAdminController.getAllUser);
 //for admin user
 router.post('/create-admin-user', authMiddleware, UserByAdminController.createAdminUser);
 router.get("/getAlladminUsers",authMiddleware, UserByAdminController.getAllAdminUsers);
+router.get("/getAdminById/:id", authMiddleware, UserByAdminController.getAdminById);
+
 
 module.exports = router;

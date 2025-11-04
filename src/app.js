@@ -17,7 +17,7 @@ const AdminBooking=require('./routes/AdminBookingRoutes');
 const UserandBokingDetails = require('./routes/UserandBookingRoutes');
 const PagesRoute = require('./routes/pagesRoute');
 const FoodMenuRoute = require('./routes/FoodMenuRoute');
-
+const ActivityRoute=require('./routes/ActivityRoutes');
 const path = require('path');
 
 app.use(cors({
@@ -43,6 +43,7 @@ app.use('/api/admin-booking', AdminBooking);
 app.use('/api/user-and-booking', UserandBokingDetails);
 app.use('/api/pages', PagesRoute);
 app.use('/api/food-menu', FoodMenuRoute);
+app.use("/api/activity", ActivityRoute);
 
 sequelize.sync({ alter: true }) //   ensures new models are created
   .then(() => console.log('✅ Database Synced'))

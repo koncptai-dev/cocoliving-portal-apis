@@ -3,8 +3,8 @@ const sequelize = require('../config/database');
 const { Op } = require('sequelize');
 const Property = require('../models/property');
 const User = require("../models/user");
-const Booking=require("../models/bookRoom");
-const Rooms=require("../models/rooms");
+const Booking = require("../models/bookRoom");
+const Rooms = require("../models/rooms");
 
 // Create Announcement
 exports.createAnnouncement = async (req, res) => {
@@ -150,6 +150,9 @@ exports.toggleEventStatus = async (req, res) => {
 exports.getAnnouncement = async (req, res) => {
   try {
     const userId = req.user.id;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
 
     //finding user,booking,property
     const user = await User.findByPk(userId, {
@@ -167,17 +170,20 @@ exports.getAnnouncement = async (req, res) => {
     const propertyIds = (user.bookings || []).map(b => b.room?.propertyId).filter(Boolean);
 
     //fetch announcements for property
-    const announcements = await Announcement.findAll({
+    const { rows: announcements, count } = await Announcement.findAndCountAll({
       where: {
         is_active: true,
         propertyId: propertyIds, // user’s property only
         [Op.or]: [
           { audience: "all" },          // for everyone
           { audience: user.userType }   // specific user type
-        ]},
+        ]
+      },
       include: [
         { model: Property, as: "property", attributes: ["id", "name"] }
       ],
+      limit,
+      offset, order: [['createdAt', 'DESC']]
     })
 
     const formatted = announcements.map(a => ({
@@ -189,8 +195,8 @@ exports.getAnnouncement = async (req, res) => {
       created: a.created,
       property: a.property ? { id: a.property.id, name: a.property.name } : null
     }));
-
-    return res.status(200).json({ message: "Announcements retrieved successfully", announcements: formatted });
+    const totalPages = Math.ceil(count / limit);
+    return res.status(200).json({ message: "Announcements retrieved successfully", announcements: formatted, currentPage: page, totalPages, totalAnnouncements: count });
   } catch (err) {
     console.error("getAnnouncements error:", err);
     return res.status(500).json({ message: "Internal server error" });

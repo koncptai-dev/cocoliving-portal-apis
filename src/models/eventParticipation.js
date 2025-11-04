@@ -12,7 +12,7 @@ const EventParticipation = sequelize.define("EventParticipation", {
   },
   status: {
     type: DataTypes.STRING,
-    defaultValue: "not_attend"
+    allowNull:false
   },
 }, {
   tableName: "event_participations"

@@ -7,8 +7,7 @@ const validate = require('../middleware/validateResult');
 const upload = require('../middleware/upload');
 
 // create Route
-// router.post("/create",upload.array('ticketImage',10),supportTickValidate, validate,authMiddleware, SupportTicketController.createTicket);
-router.post("/create",authMiddleware,supportTickValidate, validate, SupportTicketController.createTicket);
+router.post("/create",upload.fields([{ name: 'ticketImage', maxCount: 10 },{ name: 'ticketVideo', maxCount: 3 }]),supportTickValidate, validate,authMiddleware, SupportTicketController.createTicket);
 router.get("/get-user-tickets", authMiddleware, SupportTicketController.getUserTickets);
 router.get("/get-all-tickets", authMiddleware, SupportTicketController.getAllTickets);
 router.put("/update-ticket-status/:id", authMiddleware, SupportTicketController.updateTicketStatus);
