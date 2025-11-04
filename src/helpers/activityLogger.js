@@ -1,4 +1,4 @@
-const ActivityLog= require("../models/ActivityLogs");
+const ActivityLog= require("../models/activityLogs");
 
 exports.logActivity=async({userId,name,role,action,entityType,entityId,details})=>{
     try{
