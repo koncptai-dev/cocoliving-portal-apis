@@ -5,9 +5,9 @@ const User = require('../models/user');
 const Booking = require('../models/bookRoom');
 const Property = require('../models/property');
 const { Op } = require('sequelize');
+const {generateSupportTicketCode} = require('../helpers/SupportTicketCode');
 
 //create tickets
-
 exports.createTicket = async (req, res) => {
     try {
         const userId = req.user.id;
@@ -51,7 +51,10 @@ exports.createTicket = async (req, res) => {
             return res.status(400).json({ message: "You can upload a maximum of 3 videos." });
         }
 
+        const supportCode = await generateSupportTicketCode(room.roomNumber);
+
         const ticket = await SupportTicket.create({
+            supportCode,
             roomId: room.id,
             roomNumber: room.roomNumber,
             date,
@@ -212,3 +215,4 @@ exports.getRooms = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
+    
