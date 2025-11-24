@@ -20,6 +20,7 @@ exports.registerAdmin = async (req, res) => {
                 email,
                 password: hashedPassword, 
                 role: 1,
+                status:1,
                 fullName: "super admin",
                 userType: "super-admin"
             });

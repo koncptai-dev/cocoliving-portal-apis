@@ -83,9 +83,9 @@ exports.login = async (req, res) => {
             return res.status(404).json({ message: 'Invalid Email or Password' });
         }
 
-        // Display message if user account deleted
-        if (account.role === 2 && account.status === 0) {
-            return res.status(400).json({ message: 'User Account does not exist or has been deleted' });
+        // Display message if user account deleted/deactivated
+       if (account.status === 0) {
+            return res.status(403).json({ message: "Your account is deactivated. Please contact admin." });
         }
 
         // Check password match
@@ -140,7 +140,7 @@ exports.login = async (req, res) => {
             permissions: userPermissions,
             pages: userPages,
             properties: assignProperties
-        });
+        });        
 
     } catch (err) {
         res.status(500).json({ message: 'Login error', error: err.message });

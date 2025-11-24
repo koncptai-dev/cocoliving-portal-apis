@@ -59,13 +59,13 @@ exports.validateRooms = [
   check("roomType").notEmpty().withMessage("Room type is required").isString().withMessage("Room type must be text").matches(/^[A-Za-z0-9\s]+$/).withMessage("Room type must contain only letters, numbers, and spaces"),
   check("capacity").isInt({ min: 1 }).withMessage("Capacity must be a positive integer").notEmpty().withMessage("Capacity is required"),
   check("floorNumber").isInt({ min: 0 }).withMessage("Floor number must be a valid number").notEmpty().withMessage("Floor number is required"),
-  check("images").optional({ checkFalsy: true }).isArray().withMessage("Images must be an array")
-    .custom((images) => {
-      if (images.length > 20) {
-        throw new Error("You can upload a maximum of 20 images only");
-      }
-      return true;
-    }),
+  // check("images").optional({ checkFalsy: true }).isArray().withMessage("Images must be an array")
+  //   .custom((images) => {
+  //     if (images.length > 20) {
+  //       throw new Error("You can upload a maximum of 20 images only");
+  //     }
+  //     return true;
+  //   }),
   check("monthlyRent").isFloat({ min: 0 }).withMessage("Monthly rent must be a positive number").notEmpty().withMessage("Monthly rent is required"),
   check("depositAmount").isFloat({ min: 0 }).withMessage("Deposit amount must be a positive number").notEmpty().withMessage("Deposit amount is required"),
   check("preferredUserType").optional().isString().withMessage("Preferred user type must be text"),
@@ -78,13 +78,13 @@ exports.editRoomsValidate = [
   check("roomNumber").optional().isInt({ min: 1 }).withMessage("Room number must be a positive integer"),
   check("floorNumber").optional().isInt({ min: 0 }).withMessage("Floor number must be a valid non-negative integer"),
   check("roomType").optional().isString().withMessage("Room type must be text").matches(/^[A-Za-z0-9\s]+$/).withMessage("Room type must contain only letters, numbers, and spaces"),
-  check("images").optional({ checkFalsy: true }).isArray().withMessage("Images must be an array")
-    .custom((images) => {
-      if (images.length > 20) {
-        throw new Error("You can upload a maximum of 20 images only");
-      }
-      return true;
-    }),
+  // check("images").optional({ checkFalsy: true }).isArray().withMessage("Images must be an array")
+  //   .custom((images) => {
+  //     if (images.length > 20) {
+  //       throw new Error("You can upload a maximum of 20 images only");
+  //     }
+  //     return true;
+  //   }),
   check("monthlyRent").optional().isFloat({ min: 1 }).withMessage("Monthly rent must be a valid amount"),
   check("depositAmount").optional().isFloat({ min: 0 }).withMessage("Deposit amount must be a valid amount"),
   check("description").optional().isLength({ max: 500 }).withMessage("Description must be under 500 characters"),
@@ -102,19 +102,7 @@ exports.addUserValidate = [
   check('email').isEmail().withMessage('Invalid Email').normalizeEmail(),
   check('fullName').trim().isLength({ min: 2 }).withMessage("Full name must be at least 2 characters").notEmpty().withMessage('Full name is required').matches(/^[A-Za-z\s]+$/).withMessage('Full name must contain only letters and spaces'),
   check('phone').optional().matches(/^\d{10}$/).withMessage('Phone must be a valid 10-digit number'),
-  check("dateOfBirth").isDate().withMessage("Invalid date of birth").notEmpty().withMessage("Date of birth is required")
-    .custom((value) => {
-      const dob = new Date(value);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      if (dob > today) {
-        throw new Error("Date of birth cannot be in the future");
-      }
-      return true;
-    }),
-
-]
+ ]
 
 exports.validateAnnouncement = [
   check("title").notEmpty().withMessage("Title is required").isLength({ min: 3, max: 100 }).withMessage("Title must be between 3 and 100 characters")

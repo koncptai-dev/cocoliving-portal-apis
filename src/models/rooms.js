@@ -44,18 +44,18 @@
         preferredUserType: { 
             type: DataTypes.STRING 
         },
-        amenities: {
-            type: DataTypes.ARRAY(DataTypes.STRING),
-            allowNull: true,
-        }, // Comma-separated
+        // amenities: {
+        //     type: DataTypes.ARRAY(DataTypes.STRING),
+        //     allowNull: true,
+        // }, // Comma-separated
         description: {
             type: DataTypes.TEXT,
             allowNull: true
         },
-        images:{
-            type: DataTypes.ARRAY(DataTypes.STRING),
-            allowNull: true
-        },
+        // images:{
+        //     type: DataTypes.ARRAY(DataTypes.STRING),
+        //     allowNull: true
+        // },
         status: { 
             type: DataTypes.STRING, 
             allowNull: false, 

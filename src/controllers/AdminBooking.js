@@ -5,6 +5,7 @@ const Property=require('../models/property');
 const User=require('../models/user');
 const { Op } = require('sequelize');
 const moment = require('moment');
+const PropertyRateCard = require("../models/propertyRateCard");
 
 
 //get all booking for admin
@@ -13,7 +14,13 @@ exports.getAllBookings=async(req,res)=>{
     const booking=await Booking.findAll({
       include:[{
         model:User,as:'user',attributes:["id","fullName","email","phone","gender"]
-      },{model:Rooms,as: "room",attributes:["id","roomNumber"], include: [{ model: Property, as: 'property' }]}]
+      },{model:Rooms,as: "room",attributes:["id","roomNumber"], include: [{ model: Property, as: 'property' }]},
+    {
+      model: PropertyRateCard,
+      as: "rateCard",     
+      include: [{ model: Property, as: "property" }] 
+    }
+    ]
     })
 
     res.status(200).json({ booking });
