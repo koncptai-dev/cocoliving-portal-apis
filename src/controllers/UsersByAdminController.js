@@ -3,13 +3,14 @@ const User = require('../models/user');
 const UserPermission = require('../models/userPermissoin');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const { mailsender } = require('../utils/emailService');
 const { Op } = require('sequelize');
 
 exports.AddUser = async (req, res) => {
     try {
-        const { email, fullName, phone, userType, dateOfBirth, gender } = req.body;
+        const { email, fullName, phone, userType, } = req.body;
 
-        if (!email || !fullName || !phone || !dateOfBirth) {
+        if (!email || !fullName || !phone) {
             return res.status(400).json({ message: "Required fields are missing" });
         }
 
@@ -18,26 +19,44 @@ exports.AddUser = async (req, res) => {
             return res.status(400).json({ message: "Email already exists" });
         }
 
-        //  Generate a random 8-character password
-        const plainPassword = crypto.randomBytes(4).toString("hex"); // e.g. "a3b4c5d6"
-
-        //  Hash the password before storing
-        const hashedPassword = await bcrypt.hash(plainPassword, 10);
+        //  Generate a unique token for registration
+        const registrationToken = crypto.randomBytes(32).toString("hex");
 
         const newUser = await User.create({
             email,
             fullName,
             phone,
             userType,
-            dateOfBirth,
-            gender,
-            password: hashedPassword,
-            // emergencyContactName,
-            // emergencyContactPhone
+            status: 0,
+            registrationToken
         });
 
+        //send registration link to user to entered email
+        const registrationLink = `${process.env.REGISTER_URL}?token=${registrationToken}`;
+
+        // email body
+        const emailBody = `
+            <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+                <h2>Welcome to COCO LIVING, ${fullName}!</h2>
+                <p>Your account has been created by the Super Admin.</p>
+                <p>Please click the button below to complete your registration and set your password:</p>
+                <p style="text-align:center;">
+                <a href="${registrationLink}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+                    Complete Registration
+                </a>
+                </p>
+                <p>If the button doesn’t work, click this link:<br/>
+                <a href="${registrationLink}">${registrationLink}</a>
+                </p>
+                <p>Thank you,<br/>The COCO LIVING Team</p>
+            </div>
+            `;
+
+        //send the email
+        await mailsender(email, "Complete Your Registration - COCO LIVING", emailBody);
+
         res.status(201).json({
-            message: "User added successfully",
+            message: `User added successfully.Registration email sent to ${email}`,
             user: newUser
         });
 
@@ -46,6 +65,38 @@ exports.AddUser = async (req, res) => {
         res.status(500).json({ message: "Server error", error: error.message });
     }
 }
+
+//verify registration Token
+exports.verifyRegistrationToken = async (req, res) => {
+    try {
+        const { token } = req.query;
+
+        if (!token) {
+            return res.status(400).json({ message: "Registration token is required" });
+        }
+
+        const user = await User.findOne({ where: { registrationToken: token, status: 0 } });
+
+        if (!user) {
+            return res.status(400).json({ message: "Invalid or expired registration token" });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Token verified",
+            user: {
+                id: user.id,
+                email: user.email,
+                fullName: user.fullName,
+                phone: user.phone,
+                userType: user.userType
+            }
+        });
+
+    } catch (err) {
+        res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
 
 exports.getAllUser = async (req, res) => {
     try {
@@ -69,27 +120,122 @@ exports.getAllUser = async (req, res) => {
 
 
 //create admin user
+
 exports.createAdminUser = async (req, res) => {
+    const t = await sequelize.transaction(); //  Start transaction
     try {
         const { email, fullName, phone, password, roleName, pages, permissions, properties } = req.body;
 
+        // Check existing email
+        const existing = await User.findOne({ where: { email }, transaction: t });
+        if (existing) {
+            await t.rollback();
+            return res.status(400).json({ message: "Email already exists" });
+        }
+
+        // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
 
+        // Create user
         const newAdminUser = await User.create({
-            email, fullName, phone, password: hashedPassword, role: 3, roleName, userType: "admin",
-        })
-        const userpermision = await UserPermission.create({
-            userId: newAdminUser.id,   // link to created user
-            pages: pages,
-            permissions: permissions,
-            properties: properties
+            email,
+            fullName,
+            phone,
+            password: hashedPassword,
+            role: 3,
+            status: 1,
+            roleName,
+            userType: "admin",
+        }, { transaction: t });
+
+        // Create permission
+        const userPermission = await UserPermission.create({
+            userId: newAdminUser.id,
+            pages,
+            permissions,
+            properties
+        }, { transaction: t });
+
+        // Commit if all OK
+        await t.commit();
+
+        res.status(201).json({
+            message: "Admin created successfully",
+            admin: newAdminUser,
+            permission: userPermission
         });
-        res.status(201).json({ message: "Admin created successfully", admin: newAdminUser, permision: userpermision });
+
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: "Error creating admin", error });
+        // Rollback on any error
+        await t.rollback();
+        res.status(500).json({ message: "Error creating admin", error: error.message });
     }
-}
+};
+
+exports.editAdminUser = async (req, res) => {
+    const t = await sequelize.transaction();
+    try {
+        const { id } = req.params;
+        const { email, fullName, phone, roleName, pages, permissions, properties } = req.body;
+
+        //Check if user exists
+        const adminUser = await User.findOne({
+            where: { id, [Op.or]: [{ userType: "admin" }, { role: 3 }] },
+            transaction: t
+        });
+
+        if (!adminUser) {
+            await t.rollback();
+            return res.status(404).json({ message: "Admin not found" });
+        }
+
+        // Prepare update data
+        const updatedData = {
+            email,
+            fullName,
+            phone,
+            roleName
+        };
+
+        //  Update user
+        await adminUser.update(updatedData, { transaction: t });
+
+        // Update or create permission
+        const existingPermission = await UserPermission.findOne({
+            where: { userId: adminUser.id },
+            transaction: t
+        });
+
+        if (existingPermission) {
+            await existingPermission.update({
+                pages,
+                permissions,
+                properties
+            }, { transaction: t });
+        } else {
+            await UserPermission.create({
+                userId: adminUser.id,
+                pages,
+                permissions,
+                properties
+            }, { transaction: t });
+        }
+
+        // Commit everything
+        await t.commit();
+
+        res.status(200).json({
+            message: "Admin updated successfully",
+            admin: adminUser
+        });
+
+    } catch (error) {
+        console.error("Error updating admin:", error);
+        await t.rollback();
+        res.status(500).json({ message: "Error updating admin", error: error.message });
+    }
+};
 
 exports.getAllAdminUsers = async (req, res) => {
     try {
@@ -125,32 +271,66 @@ exports.getAllAdminUsers = async (req, res) => {
 }
 
 exports.getAdminById = async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
 
-    // Fetch admin by primary key
-    const admin = await User.findOne({
-      where: {
-        id,
-        [Op.or]: [
-          { userType: "admin" },
-          { role: 3 }
-        ]
-      },
-      include: {
-        model: UserPermission,
-        as: 'permission'
-      }
-    });
+        // Fetch admin by primary key
+        const admin = await User.findOne({
+            where: {
+                id,
+                [Op.or]: [
+                    { userType: "admin" },
+                    { role: 3 }
+                ]
+            },
+            include: {
+                model: UserPermission,
+                as: 'permission'
+            }
+        });
 
-    if (!admin) {
-      return res.status(404).json({ message: "Admin not found" });
+        if (!admin) {
+            return res.status(404).json({ message: "Admin not found" });
+        }
+
+        res.json({ admin });
+    } catch (error) {
+        console.error("Error fetching admin by ID:", error);
+        res.status(500).json({ message: "Server error", error: error.message });
     }
-
-    res.json({ admin });
-  } catch (error) {
-    console.error("Error fetching admin by ID:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
-  }
 };
+
+//toggle for active/inactive admin user
+exports.toggleAdminStatus = async (req, res) => {
+    const t = await sequelize.transaction();
+
+    try {
+        const { id } = req.params;
+
+        //find admin user
+        const adminUser = await User.findOne({
+            where: {
+                id, [Op.or]: [{ userType: "admin" }, { role: 3 }]
+            }, transaction: t
+        })
+
+        if (!adminUser) {
+            await t.rollback();
+            return res.status(404).json({ message: "Admin not found" });
+        }
+
+        const newStatus = adminUser.status === 1 ? 0 : 1;
+
+        await adminUser.update({ status: newStatus }, { transaction: t });
+        await t.commit();
+        res.status(200).json({
+            message: `Admin user has been ${newStatus === 1 ? 'Activated' : 'Deactivated'} successfully.`,
+            status: newStatus
+        });
+    } catch (error) { 
+        console.error("Error toggling admin:", error);
+        await t.rollback();
+        res.status(500).json({ message: "Error toggling admin", error: error.message });
+    }
+}
 

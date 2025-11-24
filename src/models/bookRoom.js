@@ -1,7 +1,8 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
-const Rooms = require("./rooms");
 const User = require("./user");
+const PropertyRateCard = require("./propertyRateCard");
+const Room = require("./rooms");
 
 const Booking = sequelize.define(
   "Booking",
@@ -15,19 +16,24 @@ const Booking = sequelize.define(
     userId: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      references: {
-        model: User,
-        key: "id",
-      },
+      references: { model: User, key: "id" },
+    },
+
+    rateCardId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: { model: PropertyRateCard, key: "id" }, 
+    },
+
+    roomType: {
+      type: DataTypes.STRING,
+      allowNull: false,
     },
 
     roomId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
-      references: {
-        model: Rooms,
-        key: "id",
-      },
+      allowNull: true,     //  Admin  assign later
+      references: { model: Room, key: "id" },
     },
 
     checkInDate: {
@@ -40,37 +46,26 @@ const Booking = sequelize.define(
       allowNull: false,
     },
 
-     duration: {
+    duration: {
       type: DataTypes.INTEGER,
       allowNull: false,
     },
-    
+
     monthlyRent: {
       type: DataTypes.FLOAT,
       allowNull: false,
     },
 
-    depositAmount: {
-      type: DataTypes.FLOAT,
-      allowNull: false,
-    },
-
-    notes: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-    },
-
     status: {
       type: DataTypes.STRING,
       allowNull: false,
-      defaultValue: "pending", 
+      defaultValue: "pending",  
     },
   },
+
   {
     tableName: "bookings",
   }
 );
-
-
 
 module.exports = Booking;

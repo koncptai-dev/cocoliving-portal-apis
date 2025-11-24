@@ -13,8 +13,8 @@ const storage = multer.diskStorage({
     destination: function (req, file, cb) {
         let folder = 'others';
         if (file.fieldname === 'profileImage') folder = 'profilePicture';
-        else if (file.fieldname === 'roomImages') folder = 'roomImages';
-        else if (file.fieldname === 'propertyImages') folder = 'propertyImages';
+        else if (file.fieldname.startsWith('propertyImages')) folder = 'propertyImages';
+    else if (file.fieldname.startsWith('roomImages_')) folder = 'roomImages';
         else if (file.fieldname === 'ticketImage') folder = 'ticketImages';
         else if (file.fieldname === 'ticketVideo') folder = 'ticketVideos';
 
@@ -31,7 +31,7 @@ const storage = multer.diskStorage({
 
 //file filter allow only images
 const fileFilter = (req, file, cb) => {
-    if (['profileImage', 'roomImages', 'propertyImages', 'ticketImage'].includes(file.fieldname)) {
+    if (['profileImage', 'roomImages', 'propertyImages', 'ticketImage'].includes(file.fieldname)|| file.fieldname.startsWith('roomImages_')) {
         const allowedTypes = /jpeg|jpg|png/;
         const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
         const mimetype = allowedTypes.test(file.mimetype);
