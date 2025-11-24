@@ -53,6 +53,10 @@ Property.hasMany(PropertyRateCard, { foreignKey: 'propertyId', as: 'rateCard' })
 Property.hasMany(FoodMenu, { foreignKey: 'propertyId', as: 'foodMenus', });
 FoodMenu.belongsTo(Property, { foreignKey: 'propertyId', as:'property' });
 
+
+PropertyRateCard.hasMany(Booking, { foreignKey: "rateCardId", as: "bookings" });
+Booking.belongsTo(PropertyRateCard, { foreignKey: "rateCardId", as: "rateCard" });
+
 module.exports={
     sequelize,
     SupportTicket,

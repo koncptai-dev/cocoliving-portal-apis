@@ -11,26 +11,16 @@ const FoodMenu = sequelize.define('FoodMenu', {
         type: DataTypes.INTEGER,
         allowNull: false,
         references: {
-            model: 'Properties', // must match your Properties table name
+            model: 'Properties', 
             key: 'id'
         },
         onDelete: 'CASCADE'
     },
-    date: {
-        type: DataTypes.DATEONLY,
-        allowNull: false
-    },
-    breakfast_items: {
+    
+    menu: {
         type: DataTypes.JSON,
-        allowNull: true
-    },
-    lunch_items:{
-        type: DataTypes.JSON,
-        allowNull: true
-    },
-    dinner_items:{
-        type: DataTypes.JSON,
-        allowNull: true
+        allowNull: false,
+        defaultValue: {}
     }
     
 }, {

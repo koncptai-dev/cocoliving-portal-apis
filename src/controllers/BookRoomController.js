@@ -2,6 +2,7 @@ const sequelize = require('../config/database');
 const Booking = require('../models/bookRoom');
 const Rooms = require('../models/rooms');
 const User = require('../models/user');
+const PropertyRateCard = require("../models/propertyRateCard");
 const { logActivity } = require("../helpers/activityLogger");
 const { Op } = require('sequelize');
 const moment = require('moment');
@@ -13,22 +14,22 @@ const e = require('cors');
 exports.createBooking = async (req, res) => {
   try {
 
-    const { roomId, checkInDate, duration } = req.body;
+    const { rateCardId, checkInDate, duration } = req.body;
     const userId = req.user.id;
 
-    let checkInDateFormatted = moment(checkInDate, ["DD-MM-YYYY", "YYYY-MM-DD"]).format("YYYY-MM-DD");
-
+    //fetch  ratecard
+    const rateCard = await PropertyRateCard.findByPk(rateCardId);
+    if (!rateCard) {
+      return res.status(404).json({ message: "Rate card not found" });
+    }
+    
     if (!duration || duration <= 0) {
       return res.status(400).json({ message: "Please provide a valid duration in months" });
     }
-
+    
+    let checkInDateFormatted = moment(checkInDate, ["DD-MM-YYYY", "YYYY-MM-DD"]).format("YYYY-MM-DD");
     const checkOutDateFormatted = moment(checkInDateFormatted).add(duration, "months").format("YYYY-MM-DD");
 
-    //check room exist
-    const room = await Rooms.findByPk(roomId);
-    if (!room) {
-      return res.status(404).json({ message: "Room not found" });
-    }
 
     const overlappingBooking = await Booking.findOne({
       where: {
@@ -51,37 +52,18 @@ exports.createBooking = async (req, res) => {
       });
     }
 
-    //check active bookings for this room
-    const activeBookings = await Booking.count({
-      where: { roomId, status: { [Op.in]: ["pending", "upcoming", "approved", "active"] } }
-    })
-
-    //if already full
-    if (activeBookings >= room.capacity) {
-      return res.status(400).json({ message: "Room is fully booked" });
-    }
-
-    const totalRent = room.monthlyRent * duration;
-    const totalPrice = totalRent + room.depositAmount;
-
     const booking = await Booking.create({
       userId,
-      roomId,
+      rateCardId,
+      roomType: rateCard.roomType,
       checkInDate: checkInDateFormatted,
       checkOutDate: checkOutDateFormatted,
       duration,
-      monthlyRent: room.monthlyRent,
-      depositAmount: room.depositAmount,
+      monthlyRent: rateCard.rent,
       status: "pending",
     });
 
-    //  recalc occupancy and update room status
-    const currentBookings = await Booking.count({
-      where: { roomId, status: { [Op.in]: ["pending", "approved", "active"] } }
-    });
-    room.status = currentBookings >= room.capacity ? "booked" : "available";
-    await room.save();
-
+    
     //for log activity getting user details
     const user = await User.findByPk(req.user.id, { attributes: ['fullName'] });
     if (!user) { return res.status(404).json({ message: "User not found" }); }
@@ -94,7 +76,9 @@ exports.createBooking = async (req, res) => {
       action: "New Booking",
       entityType: "Booking",
       entityId: booking.id,
-      details: { roomNumber: room.roomNumber, duration },
+      details: { property: rateCard.propertyId,
+        roomType: rateCard.roomType,
+        duration },
     });
 
     res.status(201).json({ message: "Booking successful", booking });
@@ -113,19 +97,29 @@ exports.getUserBookings = async (req, res) => {
 
     const { rows: bookings, count } = await Booking.findAndCountAll({
       where: { userId },
-      include: [{ model: Rooms, as: "room", include: [{ model: Property, as: "property" }] }],
+      include: [{ model: Rooms, as: "room", include: [{ model: Property, as: "property" }] },
+    {
+      model: PropertyRateCard,
+      as: "rateCard",     
+      include: [{ model: Property, as: "property" }] 
+    }],
       order: [['createdAt', 'DESC']],
       limit,
       offset
     })
 
     const today = moment().startOf('day');
+     const hasActiveBooking = bookings.some(b =>
+      ["active", "approved"].includes(b.status) &&
+      moment(b.checkInDate).isSameOrBefore(today) &&
+      moment(b.checkOutDate).isSameOrAfter(today)
+    );
     const formattedBookings = bookings.map(b => {
       const checkIn = moment(b.checkInDate);
       let displayStatus = b.status;
 
       // If pending + check-in is in future → mark as upcoming for frontend
-      if (b.status === 'pending' && checkIn.isAfter(today)) {
+      if (b.status === 'pending' && checkIn.isAfter(today) && hasActiveBooking) {
         displayStatus = 'upcoming';
       }
 

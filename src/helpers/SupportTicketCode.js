@@ -1,26 +1,25 @@
 const SupportTicket = require('../models/supportTicket');
 
-exports.generateSupportTicketCode = async (roomNumber) => {
+exports.generateSupportTicketCode = async () => {
   try {
-    // Get all tickets for this room
+    // Fetch all existing support codes 
     const tickets = await SupportTicket.findAll({
-      where: { roomNumber },
       attributes: ['supportCode']
     });
 
-    // Find highest existing sequence number
+    // Find the highest sequence number unique
     let maxSeq = 0;
     tickets.forEach(ticket => {
-      const match = ticket.supportCode?.match(/SUPP-RM\d+-(\d+)/);
+      const match = ticket.supportCode?.match(/SUPP-(\d+)/);
       if (match && match[1]) {
         const num = parseInt(match[1]);
         if (num > maxSeq) maxSeq = num;
       }
     });
 
-    // Increment sequence
+    // Increment sequence safely
     const nextSeq = (maxSeq + 1).toString().padStart(3, '0');
-    const newCode = `SUPP-RM${roomNumber}-${nextSeq}`;
+    const newCode = `SUPP-${nextSeq}`;
 
     return newCode;
   } catch (error) {
