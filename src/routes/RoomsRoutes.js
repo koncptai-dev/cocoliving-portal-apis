@@ -9,5 +9,10 @@ router.post('/add',upload.array('roomImages', 20),validateRooms,validate, RoomCo
 router.put('/edit/:id',upload.array('roomImages', 20),editRoomsValidate,validate, RoomController.EditRooms);
 router.delete('/delete/:id', RoomController.DeleteRooms);
 router.get('/getall', RoomController.getAllRooms);
+router.get('/getAll/:propertyId', RoomController.getRoomsByProperty);
+router.get("/available/:propertyId/:roomType", RoomController.getAvailableRooms);
+router.post("/assign/:roomId", RoomController.assignInventoryManual);
+router.post("/auto-assign/:roomId", RoomController.assignInventoryAuto);
+router.get("/inventory/:propertyId", RoomController.getInventoryForProperty);
 
 module.exports=router

@@ -2,6 +2,9 @@ const sequelize = require('../config/database');
 const Rooms = require('../models/rooms');
 const Booking = require('../models/bookRoom');
 const Property = require('../models/property');
+const { Inventory } = require("../models");
+const { generateInventoryCode } = require("../helpers/inventoryCode");
+
 const { Op } = require('sequelize');
 const fs = require('fs');
 const path = require('path');
@@ -256,3 +259,189 @@ exports.getAllRooms = async (req, res) => {
     }
 
 }
+exports.getRoomsByProperty = async (req, res) => {
+  try {
+    const { propertyId } = req.params;
+
+    const rooms = await Rooms.findAll({
+      where: { propertyId },
+      attributes: ["id", "roomNumber", "roomType", "status"],
+    });
+
+    if (!rooms || rooms.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "No rooms found for this property" });
+    }
+
+    res.status(200).json(rooms);
+  } catch (error) {
+    console.error("Error fetching rooms by property:", error);
+    res.status(500).json({ message: "Server error fetching rooms" });
+  }
+};
+exports.getAvailableRooms = async (req, res) => {
+  try {
+    const { propertyId, roomType } = req.params;
+
+    const rooms = await Rooms.findAll({
+      where: { propertyId, roomType },
+      include: [
+        {
+          model: Booking,
+          as: "bookings",
+          where: {
+            status: { [Op.in]: ["pending", "approved", "active"] }
+          },
+          required: false
+        }
+      ]
+    });
+
+    const availableRooms = rooms.filter(
+      room => (room.bookings?.length || 0) < room.capacity
+    );
+
+    res.json({ rooms: availableRooms });
+  } catch (err) {
+    console.error("Error fetching available rooms:", err);
+    res.status(500).json({ message: "Failed to load available rooms" });
+  }
+};
+
+exports.getInventoryForProperty = async (req, res) => {
+  try {
+    const { propertyId } = req.params;
+
+    const items = await Inventory.findAll({
+      where: { propertyId },
+      order: [["itemName", "ASC"]],
+    });
+
+    return res.json({ items });
+  } catch (err) {
+    console.error("getInventoryForProperty:", err);
+    return res.status(500).json({ message: "Failed to fetch inventory" });
+  }
+};
+exports.assignInventoryManual = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const { roomId } = req.params;
+    const { itemIds } = req.body;
+
+    if (!Array.isArray(itemIds) || itemIds.length === 0) {
+      await t.rollback();
+      return res.status(400).json({ message: "No itemIds provided" });
+    }
+
+    const room = await Rooms.findByPk(roomId, { transaction: t });
+    if (!room) {
+      await t.rollback();
+      return res.status(404).json({ message: "Room not found" });
+    }
+
+    const items = await Inventory.findAll({
+      where: { id: itemIds },
+      transaction: t,
+    });
+
+    // Validate property match
+    for (const item of items) {
+      if (item.propertyId !== room.propertyId) {
+        await t.rollback();
+        return res.status(400).json({
+          message: `Item ${item.id} belongs to a different property`,
+        });
+      }
+    }
+
+    await Inventory.update(
+      { roomId },
+      { where: { id: { [Op.in]: itemIds } } }
+    );
+
+
+    await t.commit();
+    return res.json({
+      message: "Inventory assigned manually",
+      assigned: itemIds.length,
+    });
+  } catch (err) {
+    await t.rollback();
+    console.error("assignInventoryManual:", err);
+    return res.status(500).json({ message: "Failed manual assignment" });
+  }
+};
+// AUTO ASSIGN INVENTORY TO ROOM (BATCH SAFE)
+exports.assignInventoryAuto = async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const { items } = req.body; 
+    // items = [{ itemName: "Bed", quantity: 3 }, ...]
+
+    if (!roomId) {
+      return res.status(400).json({ message: "roomId is required" });
+    }
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: "No inventory items provided" });
+    }
+
+    // Find room and property
+    const room = await Rooms.findByPk(roomId);
+    if (!room) return res.status(404).json({ message: "Room not found" });
+
+    const propertyId = room.propertyId;
+
+    let lastInventory = await Inventory.findOne({
+      where: { propertyId },
+      order: [["createdAt", "DESC"]],
+      attributes: ["inventoryCode"],
+    });
+
+    // Extract last sequence
+    let lastSeq = 0;
+    if (lastInventory?.inventoryCode) {
+      const match = lastInventory.inventoryCode.match(/INV-PR\d+-(\d+)/);
+      if (match) lastSeq = parseInt(match[1]);
+    }
+
+    const createdItems = [];
+
+    // Process each item type (e.g., Bed × 3)
+    for (const entry of items) {
+      const { itemName, quantity } = entry;
+      if (!itemName || !quantity)
+        continue;
+
+      for (let i = 1; i <= quantity; i++) {
+        const nextSeq = String(lastSeq + 1).padStart(3, "0");
+        lastSeq++; // increment local counter
+
+        const inventoryCode = `INV-PR${propertyId}-${nextSeq}`;
+
+        const newItem = await Inventory.create({
+          inventoryCode,
+          itemName,
+          category: itemName,       // using item name as category (as per your system)
+          propertyId,
+          roomId,
+          isCommonAsset: false,
+        });
+
+        createdItems.push(newItem);
+      }
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: "Inventory auto-assigned successfully",
+      items: createdItems,
+    });
+
+  } catch (error) {
+    console.error("assignInventoryAuto Error:", error);
+    return res.status(500).json({ message: "Internal server error", error });
+  }
+};

@@ -7,6 +7,10 @@ const authenticateToken =  require('../middleware/auth');
 
 // create Route
 router.post("/login", validateLogin, validate, CommonController.login);
+// user otp login   
+router.post('/login/request-otp', CommonController.sendLoginOtp);
+router.post('/login/verify-otp', CommonController.verifyLoginOtp);
+
 router.post('/forgot-password', CommonController.sendResetCode);
 router.post('/reset-password', CommonController.resetPassword);
 router.post('/change-password',authenticateToken,CommonController.changePassword)
