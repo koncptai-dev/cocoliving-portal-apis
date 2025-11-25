@@ -1,85 +1,81 @@
-const {DataTypes}=require('sequelize');
+const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
-const User=sequelize.define('User',{
-    id:{
-        type:DataTypes.INTEGER,
-        primaryKey:true,
-        autoIncrement:true
+const User = sequelize.define('User', {
+    id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
     },
-    fullName:{
-        type:DataTypes.STRING,
-        allowNull:false
+    fullName: {
+        type: DataTypes.STRING,
+        allowNull: false
     },
     registrationToken: {
-    type: DataTypes.STRING,
-    allowNull: true
-},
-    email:{
-        type:DataTypes.STRING,
-        allowNull:false,
-        unique:true,
-        validate:{
-            isEmail:true
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    email: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        unique: true,
+        validate: {
+            isEmail: true
         }
     },
-    userType:{
-        type:DataTypes.STRING,
-        allowNull:false
+    userType: {
+        type: DataTypes.STRING,
+        allowNull: false
     },
-    password:{
-        type:DataTypes.STRING,
-        allowNull:true
-    },
-    resetCode:{
-        type:DataTypes.INTEGER,
-        allowNull:true
+    resetCode: {
+        type: DataTypes.INTEGER,
+        allowNull: true
     },//for forgot password
-    phone:{
-        type:DataTypes.STRING,
-        allowNull:true, 
-        defaultValue:null 
+    phone: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        defaultValue: null
     },
-    gender:{
-        type:DataTypes.STRING,
-        allowNull:true,
-        defaultValue:null
+    gender: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        defaultValue: null
     },
-    address:{
-        type:DataTypes.STRING,
-        allowNull:true
+    address: {
+        type: DataTypes.STRING,
+        allowNull: true
     },
-    
+
     profileImage: {
-    type: DataTypes.STRING, // store file path or filename
-    allowNull: true
+        type: DataTypes.STRING, // store file path or filename
+        allowNull: true
     },
-    status:{
-        type:DataTypes.INTEGER,
-        allowNull:false,
+    status: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
     },
-    role:{
-        type:DataTypes.INTEGER,
-        allowNull:false,
-        defaultValue:2
+    role: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 2
     },
-     roleName: {  
+    roleName: {
         type: DataTypes.STRING,
         allowNull: true,
     },
-    dateOfBirth:{
-        type:DataTypes.DATEONLY,
-        allowNull:true
+    dateOfBirth: {
+        type: DataTypes.DATEONLY,
+        allowNull: true
     },
 
     parentName: { type: DataTypes.STRING, allowNull: true },
-    parentMobile: { 
+    parentMobile: {
         type: DataTypes.STRING,
         allowNull: true,
         validate: { is: /^\d{10}$/ }
     },
     // kycDocuments: { type: DataTypes.JSON, allowNull: true }, // store multiple files
-    foodPreference: { type: DataTypes.ENUM('Jain','Non-Jain'), allowNull: true },
+    foodPreference: { type: DataTypes.ENUM('Jain', 'Non-Jain'), allowNull: true },
     allergies: { type: DataTypes.TEXT, allowNull: true },
     collegeName: { type: DataTypes.STRING, allowNull: true },
     course: { type: DataTypes.STRING, allowNull: true },
@@ -87,9 +83,9 @@ const User=sequelize.define('User',{
 
     companyName: { type: DataTypes.STRING, allowNull: true },
     position: { type: DataTypes.STRING, allowNull: true },
-    
-},{
-    tableName:'users'
+
+}, {
+    tableName: 'users'
 })
 
-module.exports=User;
+module.exports = User;

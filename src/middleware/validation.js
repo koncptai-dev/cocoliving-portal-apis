@@ -4,7 +4,6 @@ exports.validateSignup = [
   check('fullName').trim().isLength({ min: 2 }).withMessage("Full name must be at least 2 characters").notEmpty().withMessage('Full name is required').matches(/^[A-Za-z\s]+$/).withMessage('Full name must contain only letters and spaces'),
   check('email').isEmail().withMessage('Invalid Email').normalizeEmail(),
   check('userType').notEmpty().withMessage('User type is required'),
-  check('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters long'),
   check('dateOfBirth').notEmpty().withMessage('Date of Birth is required')
     .isDate({ format: 'YYYY-MM-DD' }).withMessage('Invalid Date of Birth')
     .custom((value) => {

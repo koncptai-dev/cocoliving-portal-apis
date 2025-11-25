@@ -13,10 +13,10 @@ const { mailsender } = require('../utils/emailService');
 
 exports.sendOTP = async (req, res) => {
     try {
-        const { fullName,email } = req.body;
+        const { email } = req.body;
 
-        if (!fullName || !email) {
-            return res.status(400).json({ success: false, message: "Full Name & Email are required" });
+        if ( !email) {
+            return res.status(400).json({ success: false, message: "Email is required" });
         }
         if (!/^\S+@\S+\.\S+$/.test(email)) {
             return res.status(400).json({ success: false, message: "Invalid email format" });
@@ -58,18 +58,10 @@ exports.sendOTP = async (req, res) => {
 
 exports.registerUser = async (req, res) => {
     try {
-        const {  fullName,email,  phone, userType,  gender, dateOfBirth, password, confirmPassword, otp, registrationToken} = req.body;
+        const { fullName, email, phone, userType, gender, dateOfBirth, otp, registrationToken } = req.body;
 
         if (!email || !otp) {
             return res.status(400).json({ message: "Email & OTP are required" });
-        }
-
-        if (password.length < 6) {
-            return res.status(400).json({ message: "Password must be at least 6 characters" });
-        }
-
-        if (password !== confirmPassword) {
-            return res.status(400).json({ message: "Password & Confirm Password do not match" });
         }
 
         const otpRecord = await OTP.findOne({
@@ -100,10 +92,10 @@ exports.registerUser = async (req, res) => {
             return res.status(400).json({ message: "Incorrect OTP" });
         }
 
+        // OTP verified,nd remove record
         await OTP.destroy({ where: { email } });
 
-        const hashedPassword = await bcrypt.hash(password, 10);
-
+        // Check if user already exists
         let userExist = await User.findOne({ where: { email } });
 
         if (userExist) {
@@ -111,11 +103,11 @@ exports.registerUser = async (req, res) => {
                 return res.status(400).json({ message: "Invalid or missing registration token" });
             }
 
+            // Update existing user details
             userExist.fullName = fullName;
             userExist.phone = phone;
             userExist.gender = gender;
             userExist.dateOfBirth = dateOfBirth;
-            userExist.password = hashedPassword;
             userExist.status = 1;
             userExist.registrationToken = null;
             await userExist.save();
@@ -127,7 +119,18 @@ exports.registerUser = async (req, res) => {
             });
         }
 
-        const newUser = await User.create({ fullName, email, phone, userType, gender, dateOfBirth,  password: hashedPassword, role: 2, status: 1,  });
+        // Create new user 
+        const newUser = await User.create({
+            fullName,
+            email,
+            phone,
+            userType,
+            gender,
+            dateOfBirth,
+            role: 2,
+            status: 1
+        });
+
         return res.status(201).json({
             success: true,
             message: "User registered & verified successfully",
@@ -138,7 +141,6 @@ exports.registerUser = async (req, res) => {
         return res.status(500).json({ message: "Server error", error: error.message });
     }
 };
-
 
 exports.editUserProfile = async (req, res) => {
     try {
