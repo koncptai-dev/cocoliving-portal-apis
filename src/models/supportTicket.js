@@ -1,6 +1,8 @@
-const { DataTypes } = require('sequelize');
-const sequelize = require('../config/database');
-const Rooms = require('./rooms');
+const {DataTypes}=require('sequelize');
+const sequelize=require('../config/database');
+const Rooms=require('./rooms');
+const Inventory = require("./inventory");
+const Property = require('./property');
 
 //create ticket model
 const SupportTicket = sequelize.define('SupportTicket', {
@@ -70,6 +72,28 @@ const SupportTicket = sequelize.define('SupportTicket', {
     videos: {
         type: DataTypes.ARRAY(DataTypes.STRING), // To store video paths or URLs
         allowNull: true
+    },
+      inventoryId: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+        model: 'inventories',
+        key: 'id',
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'SET NULL',
+    },
+    inventoryName: {
+        type: DataTypes.STRING,
+        allowNull: true,
+    },
+    propertyId: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+            model: Property, // your properties table
+            key: 'id'
+        }
     }
 },
     {

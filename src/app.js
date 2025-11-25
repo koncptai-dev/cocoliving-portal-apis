@@ -16,6 +16,8 @@ const PropertyRoute=require('./routes/PropertyRoute');
 const AdminBooking=require('./routes/AdminBookingRoutes');
 const UserandBokingDetails = require('./routes/UserandBookingRoutes');
 const PagesRoute = require('./routes/pagesRoute');
+const inventoryRoutes = require("./routes/inventoryRoute");
+const ServiceHistoryRoutes = require("./routes/serviceHistory");
 const FoodMenuRoute = require('./routes/FoodMenuRoute');
 const ActivityRoute=require('./routes/ActivityRoutes');
 const path = require('path');
@@ -42,6 +44,8 @@ app.use('/api/property', PropertyRoute);
 app.use('/api/admin-booking', AdminBooking);
 app.use('/api/user-and-booking', UserandBokingDetails);
 app.use('/api/pages', PagesRoute);
+app.use("/api/inventory", inventoryRoutes);
+app.use("/api/service-history", ServiceHistoryRoutes);
 app.use('/api/food-menu', FoodMenuRoute);
 app.use("/api/activity", ActivityRoute);
 
