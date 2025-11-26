@@ -9,11 +9,14 @@ const validate=require('../middleware/validateResult');
 router.post("/add",authMiddleware, addUserValidate, validate, UserByAdminController.AddUser);
 router.get("/getAllUsers",authMiddleware, UserByAdminController.getAllUser);
 
+// route for verifying registration token**
+router.get("/verify-registration-token", UserByAdminController.verifyRegistrationToken);
 
 //for admin user
 router.post('/create-admin-user', authMiddleware, UserByAdminController.createAdminUser);
 router.get("/getAlladminUsers",authMiddleware, UserByAdminController.getAllAdminUsers);
 router.get("/getAdminById/:id", authMiddleware, UserByAdminController.getAdminById);
-
+router.put("/admin/:id",authMiddleware,UserByAdminController.editAdminUser)
+router.put("/toggle-status/:id", authMiddleware, UserByAdminController.toggleAdminStatus);
 
 module.exports = router;

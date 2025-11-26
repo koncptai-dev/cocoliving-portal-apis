@@ -21,6 +21,14 @@ const PropertyRateCard = sequelize.define('PropertyRateCard', {
     type: DataTypes.STRING,
     allowNull: false,
   },
+  roomAmenities: {
+    type: DataTypes.ARRAY(DataTypes.STRING),
+    allowNull: true,
+  },
+  roomImages: {
+    type: DataTypes.ARRAY(DataTypes.STRING),
+    allowNull: true
+  },
   rent: {
     type: DataTypes.FLOAT,
     allowNull: false,

@@ -27,15 +27,15 @@ exports.createTicket = async (req, res) => {
 
         //check user has booked the room 
         const booking = await Booking.findOne({
-            where: { userId: userId },
+            where: { userId },
             include: [{
                 model: Rooms,
                 as: "room",
-                where: { roomNumber: req.body.roomNumber }
+                where: { roomNumber }
             }]
         });
 
-        if (!booking) {
+        if (!booking || !booking.roomId) {
             return res.status(403).json({ message: "You have not booked this room" });
         }
         // Optional inventory item linking
@@ -208,6 +208,7 @@ exports.getRooms = async (req, res) => {
                 userId: userId,
                 checkInDate: { [Op.lte]: today },
                 checkOutDate: { [Op.gte]: today },
+                roomId: { [Op.ne]: null }
             },
             include: [
                 {

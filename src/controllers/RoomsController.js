@@ -6,13 +6,12 @@ const { Inventory } = require("../models");
 const { generateInventoryCode } = require("../helpers/InventoryCode");
 
 const { Op } = require('sequelize');
-const fs = require('fs');
-const path = require('path');
+
 
 //Add Rooms  for admin
 exports.AddRooms = async (req, res) => {
     try {
-        const { propertyId, roomNumber, roomType, capacity, floorNumber, monthlyRent, depositAmount, preferredUserType, amenities, description, availableForBooking } = req.body;
+        const { propertyId, roomNumber, roomType, capacity, floorNumber, monthlyRent, depositAmount, preferredUserType, description, availableForBooking } = req.body;
 
         //check property exist or not
         const property = await Property.findByPk(propertyId);
@@ -27,23 +26,13 @@ exports.AddRooms = async (req, res) => {
         }
 
         const status = availableForBooking ? "available" : "not-available";
-        const amenitiesArray = Array.isArray(amenities) ? amenities : amenities?.split(",").map(a => a.trim()) || [];
 
-        //handle images
-        const imageUrls = req.files ? req.files.map(file => `/uploads/roomImages/${file.filename}`) : [];
-
-        // Check limit
-        if (imageUrls.length > 20) {
-            return res.status(400).json({ message: "You can upload a maximum of 20 images per room" });
-        }
-
-        //calculate deposite amount 
         const calculatedDeposit = monthlyRent * 2;
 
         const newRooms = await Rooms.create({
-            propertyId, roomNumber, roomType, capacity, floorNumber, images: imageUrls, monthlyRent, depositAmount: calculatedDeposit, preferredUserType,
-            amenities: amenitiesArray, description, status
-        })
+            propertyId, roomNumber, roomType, capacity, floorNumber, monthlyRent, depositAmount: calculatedDeposit, preferredUserType,
+             description, status
+        })        
 
         res.status(201).json({ message: 'Rooms added successfully', room: newRooms })
 
@@ -80,43 +69,6 @@ exports.EditRooms = async (req, res) => {
             updatedData.status = updatedData.availableForBooking ? "available" : "not-available";
         }
 
-        //aminities array handling
-        if (updatedData.amenities !== undefined && updatedData.amenities !== null) {
-            updatedData.amenities = Array.isArray(updatedData.amenities)
-                ? updatedData.amenities
-                : updatedData.amenities.split(',').map(a => a.trim()).filter(a => a);
-        }
-
-        // already stored images
-        let updatedImages = room.images || [];
-
-        // removedImages passed from frontend
-        let removedImages = updatedData.removedImages || [];
-        if (typeof removedImages === "string") removedImages = [removedImages]; // single string -> array
-
-        // Remove selected images from array
-        updatedImages = updatedImages.filter(img => !removedImages.includes(img));
-
-        // Delete files from folder
-        for (const imgUrl of removedImages) {
-            const filePath = path.join(__dirname, "..", imgUrl.replace(/^\//, ""));
-            if (fs.existsSync(filePath)) await fs.promises.unlink(filePath);
-        }
-
-        // Add new uploaded images
-        if (req.files && req.files.length > 0) {
-            const newImageUrls = req.files.map(f => `/uploads/roomImages/${f.filename}`);
-            if (updatedImages.length + newImageUrls.length > 20) {
-                return res.status(400).json({
-                    message: `Cannot upload images. Room already has ${updatedImages.length} images. Maximum allowed is 20.`
-                });
-            }
-            updatedImages = [...updatedImages, ...newImageUrls];
-        }
-
-        // Save final array
-        updatedData.images = updatedImages;
-
         //recalculate deposit if rent changes
         if (updatedData.monthlyRent !== null && updatedData.monthlyRent !== undefined) {
             updatedData.depositAmount = updatedData.monthlyRent * 2;
@@ -125,7 +77,6 @@ exports.EditRooms = async (req, res) => {
         //apply update dynamically
         await room.update({
             ...updatedData,  // keep other updates
-            images: updatedImages  //  images field to update
         });
 
         res.status(200).json({ message: "Room updated successfully", room });
@@ -184,6 +135,7 @@ exports.DeleteRooms = async (req, res) => {
 //get Rooms
 exports.getAllRooms = async (req, res) => {
     try {
+        const role= req.query.role || 'user';
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const offset = (page - 1) * limit;

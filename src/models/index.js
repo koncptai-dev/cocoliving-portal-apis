@@ -64,27 +64,25 @@ PropertyRateCard.hasMany(Booking, {
 //property to food menu
 Property.hasMany(FoodMenu, { foreignKey: 'propertyId', as: 'foodMenus', });
 FoodMenu.belongsTo(Property, { foreignKey: 'propertyId', as:'property' });
-
-
+Booking.belongsTo(PropertyRateCard, { foreignKey: "rateCardId", as: "rateCard" });
 Inventory.belongsTo(Property, { foreignKey: "propertyId", as: "property" });
 Inventory.belongsTo(Rooms, { foreignKey: "roomId", as: "room" });
 Inventory.hasMany(ServiceHistory, { foreignKey: "inventoryId", as: "serviceHistory", });
 ServiceHistory.belongsTo(Inventory, { foreignKey: "inventoryId", as: "inventory", });
 ServiceHistory.belongsTo(SupportTicket, { foreignKey: "ticketId", as: "ticket", });
-
-
-
-module.exports = {
-  sequelize,
-  SupportTicket,
-  User,
-  Booking,
-  Rooms,
-  Event,
-  EventParticipation,
-  Property,
-  Announcement,
-  UserPermission,
-  Inventory,
-  ServiceHistory,
-};
+module.exports={
+    sequelize,
+    SupportTicket,
+    User,
+    Booking,
+    Rooms,
+    Event,
+    EventParticipation,
+    Property,
+    Announcement,
+    UserPermission,
+    PropertyRateCard,
+    FoodMenu,
+    Inventory,
+    ServiceHistory,
+}

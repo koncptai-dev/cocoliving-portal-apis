@@ -11,6 +11,10 @@ const User=sequelize.define('User',{
         type:DataTypes.STRING,
         allowNull:false
     },
+    registrationToken: {
+    type: DataTypes.STRING,
+    allowNull: true
+},
     email:{
         type:DataTypes.STRING,
         allowNull:false,
@@ -52,8 +56,7 @@ const User=sequelize.define('User',{
     },
     status:{
         type:DataTypes.INTEGER,
-        defaultValue:1,
-        allowNull:false
+        allowNull:false,
     },
     role:{
         type:DataTypes.INTEGER,
@@ -84,8 +87,8 @@ const User=sequelize.define('User',{
 
     companyName: { type: DataTypes.STRING, allowNull: true },
     position: { type: DataTypes.STRING, allowNull: true },
-},
-{
+    
+},{
     tableName:'users'
 })
 
