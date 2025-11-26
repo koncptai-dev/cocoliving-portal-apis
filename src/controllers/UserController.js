@@ -15,7 +15,11 @@ exports.sendOTP = async (req, res) => {
     try {
         const { email } = req.body;
 
-        if ( !email) {
+        await OTP.destroy({
+            where: { expiresAt: { [Op.lt]: new Date() } }
+        });
+
+        if (!email) {
             return res.status(400).json({ success: false, message: "Email is required" });
         }
         if (!/^\S+@\S+\.\S+$/.test(email)) {
@@ -109,33 +113,34 @@ exports.registerUser = async (req, res) => {
             userExist.gender = gender;
             userExist.dateOfBirth = dateOfBirth;
             userExist.status = 1;
+            userExist.isEmailVerified = true;
             userExist.registrationToken = null;
             await userExist.save();
 
             return res.status(200).json({
                 success: true,
-                message: "User registration completed successfully",
+                message: "User registration completed & email verified successfully",
                 user: userExist
             });
         }
 
         // Create new user 
-        const newUser = await User.create({
-            fullName,
-            email,
-            phone,
-            userType,
-            gender,
-            dateOfBirth,
-            role: 2,
-            status: 1
-        });
-
-        return res.status(201).json({
-            success: true,
-            message: "User registered & verified successfully",
-            user: newUser
-        });
+            const newUser = await User.create({
+                fullName,
+                email,
+                phone,
+                userType,
+                gender,
+                dateOfBirth,
+                role: 2,
+                status: 1,
+                isEmailVerified: true,
+            });
+                    return res.status(201).json({
+                        success: true,
+                        message: "User registered & verified successfully",
+                        user: newUser
+                    });
 
     } catch (error) {
         return res.status(500).json({ message: "Server error", error: error.message });
@@ -159,10 +164,10 @@ exports.editUserProfile = async (req, res) => {
             if (value === undefined || value === null) continue;
 
             //skip field for professional
-            if (user.userType === "professional" && ["parentName", "parentMobile", "collegeName", "course"].includes(key)) { continue }
+            if (user.userType === "professional" && ["parentName", "parentMobile", "parentEmail", "collegeName", "course"].includes(key)) { continue }
 
             //skip for student
-            if (user.userType === "user" && ["companyName", "position"].includes(key)) {
+            if (user.userType === "student" && ["companyName", "position"].includes(key)) {
                 continue;
             }
             user[key] = typeof value === "string" ? value.trim() : value;
