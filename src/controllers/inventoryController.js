@@ -25,10 +25,6 @@ exports.addInventory = async (req, res) => {
       roomId: parsedIsCommonAsset ? null : roomId,
     });
 
-
-
-
-    console.log("Inventory created:", newInventory.toJSON());
     res.status(201).json(newInventory);
   } catch (error) {
     console.error("Error in addInventory:", error);
@@ -112,7 +108,6 @@ exports.updateInventory = async (req, res) => {
 
       const newCode = await generateInventoryCode(updates.propertyId);
       updates.inventoryCode = newCode;
-      console.log(" New inventory code generated:", newCode);
     }
 
     const [updatedCount] = await Inventory.update(updates, { where: { id } });
@@ -144,24 +139,6 @@ exports.deleteInventory = async (req, res) => {
   }
 };
 
-
-// exports.getAvailable = async (req, res) => {
-//   try {
-//     const { propertyId } = req.params;
-//     console.log("Received propertyId:", propertyId); // <--- Debug line
-
-//     const items = await Inventory.findAll({
-//       where: { propertyId, status: "Available" },
-//     });
-
-//     console.log(`Found ${items.length} available items for propertyId ${propertyId}`); // <--- Debug line
-//     res.json({ items });
-//   } catch (error) {
-//     console.error("Error fetching available inventory:", error);
-//     res.status(500).json({ message: "Failed to fetch available inventory" });
-//   }
-// };
-// get available inventory for a specific property + room
 exports.getAvailableByRoom = async (req, res) => {
   try {
     const { roomId } = req.params;

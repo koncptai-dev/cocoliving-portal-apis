@@ -5,7 +5,7 @@ const json2csv = require("json2csv");
 const { Inventory, Property, Rooms } = require("../models");
 const generateInventoryCode = require("../helpers/InventoryCode");
 
-// ✅ EXPORT INVENTORY TO CSV
+// EXPORT INVENTORY TO CSV
 exports.exportInventory = async (req, res) => {
   try {
     const { propertyId } = req.query;
@@ -31,7 +31,6 @@ exports.exportInventory = async (req, res) => {
       return res.status(404).json({ message: "No inventory data found" });
     }
 
-    // ✅ Map clean and readable CSV data
     const csvData = inventories.map((item) => ({
       inventoryCode: item.inventoryCode || "",
       itemName: item.itemName || "",
@@ -74,7 +73,7 @@ exports.exportInventory = async (req, res) => {
   }
 };
 
-// ✅ IMPORT INVENTORY FROM CSV
+// IMPORT INVENTORY FROM CSV
 exports.importInventory = async (req, res) => {
   try {
     if (!req.file) {
@@ -85,7 +84,6 @@ exports.importInventory = async (req, res) => {
     const importedRows = [];
     const skippedRows = [];
     let inserted = 0;
-    console.log("📂 Starting import from:", filePath);
 
     const stream = fs.createReadStream(filePath).pipe(csvParser());
 
@@ -99,7 +97,6 @@ exports.importInventory = async (req, res) => {
         for (const [index, row] of importedRows.entries()) {
           const { itemName, category, propertyId } = row;
 
-          // ✅ Check for required fields
           if (!itemName || !category || !propertyId) {
             skippedRows.push({ row, reason: "Missing required fields", line: index + 2 });
             continue;
@@ -176,8 +173,8 @@ exports.downloadTemplate = async (req, res) => {
         isCommonAsset: "false", // true/false
         unitCost: "1200",
         purchaseDate: "2025-01-01",
-        condition: "Good", // e.g., New / Good / Damaged
-        status: "Available", // e.g., Available / In Use / Under Repair
+        condition: "Good",
+        status: "Available", 
       },
     ];
 

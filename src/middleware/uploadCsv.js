@@ -4,12 +4,12 @@ const path = require("path");
 const uploadDir = path.join(__dirname, "../uploads/csv");
 
 
-// ✅ Ensure directory exists before use
+// Ensure directory exists before use
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// ✅ Storage configuration
+// Storage configuration
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, uploadDir);
@@ -21,7 +21,7 @@ const storage = multer.diskStorage({
   },
 });
 
-// ✅ File filter to only allow CSV
+// File filter to only allow CSV
 const fileFilter = (req, file, cb) => {
   if (file.mimetype === "text/csv" || file.originalname.endsWith(".csv")) {
     cb(null, true);

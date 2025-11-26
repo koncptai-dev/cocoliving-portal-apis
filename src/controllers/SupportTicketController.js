@@ -6,7 +6,6 @@ const Booking = require('../models/bookRoom');
 const Property = require('../models/property');
 const { Op } = require('sequelize');
 const { generateSupportTicketCode } = require('../helpers/SupportTicketCode');
-const { createFromTicket } = require('../controllers/serviceHistoryController');
 
 //create tickets
 exports.createTicket = async (req, res) => {
@@ -233,13 +232,12 @@ exports.getRooms = async (req, res) => {
             .map((r) => ({
                 id: r.id,
                 roomNumber: r.roomNumber,
-                propertyId: r.propertyId, // ✅ use this (not r.property?.id)
+                propertyId: r.propertyId,
                 propertyName: r.property?.name || '',
             }));
-        console.log('🧩 Rooms fetched for user:', JSON.stringify(rooms, null, 2));
         res.status(200).json({ rooms });
   } catch (error) {
-    console.error('❌ Error fetching rooms:', error);
+    console.error('Error fetching rooms:', error);
     res.status(500).json({ message: error.message });
   }
 };

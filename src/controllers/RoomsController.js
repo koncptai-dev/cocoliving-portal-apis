@@ -3,7 +3,7 @@ const Rooms = require('../models/rooms');
 const Booking = require('../models/bookRoom');
 const Property = require('../models/property');
 const { Inventory } = require("../models");
-const { generateInventoryCode } = require("../helpers/inventoryCode");
+const { generateInventoryCode } = require("../helpers/InventoryCode");
 
 const { Op } = require('sequelize');
 const fs = require('fs');
