@@ -7,7 +7,6 @@ const PropertyRateCard = require("../models/propertyRateCard");
 const { Op } = require('sequelize');
 const Inventory = require("../models/inventory");
 const moment = require('moment');
-const PropertyRateCard = require("../models/propertyRateCard");
 
 
 //get all booking for admin

@@ -47,14 +47,7 @@ Rooms.hasMany(SupportTicket, { foreignKey: 'roomId', as: 'tickets' });
 SupportTicket.belongsTo(Rooms, { foreignKey: 'roomId', as: 'room' });
 
 //propertyCard
-PropertyRateCard.belongsTo(Property, { foreignKey: 'propertyId', as: 'property' });
 Property.hasMany(PropertyRateCard, { foreignKey: 'propertyId', as: 'rateCard' });
-
-// Booking → PropertyRateCard
-Booking.belongsTo(PropertyRateCard, {
-  foreignKey: "rateCardId",
-  as: "rateCard",
-});
 
 PropertyRateCard.hasMany(Booking, {
   foreignKey: "rateCardId",
