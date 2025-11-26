@@ -11,123 +11,138 @@ const path = require('path');
 const { mailsender } = require('../utils/emailService');
 
 
-//for otp generate
 exports.sendOTP = async (req, res) => {
     try {
-        const { email } = req.body;
+        const { fullName,email } = req.body;
 
-        //check user already exist or not
+        if (!fullName || !email) {
+            return res.status(400).json({ success: false, message: "Full Name & Email are required" });
+        }
+        if (!/^\S+@\S+\.\S+$/.test(email)) {
+            return res.status(400).json({ success: false, message: "Invalid email format" });
+        }
+
         const existingUser = await User.findOne({ where: { email } });
 
-        if (existingUser) {
-            return res.status(401).json({ success: false, message: 'User is already Registered' })
+        if (existingUser && !existingUser.registrationToken) {
+            return res.status(401).json({ success: false, message: 'User is already registered' });
         }
-        //if user not exist send otp
-        const otp = otpGenerator.generate(5, {
-            upperCaseAlphabets: false,
-            lowerCaseAlphabets: false,
-            specialChars: false,
-        })
-
-        //check otp is unique or not
-        let result = await OTP.findOne({ where: {otp} })
-        while (result) {
-            otp = otpGenerator.generate(5, {
-                upperCaseAlphabets: false,
-                lowerCaseAlphabets: false,
-                specialChars: false,
-            });
-            result = await OTP.findOne({ where: { otp } });
-        }
-        //send otp in mail
-        await mailsender(email, "OTP verification Email", `your OTP for Registration on cocoLiving is : ${otp}`)
-
-        const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-
-        //otp entry in db
-        const otpPayload = { email, otp, expiresAt };
-        const otpBody = await OTP.create(otpPayload);
-
-        res.status(200).json({
-            success: true,
-            message: 'OTP Sent Successfully to your mail',
-            otp,
-        })
-            ;
-    } catch (err) {
-        console.log(err);
-        return res.status(500).json({
-            success: false,
-            message: err.message
-        })
-    }
-}
-
-
-exports.registerUser = async (req, res) => {
-
-    try {
-        const { fullName, email, phone, userType, gender,dateOfBirth, password, confirmPassword, otp } = req.body;
-
-        if (!otp) {
-            return res.status(400).json({ message: "OTP is required" });
-        }
-
-
-        //match password and confirmPassword
-        if (password !== confirmPassword) {
-            return res.status(400).json({ message: 'Password and ConfirmPassword do not match' });
-        }
-
-        //check already registered user
-        const existingUser = await User.findOne({
-            where: { email },
-        });
-
-        if (existingUser) {
-            return res.status(409).json({ success: false, message: "User is already registered with this email" });
-        }
-
-        const recentOTPRecord = await OTP.findOne({
-            where: { email },
-            order: [['createdAt', 'DESC']]
-        })
-
-        if (!recentOTPRecord || otp !== recentOTPRecord.otp) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid OTP. Please check your code or resend."
-            });
-        }
-
-
-        if (recentOTPRecord.expiresAt < new Date()) {
-            await OTP.destroy({ where: { email } });
-            return res.status(400).json({
-                success: false,
-                message: "OTP has expired. Please request a new code."
-            });
-        }
-
-
-        //hash password
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        //create new user
-        const newUser = await User.create({ fullName, email, phone: phone || null, userType, gender: gender || null, dateOfBirth, password: hashedPassword, role: 2 });
 
         await OTP.destroy({ where: { email } });
 
-        res.status(201).json({ success: true, message: 'User registered and verified successfully', user: newUser });
+        const otp = otpGenerator.generate(6, {
+            upperCaseAlphabets: false,
+            lowerCaseAlphabets: false,
+            specialChars: false,
+        });
+
+        const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+        await OTP.create({ email, otp, expiresAt, attempts: 0 });
+
+        await mailsender(
+            email,
+            "OTP Verification",
+            `Your OTP for registration is: ${otp}\n\nThis OTP is valid for 5 minutes.`
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: "OTP sent successfully",
+        });
+
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+exports.registerUser = async (req, res) => {
+    try {
+        const {  fullName,email,  phone, userType,  gender, dateOfBirth, password, confirmPassword, otp, registrationToken} = req.body;
+
+        if (!email || !otp) {
+            return res.status(400).json({ message: "Email & OTP are required" });
+        }
+
+        if (password.length < 6) {
+            return res.status(400).json({ message: "Password must be at least 6 characters" });
+        }
+
+        if (password !== confirmPassword) {
+            return res.status(400).json({ message: "Password & Confirm Password do not match" });
+        }
+
+        const otpRecord = await OTP.findOne({
+            where: { email },
+            order: [['createdAt', 'DESC']]
+        });
+
+        if (!otpRecord) {
+            return res.status(400).json({ message: "OTP not found or expired" });
+        }
+
+        if (otpRecord.attempts >= 5) {
+            await OTP.destroy({ where: { email } });
+            return res.status(429).json({
+                success: false,
+                message: "Too many wrong attempts. Request a new OTP."
+            });
+        }
+
+        if (otpRecord.expiresAt < new Date()) {
+            await OTP.destroy({ where: { email } });
+            return res.status(400).json({ message: "OTP expired. Request a new one." });
+        }
+
+        if (otpRecord.otp !== otp) {
+            otpRecord.attempts += 1;
+            await otpRecord.save();
+            return res.status(400).json({ message: "Incorrect OTP" });
+        }
+
+        await OTP.destroy({ where: { email } });
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        let userExist = await User.findOne({ where: { email } });
+
+        if (userExist) {
+            if (!registrationToken || registrationToken !== userExist.registrationToken) {
+                return res.status(400).json({ message: "Invalid or missing registration token" });
+            }
+
+            userExist.fullName = fullName;
+            userExist.phone = phone;
+            userExist.gender = gender;
+            userExist.dateOfBirth = dateOfBirth;
+            userExist.password = hashedPassword;
+            userExist.status = 1;
+            userExist.registrationToken = null;
+            await userExist.save();
+
+            return res.status(200).json({
+                success: true,
+                message: "User registration completed successfully",
+                user: userExist
+            });
+        }
+
+        const newUser = await User.create({ fullName, email, phone, userType, gender, dateOfBirth,  password: hashedPassword, role: 2, status: 1,  });
+        return res.status(201).json({
+            success: true,
+            message: "User registered & verified successfully",
+            user: newUser
+        });
 
     } catch (error) {
-        return res.status(500).json({ message: 'Server error', error: error.message });
+        return res.status(500).json({ message: "Server error", error: error.message });
     }
-}
+};
+
 
 exports.editUserProfile = async (req, res) => {
     try {
-       
+
         const { id } = req.params;
         const updates = req.body;
 
@@ -141,16 +156,15 @@ exports.editUserProfile = async (req, res) => {
 
             if (value === undefined || value === null) continue;
 
-                //skip field for professional
-                if(user.userType==="professional" && ["parentName","parentMobile","collegeName","course"].includes(key))
-                {continue}
+            //skip field for professional
+            if (user.userType === "professional" && ["parentName", "parentMobile", "collegeName", "course"].includes(key)) { continue }
 
-                //skip for student
-                 if (user.userType === "user" && ["companyName", "position"].includes(key)) {
-                    continue;
-                }
-                user[key] = typeof value === "string" ? value.trim() : value;
-            
+            //skip for student
+            if (user.userType === "user" && ["companyName", "position"].includes(key)) {
+                continue;
+            }
+            user[key] = typeof value === "string" ? value.trim() : value;
+
         }
 
         //if already has profileImage, delete the old one
@@ -164,7 +178,7 @@ exports.editUserProfile = async (req, res) => {
             user.profileImage = `/uploads/profilePicture/${req.file.filename}`;
         }
         await user.save();
-        
+
         return res.status(200).json({
             message: 'Profile updated successfully',
             user
