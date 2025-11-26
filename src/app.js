@@ -7,17 +7,17 @@ const admin=require('./routes/AdminRoutes');
 const User=require('./routes/UserRoute');
 const Rooms=require('./routes/RoomsRoutes'); 
 const Tickets=require('./routes/SupportTicketRoutes');
-const Events=require('./routes/EventRoutes')
+const Events=require('./routes/EventRoutes');
 const Common=require('./routes/CommonRoutes');
 const UserByAdminRoutes=require('./routes/UserByAdminRoutes');
 const BookRoomRoute=require('./routes/RoomBookRoute');
-const AmmouncementRoute=require('./routes/AnnouncementRoute');
+const AnnouncementRoute=require('./routes/AnnouncementRoute');
 const PropertyRoute=require('./routes/PropertyRoute');
 const AdminBooking=require('./routes/AdminBookingRoutes');
-const UserandBokingDetails = require('./routes/UserandBookingRoutes');
+const UserAndBookingDetails = require('./routes/UserandBookingRoutes');
 const PagesRoute = require('./routes/pagesRoute');
-const inventoryRoutes = require("./routes/inventoryRoute");
-const ServiceHistoryRoutes = require("./routes/serviceHistory");
+const InventoryRoutes = require('./routes/inventoryRoute');
+const ServiceHistoryRoutes = require('./routes/serviceHistory');
 const FoodMenuRoute = require('./routes/FoodMenuRoute');
 const ActivityRoute=require('./routes/ActivityRoutes');
 const path = require('path');
@@ -39,15 +39,15 @@ app.use('/api/events', Events);
 app.use('/api/common', Common);
 app.use('/api/user-by-superadmin', UserByAdminRoutes);
 app.use('/api/book-room', BookRoomRoute);
-app.use('/api/announcement', AmmouncementRoute); 
+app.use('/api/announcement', AnnouncementRoute); 
 app.use('/api/property', PropertyRoute);
 app.use('/api/admin-booking', AdminBooking);
-app.use('/api/user-and-booking', UserandBokingDetails);
+app.use('/api/user-and-booking', UserAndBookingDetails);
 app.use('/api/pages', PagesRoute);
-app.use("/api/inventory", inventoryRoutes);
-app.use("/api/service-history", ServiceHistoryRoutes);
+app.use('/api/inventory', InventoryRoutes);
+app.use('/api/service-history', ServiceHistoryRoutes);
 app.use('/api/food-menu', FoodMenuRoute);
-app.use("/api/activity", ActivityRoute);
+app.use('/api/activity', ActivityRoute);
 
 sequelize.sync({ alter: true }) //   ensures new models are created
   .then(() => console.log('✅ Database Synced'))

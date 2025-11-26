@@ -1,7 +1,7 @@
 const User = require('../models/user');
 const UserPermission = require('../models/userPermissoin');
 const Pages = require('../models/page');
-const OTP = require("../models/Otp"); 
+const OTP = require("../models/otp"); 
 const otpGenerator = require("otp-generator");
 const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
@@ -230,7 +230,7 @@ exports.resetPassword = async (req, res) => {
     }
 }
 
-// SEND OTP FOR LOGIN
+// send otp for login
 exports.sendLoginOtp = async (req, res) => {
     try {
         const { email } = req.body;
@@ -246,7 +246,7 @@ exports.sendLoginOtp = async (req, res) => {
             return res.status(403).json({ message: "Please use the admin login page" });
         }
 
-        // generate OTP (5 digits)
+        // generate OTP (6 digits)
         let otp = otpGenerator.generate(6, {
             upperCaseAlphabets: false,
             lowerCaseAlphabets: false,
@@ -256,7 +256,7 @@ exports.sendLoginOtp = async (req, res) => {
         await OTP.create({
             email,
             otp,
-            expiresAt: new Date(Date.now() + 5 * 60 * 1000), // expires in 10 min
+            expiresAt: new Date(Date.now() + 5 * 60 * 1000), // expires in 5 min
         });
 
         // send OTP email
@@ -273,7 +273,7 @@ exports.sendLoginOtp = async (req, res) => {
 };
 
 
-// VERIFY OTP FOR LOGIN
+// verify otp for login
 exports.verifyLoginOtp = async (req, res) => {
     try {
         const { email, otp } = req.body;

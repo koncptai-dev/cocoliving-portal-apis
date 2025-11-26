@@ -73,7 +73,7 @@ const SupportTicket = sequelize.define('SupportTicket', {
         type: DataTypes.ARRAY(DataTypes.STRING), // To store video paths or URLs
         allowNull: true
     },
-      inventoryId: {
+    inventoryId: {
         type: DataTypes.INTEGER,
         allowNull: true,
         references: {

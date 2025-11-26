@@ -1,10 +1,9 @@
-// src/controllers/serviceHistoryController.js
 const ServiceHistory = require("../models/serviceHistory");
 const Inventory = require("../models/inventory");
 const { Op } = require("sequelize");
 const SupportTicket = require("../models/supportTicket");
 
-// ✅ Create a service record for one inventory item
+// Create a service record for one inventory item
 exports.createServiceRecord = async (req, res) => {
   try {
     const { inventoryId } = req.params;
@@ -20,7 +19,6 @@ exports.createServiceRecord = async (req, res) => {
     if (!issueDescription)
       return res.status(400).json({ message: "issueDescription is required" });
 
-    // Ensure inventory exists
     const item = await Inventory.findByPk(inventoryId);
     if (!item)
       return res.status(404).json({ message: "Inventory item not found" });
@@ -44,7 +42,7 @@ exports.createServiceRecord = async (req, res) => {
   }
 };
 
-// ✅ List records for a particular inventory item
+// List records for a particular inventory item
 exports.getServiceHistoryForItem = async (req, res) => {
   try {
     const { inventoryId } = req.params;
@@ -101,7 +99,7 @@ exports.getAllServiceRecords = async (req, res) => {
   }
 };
 
-// ✅ Update a service record (resolve, add notes, change status)
+// Update a service record (resolve, add notes, change status)
 exports.updateServiceRecord = async (req, res) => {
   try {
     const { id } = req.params;
@@ -121,12 +119,11 @@ exports.updateServiceRecord = async (req, res) => {
   }
 };
 
-// ✅ Delete a service record safely (requires inventoryId + recordId)
+// Delete a service record safely (requires inventoryId + recordId)
 exports.deleteServiceRecord = async (req, res) => {
   try {
     const { inventoryId, id } = req.params;
 
-    // Verify record belongs to the specified inventory
     const record = await ServiceHistory.findOne({
       where: { id, inventoryId },
     });
@@ -148,19 +145,16 @@ exports.deleteServiceRecord = async (req, res) => {
       .json({ message: "Internal Server Error", error: err.message });
   }
 };
-// Create Service History record when a support ticket is resolved
 // Create or update Service History record for a support ticket
 exports.createFromTicket = async (ticket) => {
   try {
     const ServiceHistory = require("../models/serviceHistory");
     const Inventory = require("../models/inventory");
 
-    // ✅ Step 1: Find existing service record for this ticket
     let record = await ServiceHistory.findOne({
       where: { ticketId: ticket.id },
     });
 
-    // Determine status mapping
     const newStatus =
       ticket.status?.toLowerCase() === "resolved"
         ? "Resolved"
@@ -168,20 +162,15 @@ exports.createFromTicket = async (ticket) => {
         ? "In Progress"
         : "Open";
 
-    // ✅ Step 2: If record exists → update it
     if (record) {
       await record.update({
         assignedTo: ticket.assignedTo || record.assignedTo,
         resolutionNotes: ticket.description || record.resolutionNotes,
         status: newStatus,
-        serviceDate: new Date(), // latest action timestamp
+        serviceDate: new Date(),
       });
-      console.log(
-        `🛠️ Updated existing service record for ticket ${ticket.supportCode} → ${newStatus}`
-      );
     }
 
-    // ✅ Step 3: If not found → create a new service record
     else {
       record = await ServiceHistory.create({
         inventoryId: ticket.inventoryId || null,
@@ -194,12 +183,8 @@ exports.createFromTicket = async (ticket) => {
         resolutionNotes: ticket.description || null,
         status: newStatus,
       });
-      console.log(
-        `🧾 Created new service record for ticket ${ticket.supportCode} [${newStatus}]`
-      );
     }
 
-    // ✅ Step 4: Update inventory status automatically
     if (ticket.inventoryId) {
       const inventory = await Inventory.findByPk(ticket.inventoryId);
       if (inventory) {
@@ -219,6 +204,6 @@ exports.createFromTicket = async (ticket) => {
 
     return record;
   } catch (error) {
-    console.error("❌ Error linking service history to ticket:", error);
+    console.error("Error linking service history to ticket:", error);
   }
 };

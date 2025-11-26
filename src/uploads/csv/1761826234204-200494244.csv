@@ -1,6 +1,0 @@
-itemName,category,description,propertyId,roomId,isCommonAsset,unitCost,purchaseDate,condition,status
-Chair,Furniture,Wooden chair for living area,1,1,FALSE,1500,05-01-2025,New,Available
-Fan,Electronics,Ceiling fan,1,2,TRUE,1800,10-02-2025,In Use,Allocated
-Fan,Electronics,Duplicate fan row,1,2,TRUE,1800,10-02-2025,In Use,Allocated
-Table,Furniture,New wooden table,1,3,FALSE,3500,10-03-2025,New,Available
-Light Bulb,Electronics,LED bulb,2,,TRUE,300,20-01-2025,New,Available
