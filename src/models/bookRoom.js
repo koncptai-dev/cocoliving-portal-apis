@@ -12,7 +12,10 @@ const Booking = sequelize.define(
       primaryKey: true,
       autoIncrement: true,
     },
-
+    propertyId: {
+      type: DataTypes.INTEGER,
+      allowNull: false
+    },
     userId: {
       type: DataTypes.INTEGER,
       allowNull: false,
@@ -34,6 +37,11 @@ const Booking = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: true,     //  Admin  assign later
       references: { model: Room, key: "id" },
+    },
+    assignedItems: {
+      type: DataTypes.JSON,   // stores array of item IDs: [1,5,7]
+      allowNull: true,
+      defaultValue: [],
     },
 
     checkInDate: {

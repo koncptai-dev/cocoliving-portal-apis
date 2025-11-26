@@ -1,27 +1,35 @@
-const SupportTicket = require('../models/supportTicket');
+const SupportTicket = require("../models/supportTicket");
+const sequelize = require("../config/database");
 
-exports.generateSupportTicketCode = async () => {
+exports.generateSupportTicketCode = async (propertyId, roomNumber) => {
   try {
-    // Fetch all existing support codes 
-    const tickets = await SupportTicket.findAll({
-      attributes: ['supportCode']
-    });
+    return await sequelize.transaction(async (t) => {
+      // Lock only relevant tickets (same property + same room number)
+      const lastTicket = await SupportTicket.findOne({
+        where: { propertyId, roomNumber },
+        order: [["createdAt", "DESC"]],
+        attributes: ["supportCode"],
+        transaction: t,
+        lock: t.LOCK.UPDATE, // ✅ Prevents concurrent duplicates
+      });
 
-    // Find the highest sequence number unique
-    let maxSeq = 0;
-    tickets.forEach(ticket => {
-      const match = ticket.supportCode?.match(/SUPP-(\d+)/);
-      if (match && match[1]) {
-        const num = parseInt(match[1]);
-        if (num > maxSeq) maxSeq = num;
+      // Extract sequence number from last ticket code
+      let lastSeq = 0;
+      if (lastTicket && lastTicket.supportCode) {
+        const match = lastTicket.supportCode.match(/SUPP-PR\d+-RM\d+-(\d+)/);
+        if (match && match[1]) {
+          lastSeq = parseInt(match[1]);
+        }
       }
+
+      // Increment sequence
+      const nextSeq = String(lastSeq + 1).padStart(3, "0");
+
+      // Generate new code
+      const newCode = `SUPP-PR${propertyId}-RM${roomNumber}-${nextSeq}`;
+
+      return newCode;
     });
-
-    // Increment sequence safely
-    const nextSeq = (maxSeq + 1).toString().padStart(3, '0');
-    const newCode = `SUPP-${nextSeq}`;
-
-    return newCode;
   } catch (error) {
     console.error("Error generating support ticket code:", error);
     throw error;
