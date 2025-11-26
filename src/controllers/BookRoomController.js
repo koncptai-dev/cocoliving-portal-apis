@@ -16,7 +16,6 @@ exports.createBooking = async (req, res) => {
 
     const { rateCardId, checkInDate, duration } = req.body;
     const userId = req.user.id;
-
     //fetch  ratecard
     const rateCard = await PropertyRateCard.findByPk(rateCardId);
     if (!rateCard) {
@@ -56,6 +55,7 @@ exports.createBooking = async (req, res) => {
       userId,
       rateCardId,
       roomType: rateCard.roomType,
+      propertyId: rateCard.propertyId,
       checkInDate: checkInDateFormatted,
       checkOutDate: checkOutDateFormatted,
       duration,

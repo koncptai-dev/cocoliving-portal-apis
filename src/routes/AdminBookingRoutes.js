@@ -7,6 +7,7 @@ const router = express.Router();
 router.get('/getallBookings', AdminBooking.getAllBookings);
 router.patch('/approveBooking/:bookingId', AdminBooking.approveBooking);
 router.patch('/rejectBooking/:bookingId', AdminBooking.rejectBooking);
-
+router.patch('/:bookingId/assign-room', AdminBooking.assignRoom);
+router.post("/:bookingId/assign-inventory", AdminBooking.assignInventory);
 
 module.exports=router

@@ -1,11 +1,13 @@
 const User = require('../models/user');
 const UserPermission = require('../models/userPermissoin');
 const Pages = require('../models/page');
+const OTP = require("../models/otp"); 
+const otpGenerator = require("otp-generator");
 const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
 require('dotenv').config();
 const jwt = require('jsonwebtoken');
-const { sendResetEmail } = require('../utils/emailService'); // Utility for sending emails
+const { mailsender , sendResetEmail } = require('../utils/emailService'); // Utility for sending emails
 
 
 // exports.login = async (req, res) => {
@@ -228,4 +230,92 @@ exports.resetPassword = async (req, res) => {
     }
 }
 
+// send otp for login
+exports.sendLoginOtp = async (req, res) => {
+    try {
+        const { email } = req.body;
 
+        // user must exist
+        const user = await User.findOne({ where: { email } });
+        if (!user) {
+            return res.status(404).json({ message: "Email not found" });
+        }
+
+        // prevent admins from OTP login
+        if (user.role === 1 || user.role === 3 || user.userType === "admin") {
+            return res.status(403).json({ message: "Please use the admin login page" });
+        }
+
+        // generate OTP (6 digits)
+        let otp = otpGenerator.generate(6, {
+            upperCaseAlphabets: false,
+            lowerCaseAlphabets: false,
+            specialChars: false,
+        });
+
+        await OTP.create({
+            email,
+            otp,
+            expiresAt: new Date(Date.now() + 5 * 60 * 1000), // expires in 5 min
+        });
+
+        // send OTP email
+        await mailsender(
+            email,
+            "Your Login OTP",
+            `<p>Your OTP for login is <b>${otp}</b>. It expires in 5 minutes.</p>`
+        );
+
+        return res.status(200).json({ success: true, message: "OTP sent to your email" });
+    } catch (err) {
+        return res.status(500).json({ message: "Error sending OTP", error: err.message });
+    }
+};
+
+
+// verify otp for login
+exports.verifyLoginOtp = async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+
+        const user = await User.findOne({ where: { email } });
+        if (!user) {
+            return res.status(404).json({ message: "Email not found" });
+        }
+
+        // fetch latest OTP entry
+        const otpRecord = await OTP.findOne({
+            where: { email },
+            order: [["createdAt", "DESC"]],
+        });
+
+        if (!otpRecord || otpRecord.otp !== otp) {
+            return res.status(400).json({ message: "Invalid OTP" });
+        }
+
+        if (otpRecord.expiresAt < new Date()) {
+            return res.status(400).json({ message: "OTP expired, please request a new one" });
+        }
+
+        // delete OTP after successful login
+        await OTP.destroy({ where: { email } });
+
+        // generate JWT (same as existing login)
+        const token = jwt.sign(
+            { id: user.id, email: user.email, role: user.role, userType: user.userType },
+            process.env.JWT_SECRET,
+            { expiresIn: "1d" }
+        );
+
+        // return same response as password login
+        return res.status(200).json({
+            success: true,
+            message: "Login successful",
+            token,
+            account: user,
+        });
+
+    } catch (err) {
+        return res.status(500).json({ message: "Error verifying OTP", error: err.message });
+    }
+};
