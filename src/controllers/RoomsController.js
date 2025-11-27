@@ -2,8 +2,8 @@ const sequelize = require('../config/database');
 const Rooms = require('../models/rooms');
 const Booking = require('../models/bookRoom');
 const Property = require('../models/property');
-const  Inventory  = require("../models/inventory");
-const { generateInventoryCode } = require("../helpers/InventoryCode");
+const Inventory  = require('../models/inventory');
+const { generateInventoryCode } = require('../helpers/InventoryCode');
 
 const { Op } = require('sequelize');
 
@@ -11,7 +11,7 @@ const { Op } = require('sequelize');
 //Add Rooms  for admin
 exports.AddRooms = async (req, res) => {
     try {
-        const { propertyId, roomNumber, roomType, capacity, floorNumber, monthlyRent, depositAmount, preferredUserType, description, availableForBooking } = req.body;
+        const { propertyId, roomNumber, roomType, capacity, floorNumber, monthlyRent,preferredUserType, description, status } = req.body;
 
         //check property exist or not
         const property = await Property.findByPk(propertyId);
@@ -25,16 +25,13 @@ exports.AddRooms = async (req, res) => {
             return res.status(400).json({ message: "Room already exists for this property" });
         }
 
-        const status = availableForBooking ? "available" : "not-available";
+        const finalStatus = status === "available" ? "available" : "unavailable";
 
-        const calculatedDeposit = monthlyRent * 2;
-
-        const newRooms = await Rooms.create({
-            propertyId, roomNumber, roomType, capacity, floorNumber, monthlyRent, depositAmount: calculatedDeposit, preferredUserType,
-             description, status
+        const newRoom = await Rooms.create({
+            propertyId, roomNumber, roomType, capacity, floorNumber, monthlyRent, depositAmount: monthlyRent * 2, preferredUserType, description, status:finalStatus
         })        
 
-        res.status(201).json({ message: 'Rooms added successfully', room: newRooms })
+        return res.status(201).json({ message: 'Rooms added successfully', room: newRoom })
 
     } catch (err) {
         console.log("error->", err
@@ -57,7 +54,7 @@ exports.EditRooms = async (req, res) => {
         }
 
         //check duplicate room number 
-        if (updatedData.roomNumber && updatedData.roomNumber !== room.roomNumber) {
+        if (updatedData.roomNumber!==undefined && updatedData.roomNumber !== room.roomNumber) {
             const exist = await Rooms.findOne({ where: { roomNumber: updatedData.roomNumber, propertyId: room.propertyId, id: { [Op.ne]: room.id } } });
             if (exist) {
                 return res.status(400).json({ message: "Room number already exists for this property" });
@@ -65,8 +62,8 @@ exports.EditRooms = async (req, res) => {
         }
 
         // Update status if availableForBooking is passed
-        if (updatedData.availableForBooking !== undefined) {
-            updatedData.status = updatedData.availableForBooking ? "available" : "not-available";
+        if (updatedData.status !== undefined ) {
+            updatedData.status = updatedData.status === "available" ? "available" : "unavailable";
         }
 
         //recalculate deposit if rent changes
@@ -75,11 +72,11 @@ exports.EditRooms = async (req, res) => {
         }
 
         //apply update dynamically
-        await room.update({
-            ...updatedData,  // keep other updates
-        });
+        await room.update(
+            updatedData  // keep other updates
+        );
 
-        res.status(200).json({ message: "Room updated successfully", room });
+        return res.status(200).json({ message: "Room updated successfully", room });
 
     } catch (err) {
         console.log("error", err);
@@ -165,8 +162,8 @@ exports.getAllRooms = async (req, res) => {
 
             let status;
 
-            if (room.status === "not-available") {
-                status = "not-available"; // admin blocked
+            if (room.status === "unavailable") {
+                status = "unavailable"; // admin blocked
             } else {
                 // admin allowed
                 if (occupied >= capacity) {

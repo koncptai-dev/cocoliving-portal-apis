@@ -11,6 +11,8 @@ const Announcement = require('./annoucement');
 const UserPermission=require('./userPermissoin');
 const PropertyRateCard=require('./propertyRateCard');
 const FoodMenu = require('./foodMenu');
+const Inventory = require('./inventory');
+const ServiceHistory = require('./serviceHistory');
 
 User.hasMany(SupportTicket, {foreignKey: "userId", as: "tickets" });
 SupportTicket.belongsTo(User, {foreignKey: "userId", as: "user" });
@@ -57,6 +59,18 @@ FoodMenu.belongsTo(Property, { foreignKey: 'propertyId', as:'property' });
 PropertyRateCard.hasMany(Booking, { foreignKey: "rateCardId", as: "bookings" });
 Booking.belongsTo(PropertyRateCard, { foreignKey: "rateCardId", as: "rateCard" });
 
+// Inventory and Service History
+Inventory.belongsTo(Property, { foreignKey: "propertyId", as: "property" });
+Property.hasMany(Inventory, { foreignKey: "propertyId", as: "inventories" });   // ← ADDED
+
+Inventory.belongsTo(Rooms, { foreignKey: "roomId", as: "room" });
+Rooms.hasMany(Inventory, { foreignKey: "roomId", as: "roomInventories" });       // ← ADDED
+
+Inventory.hasMany(ServiceHistory, { foreignKey: "inventoryId", as: "serviceHistory" });
+ServiceHistory.belongsTo(Inventory, { foreignKey: "inventoryId", as: "inventory" });
+ServiceHistory.belongsTo(SupportTicket, { foreignKey: "ticketId", as: "ticket" });
+
+
 module.exports={
     sequelize,
     SupportTicket,
@@ -69,5 +83,7 @@ module.exports={
     Announcement,
     UserPermission,
     PropertyRateCard,
-    FoodMenu
+    FoodMenu,
+    Inventory,
+    ServiceHistory
 }
