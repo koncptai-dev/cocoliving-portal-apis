@@ -1,15 +1,13 @@
 const User = require('../models/user');
 const UserPermission = require('../models/userPermissoin');
 const Pages = require('../models/page');
-const OTP = require('../models/otp');
+const OTP = require("../models/otp"); 
 const otpGenerator = require("otp-generator");
 const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
 require('dotenv').config();
 const jwt = require('jsonwebtoken');
-const { mailsender } = require('../utils/emailService');
-const { sendResetEmail } = require('../utils/emailService'); // Utility for sending emails
-
+const { mailsender , sendResetEmail } = require('../utils/emailService'); // Utility for sending emails
 
 exports.login = async (req, res) => {
     try {
@@ -285,5 +283,3 @@ exports.resetPassword = async (req, res) => {
         res.status(500).json({ message: 'Error resetting password', error: err.message });
     }
 }
-
-
