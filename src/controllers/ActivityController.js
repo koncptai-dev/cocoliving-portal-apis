@@ -1,4 +1,4 @@
-const ActivityLog=require("../models/ActivityLogs");
+const ActivityLog=require("../models/activityLogs");
 const sequelize = require('../config/database');
 
 

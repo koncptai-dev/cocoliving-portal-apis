@@ -5,14 +5,14 @@ const User = require('../models/user');
 const Booking = require('../models/bookRoom');
 const Property = require('../models/property');
 const { Op } = require('sequelize');
-const {generateSupportTicketCode} = require('../helpers/SupportTicketCode');
+const { generateSupportTicketCode } = require('../helpers/SupportTicketCode');
 
 //create tickets
 exports.createTicket = async (req, res) => {
     try {
         const userId = req.user.id;
 
-        const { roomNumber, date, issue, description, priority } = req.body;
+        const { roomNumber, date, issue, description, priority, inventoryId } = req.body;
 
         //validation
         if (!roomNumber || !date || !issue) {
@@ -38,6 +38,23 @@ exports.createTicket = async (req, res) => {
         if (!booking || !booking.roomId) {
             return res.status(403).json({ message: "You have not booked this room" });
         }
+        // Optional inventory item linking
+        let inventoryName = null;
+        if (inventoryId) {
+            const Inventory = require("../models/inventory");
+            const inventory = await Inventory.findOne({ where: { id: inventoryId } });
+
+            if (!inventory) {
+                return res.status(404).json({ message: "Selected inventory item not found" });
+            }
+
+            // Optional validation: ensure inventory belongs to this room
+            if (inventory.roomId !== room.id) {
+                return res.status(403).json({ message: "This inventory item is not part of your room" });
+            }
+
+            inventoryName = inventory.itemName;
+        }
 
         //for images&video up to 10
         const imageUrls = req.files?.ticketImage?.map(file => `/uploads/ticketImages/${file.filename}`) || [];
@@ -51,7 +68,7 @@ exports.createTicket = async (req, res) => {
             return res.status(400).json({ message: "You can upload a maximum of 3 videos." });
         }
 
-        const supportCode = await generateSupportTicketCode(room.roomNumber);
+        const supportCode = await generateSupportTicketCode(room.propertyId , room.roomNumber);
 
         const ticket = await SupportTicket.create({
             supportCode,
@@ -64,7 +81,9 @@ exports.createTicket = async (req, res) => {
             userId,
             status: 'open',
             image: imageUrls,
-            videos: videoUrls
+            videos: videoUrls,
+            inventoryId: inventoryId || null,
+            inventoryName: inventoryName || null,
         })
 
         res.status(201).json({ message: "successfully created", ticket });
@@ -112,12 +131,12 @@ exports.getAllTickets = async (req, res) => {
             include: [
                 {
                     model: Rooms,
-                    as: 'room',      // Make sure your association is defined: SupportTicket.belongsTo(Rooms, { as: 'room', foreignKey: 'roomId' })
+                    as: 'room',     
                     attributes: ['id', 'roomNumber', 'propertyId'],
                     include: [
                         {
                             model: Property,
-                            as: 'property', // Make sure Rooms.belongsTo(Property, { as: 'property', foreignKey: 'propertyId' })
+                            as: 'property',
                             attributes: ['id', 'name']
                         }
                     ]
@@ -166,7 +185,10 @@ exports.updateTicketStatus = async (req, res) => {
             if (status) ticket.status = status;
         }
         await ticket.save();
-
+        if (["in-progress", "resolved"].includes(ticket.status.toLowerCase())) {
+            const { createFromTicket } = require("../controllers/serviceHistoryController");
+            await createFromTicket(ticket);
+        }
         res.status(200).json({ message: "Ticket updated successfully", ticket });
     } catch (error) {
         console.log(error);
@@ -192,7 +214,7 @@ exports.getRooms = async (req, res) => {
                 {
                     model: Rooms,
                     as: 'room',
-                    attributes: ['id', 'roomNumber'], // only need roomNumber
+                    attributes: ['id','roomNumber','propertyId'], // only need roomNumber
                     include: [
                         {
                             model: Property,
@@ -206,14 +228,18 @@ exports.getRooms = async (req, res) => {
 
         // Extract unique room numbers
         const rooms = activeBookings
-            .map(b => b.room)
+            .map((b) => b.room)
             .filter(Boolean)
-            .map(r => ({ id: r.id, roomNumber: r.roomNumber, propertyName: r.property?.name || "", }));
-
+            .map((r) => ({
+                id: r.id,
+                roomNumber: r.roomNumber,
+                propertyId: r.propertyId,
+                propertyName: r.property?.name || '',
+            }));
         res.status(200).json({ rooms });
-    } catch (error) {
-        console.log(error);
-        res.status(500).json({ message: error.message });
-    }
+  } catch (error) {
+    console.error('Error fetching rooms:', error);
+    res.status(500).json({ message: error.message });
+  }
 };
     

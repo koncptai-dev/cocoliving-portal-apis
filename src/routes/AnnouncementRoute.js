@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const AnnouncementController = require('../controllers/AddAnnoucement');
+const AnnouncementController = require('../controllers/AddAnnouncement');
 const authMiddleware = require('../middleware/auth');
 const {validateAnnouncement}=require('../middleware/validation');
 const validate=require('../middleware/validateResult');
