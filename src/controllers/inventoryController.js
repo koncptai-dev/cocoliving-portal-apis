@@ -1,5 +1,7 @@
 const { generateInventoryCode } = require("../helpers/InventoryCode");
-const { Inventory, Property, Rooms } = require('../models');
+const Inventory = require('../models/inventory');
+const Property = require('../models/property');
+const Rooms = require('../models/rooms');
 exports.addInventory = async (req, res) => {
   try {
     const { propertyId, roomId, itemName, category, isCommonAsset } = req.body;
