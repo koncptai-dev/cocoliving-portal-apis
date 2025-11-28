@@ -283,3 +283,59 @@ exports.resetPassword = async (req, res) => {
         res.status(500).json({ message: 'Error resetting password', error: err.message });
     }
 }
+
+// CHECK EMAIL BEFORE OTP FLOW
+exports.checkEmail = async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({ message: "Email is required" });
+        }
+
+        let user = await User.findOne({ where: { email } });
+
+        // Admin detection
+        if (user && (user.role === 1 || user.role === 3 || user.userType === "admin")) {
+            return res.json({
+                exists: true,
+                role: "admin",
+                displayName: user.fullName || user.parentName || "Admin"
+            });
+        }
+
+        // Normal user login (email matches user.email)
+        if (user) {
+            return res.json({
+                exists: true,
+                role: "user",
+                loginAs: "user",
+                displayName: user.fullName,
+                childName: null
+            });
+        }
+
+        // Parent login (email matches user.parentEmail)
+        user = await User.findOne({ where: { parentEmail: email } });
+
+        if (user) {
+            return res.json({
+                exists: true,
+                role: "user",
+                loginAs: "parent",
+                displayName: user.parentName || user.fullName,
+                childName: user.fullName
+            });
+        }
+
+        // New user
+        return res.json({
+            exists: false,
+            role: null
+        });
+
+    } catch (error) {
+        console.error("checkEmail error:", error);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+};
