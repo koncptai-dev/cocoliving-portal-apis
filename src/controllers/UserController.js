@@ -10,6 +10,96 @@ const fs = require('fs');
 const path = require('path');
 const { mailsender } = require('../utils/emailService');
 
+//send phone OTP
+exports.sendPhoneOTP = async (req, res) => {
+    try {
+        const { phone } = req.body;
+        const userId = req.user.id;
+
+        if (!phone) return res.status(400).json({ message: "Phone is required" });
+        if (!/^\d{10}$/.test(phone)) {
+            return res.status(400).json({ message: "Invalid phone format" });
+        }
+        const user = await User.findByPk(userId);
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        await OTP.destroy({
+            where: { type: "phone", identifier: phone }
+        });
+
+        const otp = otpGenerator.generate(6, {
+            upperCaseAlphabets: false,
+            lowerCaseAlphabets: false,
+            specialChars: false,
+        })
+
+        const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+        await OTP.create({
+            identifier: phone,
+            type: "phone",
+            otp,
+            expiresAt,
+            attempts: 0,
+        });
+
+        // Send via SMS API (twilio / 2factor / msg91)
+        console.log("Phone OTP:", otp);
+
+        return res.status(200).json({
+            success: true,
+            message: "OTP sent to phone successfully"
+        });
+
+    } catch (error) {
+        return res.status(500).json({ message: error.message });
+    }
+}
+
+exports.verifyPhoneOTP = async (req, res) => {
+    try {
+        const { phone, otp } = req.body;
+        const userId = req.user.id;
+
+        if (!phone || !otp)
+            return res.status(400).json({ message: "Phone & OTP are required" });
+
+        const record = await OTP.findOne({
+            where: { identifier: phone, type: "phone" },
+            order: [["createdAt", "DESC"]]
+        });
+
+        if (!record) return res.status(400).json({ message: "OTP expired or not found" });
+
+        if (record.expiresAt < new Date()) {
+            await OTP.destroy({ where: { identifier: phone, type: 'phone' } });
+            return res.status(400).json({ message: "OTP expired" });
+        }
+
+        if (record.otp !== otp) {
+            await record.save();
+            return res.status(400).json({ message: "Incorrect OTP" });
+        }
+
+        // VERIFIED SUCCESSFULLY
+        await OTP.destroy({ where: { identifier: phone, type: 'phone' } });
+
+        await User.update(
+            { phone, isPhoneVerified: true },
+            { where: { id: userId } }
+        );
+
+        res.status(200).json({
+            success: true,
+            message: "Phone number verified successfully",
+        });
+
+    } catch (err) {
+        return res.status(500).json({ message: err.message });
+    }
+}
 
 exports.sendOTP = async (req, res) => {
     try {
@@ -32,7 +122,7 @@ exports.sendOTP = async (req, res) => {
             return res.status(401).json({ success: false, message: 'User is already registered' });
         }
 
-        await OTP.destroy({ where: { email } });
+        await OTP.destroy({ where: { identifier: email, type: 'email' } });
 
         const otp = otpGenerator.generate(6, {
             upperCaseAlphabets: false,
@@ -42,7 +132,7 @@ exports.sendOTP = async (req, res) => {
 
         const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
-        await OTP.create({ email, otp, expiresAt, attempts: 0 });
+        await OTP.create({ identifier: email, type: 'email', otp, expiresAt });
 
         await mailsender(
             email,
@@ -69,7 +159,7 @@ exports.registerUser = async (req, res) => {
         }
 
         const otpRecord = await OTP.findOne({
-            where: { email },
+            where: { identifier: email, type: 'email' },
             order: [['createdAt', 'DESC']]
         });
 
@@ -97,7 +187,7 @@ exports.registerUser = async (req, res) => {
         }
 
         // OTP verified,nd remove record
-        await OTP.destroy({ where: { email } });
+        await OTP.destroy({ where: { identifier: email, type: 'email' } });
 
         // Check if user already exists
         let userExist = await User.findOne({ where: { email } });
@@ -125,22 +215,22 @@ exports.registerUser = async (req, res) => {
         }
 
         // Create new user 
-            const newUser = await User.create({
-                fullName,
-                email,
-                phone,
-                userType,
-                gender,
-                dateOfBirth,
-                role: 2,
-                status: 1,
-                isEmailVerified: true,
-            });
-                    return res.status(201).json({
-                        success: true,
-                        message: "User registered & verified successfully",
-                        user: newUser
-                    });
+        const newUser = await User.create({
+            fullName,
+            email,
+            phone,
+            userType,
+            gender,
+            dateOfBirth,
+            role: 2,
+            status: 1,
+            isEmailVerified: true,
+        });
+        return res.status(201).json({
+            success: true,
+            message: "User registered & verified successfully",
+            user: newUser
+        });
 
     } catch (error) {
         return res.status(500).json({ message: "Server error", error: error.message });
@@ -157,6 +247,26 @@ exports.editUserProfile = async (req, res) => {
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
+
+        // Phone update check first
+        if (updates.phone !== undefined && updates.phone !== null) {
+
+            const newPhone = updates.phone;
+
+            if (user.isPhoneVerified) {
+                return res.status(400).json({
+                    message: "Phone number cannot be edited after verification"
+                });
+            }
+
+            if (newPhone !== user.phone) {
+                user.phone = newPhone.trim();
+                user.isPhoneVerified = false;
+            }
+
+            delete updates.phone; // Prevent double handling in loop
+        }
+
 
         for (const key in updates) {
             const value = updates[key];

@@ -117,7 +117,7 @@ exports.sendLoginOtp = async (req, res) => {
             return res.status(403).json({ message: "Please use the admin login page" });
         }
 
-        await OTP.destroy({ where: { email } });
+        await OTP.destroy({ where: { identifier: email, type: 'email' } });
 
         // generate OTP (6 digits)
         let otp = otpGenerator.generate(6, {
@@ -127,7 +127,7 @@ exports.sendLoginOtp = async (req, res) => {
         });
 
         await OTP.create({
-            email,
+            identifier: email, type: 'email',
             otp,
             expiresAt: new Date(Date.now() + 5 * 60 * 1000), // expires in 5 min
         });
@@ -164,7 +164,7 @@ exports.verifyLoginOtp = async (req, res) => {
 
         // fetch latest OTP entry
         const otpRecord = await OTP.findOne({
-            where: { email },
+            where: { identifier: email, type: 'email' },
             order: [["createdAt", "DESC"]],
         });
 
@@ -178,7 +178,7 @@ exports.verifyLoginOtp = async (req, res) => {
         }
 
         // delete OTP after successful login
-        await OTP.destroy({ where: { email } });
+        await OTP.destroy({ where: { identifier: email, type: 'email' } });
 
         // determine login type
         const loginAs = (email === user.email) ? "user" : "parent";
