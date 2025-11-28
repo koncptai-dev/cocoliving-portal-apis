@@ -9,72 +9,6 @@ require('dotenv').config();
 const jwt = require('jsonwebtoken');
 const { mailsender , sendResetEmail } = require('../utils/emailService'); // Utility for sending emails
 
-
-// exports.login = async (req, res) => {
-//     try {
-//         const { email, password } = req.body;
-
-//         //check user exists
-//         const account = await User.findOne({ where: { email } })
-//         if (!account) {
-//             return res.status(404).json({ message: 'Invalid Email or Password' });
-//         }
-
-//         //display msg if user account deleted 
-//         if (account.role === 2 && account.status === 0) {
-//             return res.status(400).json({ message: 'User Account does not exist or has been deleted' });
-//         }
-
-//         //check password match
-//         const isMatch = await bcrypt.compare(password, account.password);
-
-//         if (!isMatch) {
-//             return res.status(401).json({ message: 'Invalid Email or Password' });
-//         }
-
-//         // fetch permissions if admin
-//         let userPermissions = {};
-//         let userPages = [];
-//         let assignProperties=[];
-        
-//         if (account.role === 3 || account.userType === 'admin') {
-//             permRecord = await UserPermission.findOne({ where: { userId: account.id } });
-
-//             if (permRecord) {
-//                 userPermissions = permRecord.permissions || {};
-
-//                 const pageIds = (permRecord.pages || []).filter(Boolean);
-
-//                 if (pageIds.length) {
-//                     const pages = await Pages.findAll({
-//                         where: { id: pageIds },
-//                         attributes: ['page_name']
-//                     });
-//                     userPages = pages.map(p => p.page_name);
-//                 }
-//                 assignProperties = permRecord.properties || [];
-//             }
-//         }
-
-//         //generate token
-//         const token = jwt.sign({ id: account.id, email: account.email, role: account.role, userType: account.userType }, process.env.JWT_SECRET, { expiresIn: '1d' });
-
-//         // role-based message
-//         let roleLabel = 'User';
-//         if (account.role === 1) roleLabel = 'Superadmin';
-//         else if (account.role === 3) roleLabel = 'Admin';
-
-//         res.status(200).json({ success: true, message: `${roleLabel} Login Successful`, token, account, permissions: userPermissions, pages: userPages, properties: assignProperties });
-    
-//     } catch (err) {
-//         res.status(500).json({ message: 'Login error', error: err.message });
-
-//     }
-// }
-
-
-//change user password
-
 exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -85,8 +19,15 @@ exports.login = async (req, res) => {
             return res.status(404).json({ message: 'Invalid Email or Password' });
         }
 
+        // normal user can't login with password
+        if (account.role !== 1 && account.role !== 3) {
+            return res.status(403).json({
+                message: "Password login is allowed only for admins. Please use OTP login."
+            });
+        }
+
         // Display message if user account deleted/deactivated
-       if (account.status === 0) {
+        if (account.status === 0) {
             return res.status(403).json({ message: "Your account is deactivated. Please contact admin." });
         }
 
@@ -123,11 +64,11 @@ exports.login = async (req, res) => {
 
         // Generate JWT token
         const token = jwt.sign(
-            { id: account.id, email: account.email,  role: account.role, userType: account.userType },
+            { id: account.id, email: account.email, role: account.role, userType: account.userType },
             process.env.JWT_SECRET,
             { expiresIn: '1d' }
         );
-        
+
 
         // Role-based label
         let roleLabel = 'User';
@@ -142,10 +83,123 @@ exports.login = async (req, res) => {
             permissions: userPermissions,
             pages: userPages,
             properties: assignProperties
-        });        
+        });
 
     } catch (err) {
         res.status(500).json({ message: 'Login error', error: err.message });
+    }
+};
+
+// SEND OTP FOR LOGIN
+exports.sendLoginOtp = async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        await OTP.destroy({
+            where: { expiresAt: { [Op.lt]: new Date() } }
+        });
+
+        // user must exist
+        let user = await User.findOne({ where: { email } });
+
+        //if user not, found check for parent email
+        if (!user) {
+            user = await User.findOne({ where: { parentEmail: email } });
+        }
+
+        // no user found
+        if (!user) {
+            return res.status(404).json({ message: "Email not found" });
+        }
+
+        // prevent admins from OTP login
+        if (user.role === 1 || user.role === 3 || user.userType === "admin") {
+            return res.status(403).json({ message: "Please use the admin login page" });
+        }
+
+        await OTP.destroy({ where: { email } });
+
+        // generate OTP (6 digits)
+        let otp = otpGenerator.generate(6, {
+            upperCaseAlphabets: false,
+            lowerCaseAlphabets: false,
+            specialChars: false,
+        });
+
+        await OTP.create({
+            email,
+            otp,
+            expiresAt: new Date(Date.now() + 5 * 60 * 1000), // expires in 5 min
+        });
+
+        // send OTP email
+        await mailsender(
+            email,
+            "Your Login OTP",
+            `<p>Your OTP for login is <b>${otp}</b>. It expires in 5 minutes.</p>`
+        );
+
+        return res.status(200).json({ success: true, message: "OTP sent to your email" });
+    } catch (err) {
+        return res.status(500).json({ message: "Error sending OTP", error: err.message });
+    }
+};
+
+// VERIFY OTP FOR LOGIN
+exports.verifyLoginOtp = async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+
+        //find user by email
+        let user = await User.findOne({ where: { email } });
+
+        //if user not, found check for parent email
+        if (!user) {
+            user = await User.findOne({ where: { parentEmail: email } });
+        }
+
+        if (!user) {
+            return res.status(404).json({ message: "Email not found" });
+        }
+
+        // fetch latest OTP entry
+        const otpRecord = await OTP.findOne({
+            where: { email },
+            order: [["createdAt", "DESC"]],
+        });
+
+        if (!otpRecord || otpRecord.otp !== otp) {
+            return res.status(400).json({ message: "Invalid OTP" });
+        }
+
+        if (otpRecord.expiresAt < new Date()) {
+            await OTP.destroy({ where: { email } }); // delete expired otp
+            return res.status(400).json({ message: "OTP expired, please request a new one" });
+        }
+
+        // delete OTP after successful login
+        await OTP.destroy({ where: { email } });
+
+        // determine login type
+        const loginAs = (email === user.email) ? "user" : "parent";
+
+        // generate JWT (same as existing login)
+        const token = jwt.sign(
+            { id: user.id, email: email, role: user.role, userType: user.userType, loginAs },
+            process.env.JWT_SECRET,
+            { expiresIn: "1d" }
+        );
+
+        // return same response as password login
+        return res.status(200).json({
+            success: true,
+            message: "Login successful",
+            token,
+            account: user, loginAs
+        });
+
+    } catch (err) {
+        return res.status(500).json({ message: "Error verifying OTP", error: err.message });
     }
 };
 
@@ -230,92 +284,58 @@ exports.resetPassword = async (req, res) => {
     }
 }
 
-// send otp for login
-exports.sendLoginOtp = async (req, res) => {
+// CHECK EMAIL BEFORE OTP FLOW
+exports.checkEmail = async (req, res) => {
     try {
         const { email } = req.body;
 
-        // user must exist
-        const user = await User.findOne({ where: { email } });
-        if (!user) {
-            return res.status(404).json({ message: "Email not found" });
+        if (!email) {
+            return res.status(400).json({ message: "Email is required" });
         }
 
-        // prevent admins from OTP login
-        if (user.role === 1 || user.role === 3 || user.userType === "admin") {
-            return res.status(403).json({ message: "Please use the admin login page" });
+        let user = await User.findOne({ where: { email } });
+
+        // Admin detection
+        if (user && (user.role === 1 || user.role === 3 || user.userType === "admin")) {
+            return res.json({
+                exists: true,
+                role: "admin",
+                displayName: user.fullName || user.parentName || "Admin"
+            });
         }
 
-        // generate OTP (6 digits)
-        let otp = otpGenerator.generate(6, {
-            upperCaseAlphabets: false,
-            lowerCaseAlphabets: false,
-            specialChars: false,
+        // Normal user login (email matches user.email)
+        if (user) {
+            return res.json({
+                exists: true,
+                role: "user",
+                loginAs: "user",
+                displayName: user.fullName,
+                childName: null
+            });
+        }
+
+        // Parent login (email matches user.parentEmail)
+        user = await User.findOne({ where: { parentEmail: email } });
+
+        if (user) {
+            return res.json({
+                exists: true,
+                role: "user",
+                loginAs: "parent",
+                displayName: user.parentName || user.fullName,
+                childName: user.fullName
+            });
+        }
+
+        // New user
+        return res.json({
+            exists: false,
+            role: null
         });
 
-        await OTP.create({
-            email,
-            otp,
-            expiresAt: new Date(Date.now() + 5 * 60 * 1000), // expires in 5 min
-        });
-
-        // send OTP email
-        await mailsender(
-            email,
-            "Your Login OTP",
-            `<p>Your OTP for login is <b>${otp}</b>. It expires in 5 minutes.</p>`
-        );
-
-        return res.status(200).json({ success: true, message: "OTP sent to your email" });
-    } catch (err) {
-        return res.status(500).json({ message: "Error sending OTP", error: err.message });
-    }
-};
-
-
-// verify otp for login
-exports.verifyLoginOtp = async (req, res) => {
-    try {
-        const { email, otp } = req.body;
-
-        const user = await User.findOne({ where: { email } });
-        if (!user) {
-            return res.status(404).json({ message: "Email not found" });
-        }
-
-        // fetch latest OTP entry
-        const otpRecord = await OTP.findOne({
-            where: { email },
-            order: [["createdAt", "DESC"]],
-        });
-
-        if (!otpRecord || otpRecord.otp !== otp) {
-            return res.status(400).json({ message: "Invalid OTP" });
-        }
-
-        if (otpRecord.expiresAt < new Date()) {
-            return res.status(400).json({ message: "OTP expired, please request a new one" });
-        }
-
-        // delete OTP after successful login
-        await OTP.destroy({ where: { email } });
-
-        // generate JWT (same as existing login)
-        const token = jwt.sign(
-            { id: user.id, email: user.email, role: user.role, userType: user.userType },
-            process.env.JWT_SECRET,
-            { expiresIn: "1d" }
-        );
-
-        // return same response as password login
-        return res.status(200).json({
-            success: true,
-            message: "Login successful",
-            token,
-            account: user,
-        });
-
-    } catch (err) {
-        return res.status(500).json({ message: "Error verifying OTP", error: err.message });
+    } catch (error) {
+        console.error("checkEmail error:", error);
+        return res.status(500).json({ message: "Internal server error" });
     }
 };

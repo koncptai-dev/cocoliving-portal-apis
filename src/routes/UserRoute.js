@@ -10,10 +10,8 @@ router.post('/register',validateSignup,validate,UserController.registerUser);
 router.put('/update-profile/:id',authenticateToken, upload.single('profileImage'),editUserProfileValidator,validate,UserController.editUserProfile);
 router.delete('/delete-account/:id', authenticateToken, UserController.deleteAccount);
 router.get('/getUser/:id', authenticateToken, UserController.getUserById);
-router.post('/send-otp',UserController.sendOTP)
+router.post('/send-otp',UserController.sendOTP);
 
-// router.post('/login', UserController.loginUser);
-// router.post('/forgot-password', UserController.sendResetCode);
-// router.post('/reset-password', UserController.resetPassword);
+
 
 module.exports = router;
