@@ -22,4 +22,9 @@ Thumbs.db
 node_modules
 .env
 
-src/uploads/csv/*
+src/uploads/csv
+src/uploads/profilePicture
+src/uploads/propertyImages
+src/uploads/roomImages
+src/uploads/ticketImages
+src/uploads/ticketVideos
