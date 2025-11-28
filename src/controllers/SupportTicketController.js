@@ -131,12 +131,12 @@ exports.getAllTickets = async (req, res) => {
             include: [
                 {
                     model: Rooms,
-                    as: 'room',      // Make sure your association is defined: SupportTicket.belongsTo(Rooms, { as: 'room', foreignKey: 'roomId' })
+                    as: 'room',     
                     attributes: ['id', 'roomNumber', 'propertyId'],
                     include: [
                         {
                             model: Property,
-                            as: 'property', // Make sure Rooms.belongsTo(Property, { as: 'property', foreignKey: 'propertyId' })
+                            as: 'property',
                             attributes: ['id', 'name']
                         }
                     ]
@@ -214,7 +214,7 @@ exports.getRooms = async (req, res) => {
                 {
                     model: Rooms,
                     as: 'room',
-                    attributes: ['roomNumber','propertyId'], // only need roomNumber
+                    attributes: ['id','roomNumber','propertyId'], // only need roomNumber
                     include: [
                         {
                             model: Property,
