@@ -12,6 +12,10 @@ router.delete('/delete-account/:id', authenticateToken, UserController.deleteAcc
 router.get('/getUser/:id', authenticateToken, UserController.getUserById);
 router.post('/send-otp',UserController.sendOTP);
 
+// Send OTP to phone
+router.post('/send-phone-otp', authenticateToken, UserController.sendPhoneOTP);
 
+// Verify OTP from phone
+router.post('/verify-phone-otp', authenticateToken, UserController.verifyPhoneOTP);
 
 module.exports = router;
