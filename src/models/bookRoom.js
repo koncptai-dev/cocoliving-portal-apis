@@ -73,7 +73,7 @@ const Booking = sequelize.define(
     totalAmount: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      comment: 'Total amount in Rupees (monthlyRent * duration + security deposit)',
+      comment: 'Total amount in Rupees (monthlyRent * duration + security deposit i.e. monthRent*2)',
     },
 
     remainingAmount: {
@@ -84,7 +84,8 @@ const Booking = sequelize.define(
 
     bookingType: {
       type: DataTypes.ENUM('PREBOOK', 'BOOK'),
-      allowNull: true,
+      allowNull: false,
+      defaultValue:'BOOK',
     },
 
     paymentStatus: {
@@ -93,7 +94,6 @@ const Booking = sequelize.define(
       defaultValue: 'INITIATED',
     },
 
-    // NEW: meta - store the original booking metadata for admin/audit (from pendingBookingData)
     meta: {
       type: DataTypes.JSON,
       allowNull: true,

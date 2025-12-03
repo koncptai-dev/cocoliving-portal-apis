@@ -1,4 +1,3 @@
-// src/models/paymentTransaction.js
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
@@ -12,7 +11,7 @@ const PaymentTransaction = sequelize.define(
     },
     bookingId: {
       type: DataTypes.BIGINT,
-      allowNull: true, // booking created only after payment success in pay_then_book
+      allowNull: true,
     },
     userId: {
       type: DataTypes.INTEGER,
@@ -36,7 +35,6 @@ const PaymentTransaction = sequelize.define(
       type: DataTypes.ENUM('PREBOOK', 'FULL', 'REMAINING'),
       allowNull: false,
     },
-    // Status now includes EXPIRED for server-expired pending txs
     status: {
       type: DataTypes.ENUM('PENDING', 'SUCCESS', 'FAILED', 'EXPIRED'),
       allowNull: false,
@@ -48,13 +46,12 @@ const PaymentTransaction = sequelize.define(
     },
     pendingBookingData: {
       type: DataTypes.JSON,
-      allowNull: true, // store metadata required to create booking after success
+      allowNull: true, 
     },
     webhookProcessedAt: {
       type: DataTypes.DATE,
       allowNull: true,
     },
-    // redirectUrl may be long, keep as TEXT
     redirectUrl: {
       type: DataTypes.TEXT,
       allowNull: true,

@@ -1,9 +1,3 @@
-// middleware/rawBody.js
-/**
- * rawBody middleware
- * Must run before bodyParser.json() for webhook route in app.js
- * Captures raw buffer and string on req.rawBody and req.rawBodyString
- */
 module.exports = function rawBody(req, res, next) {
   const chunks = [];
   req.on('data', (chunk) => {

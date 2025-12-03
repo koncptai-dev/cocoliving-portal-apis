@@ -1,7 +1,6 @@
 const crypto = require('crypto');
 const PaymentTransaction = require('../models/paymentTransaction');
 const Booking = require('../models/bookRoom');
-const User = require('../models/user');
 const { getOrderStatus } = require('../utils/phonepe/phonepeApi');
 const phonepeConfig = require('../utils/phonepe/phonepeConfig');
 const sequelize = require('../config/database');
@@ -83,8 +82,6 @@ exports.checkOrderStatus = async (req, res) => {
 
 exports.phonePeWebhook = async (req, res) => {
   try {
-    console.info('[WEBHOOK] Received');
-
     let authHeader = (req.headers['authorization'] || req.headers['Authorization'] || '').trim();
     if (!authHeader) {
       console.warn('[WEBHOOK] Missing Authorization header');
@@ -153,20 +150,17 @@ exports.phonePeWebhook = async (req, res) => {
       await sequelize.transaction(async (t) => {
         await tx.reload({ transaction: t, lock: t.LOCK.UPDATE });
 
-        // If already SUCCESS and processed -> no-op
         if (tx.status === 'SUCCESS' && (tx.webhookProcessedAt || (tx.rawResponse && tx.rawResponse.webhookProcessed))) {
           console.info('[WEBHOOK] Transaction already SUCCESS and processed; no-op', tx.merchantOrderId);
           return;
         }
 
-        // mark success
         tx.status = 'SUCCESS';
         tx.phonepeOrderId = payload.orderId || (payload.data && payload.data.orderId) || tx.phonepeOrderId;
         tx.rawResponse = Object.assign({}, tx.rawResponse || {}, { webhookPayload: payload, webhookProcessed: true });
         tx.webhookProcessedAt = new Date();
         await tx.save({ transaction: t });
 
-        // If booking already exists for tx, just recompute totals
         if (tx.bookingId) {
           const booking = await Booking.findByPk(tx.bookingId, { transaction: t, lock: t.LOCK.UPDATE });
           if (booking) {
@@ -175,17 +169,14 @@ exports.phonePeWebhook = async (req, res) => {
           return;
         }
 
-        // Otherwise, try to create booking using pendingBookingData (pay_then_book)
         if (tx.pendingBookingData) {
           const pb = tx.pendingBookingData;
 
-          // Normalize/check dates and compute checkOutDate if missing
           let checkIn = pb.checkInDate ? moment(pb.checkInDate, ['YYYY-MM-DD', 'DD-MM-YYYY']).format('YYYY-MM-DD') : null;
           let checkOut = pb.checkOutDate ? moment(pb.checkOutDate, ['YYYY-MM-DD', 'DD-MM-YYYY']).format('YYYY-MM-DD') : null;
           if (!checkIn) checkIn = moment().format('YYYY-MM-DD');
           if (!checkOut) checkOut = moment(checkIn).add(Number(pb.duration || 0), 'months').format('YYYY-MM-DD');
 
-          // Re-check overlap using same rules as createBooking endpoint: if overlapping booking exists with status in (approved, active, pending), do NOT create booking.
           const overlappingBooking = await Booking.findOne({
             where: {
               userId: tx.userId,
@@ -206,38 +197,35 @@ exports.phonePeWebhook = async (req, res) => {
           });
 
           if (overlappingBooking) {
-            // do NOT create booking, keep transaction SUCCESS but bookingId null
             tx.rawResponse = Object.assign({}, tx.rawResponse || {}, { bookingSkippedDueToOverlap: true, overlapBookingId: overlappingBooking.id });
             await tx.save({ transaction: t });
             console.info('[WEBHOOK] Booking creation skipped due to overlap', { merchantOrderId: tx.merchantOrderId, overlapBookingId: overlappingBooking.id });
             return;
           }
 
-          // Otherwise create the booking
           const bookingPayload = {
             propertyId: pb.propertyId,
             userId: tx.userId,
             rateCardId: pb.rateCardId,
-            roomType: pb.roomType || 'Single',
-            roomId: pb.roomId || null,
-            assignedItems: pb.assignedItems || [],
-            checkInDate: checkIn,
-            checkOutDate: checkOut,
-            duration: pb.duration || 0,
-            monthlyRent: pb.monthlyRent || 0,
-            totalAmount: pb.totalAmount || Math.round((pb.monthlyRent || 0) * (pb.duration || 0) + (pb.securityDeposit || 0)),
-            remainingAmount: pb.totalAmount || Math.round((pb.monthlyRent || 0) * (pb.duration || 0) + (pb.securityDeposit || 0)),
-            bookingType: (pb.bookingType && pb.bookingType.toUpperCase && pb.bookingType.toUpperCase() === 'PREBOOK') ? 'PREBOOK' : 'BOOK',
+            roomType: pb.roomType,
+            roomId: null,
+            assignedItems: [],
+            checkInDate: pb.checkInDate,
+            checkOutDate: pb.checkOutDate,
+            duration: pb.duration,
+            monthlyRent: pb.monthlyRent,
+            totalAmount: pb.totalAmount,
+            remainingAmount: pb.totalAmount,
+            bookingType: pb.bookingType,
             paymentStatus: 'INITIATED',
             status: 'pending',
-            meta: pb
+            meta: pb,
           };
 
           const createdBooking = await Booking.create(bookingPayload, { transaction: t });
           tx.bookingId = createdBooking.id;
           await tx.save({ transaction: t });
 
-          // recompute totals (should set remainingAmount and paymentStatus properly)
           await recomputeBookingTotals(createdBooking, t);
 
           console.info('[WEBHOOK] Booking created from webhook', { bookingId: createdBooking.id, merchantOrderId: tx.merchantOrderId });
@@ -247,16 +235,12 @@ exports.phonePeWebhook = async (req, res) => {
       return res.status(200).json({ message: 'Webhook processed (SUCCESS)' });
     }
 
-    // Handle checkout.order.failed
     if (evtLower.includes('checkout.order.failed') || evtLower === 'checkout.order.failed') {
-      // Prevent downgrading SUCCESS -> FAILED (checked earlier)
-      // Update tx to FAILED only if not already SUCCESS
       if (tx.status === 'SUCCESS') {
         console.info('[WEBHOOK] Ignored FAILED webhook because tx already SUCCESS', { merchantOrderId: tx.merchantOrderId, txId: tx.id });
         return res.status(200).json({ message: 'Webhook ignored (transaction already SUCCESS)' });
       }
 
-      // otherwise mark FAILED; allow later SUCCESS to upgrade.
       tx.status = 'FAILED';
       tx.rawResponse = Object.assign({}, tx.rawResponse || {}, { webhookPayload: payload, webhookProcessed: true });
       tx.webhookProcessedAt = new Date();
@@ -265,7 +249,6 @@ exports.phonePeWebhook = async (req, res) => {
       return res.status(200).json({ message: 'Webhook processed (FAILED)' });
     }
 
-    // Ignore refund events
     if (
       evtLower.includes('pg.refund.completed') ||
       evtLower.includes('pg.refund.failed')
