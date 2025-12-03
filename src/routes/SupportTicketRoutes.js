@@ -13,4 +13,6 @@ router.get("/get-all-tickets", authMiddleware, SupportTicketController.getAllTic
 router.put("/update-ticket-status/:id", authMiddleware, SupportTicketController.updateTicketStatus);
 router.get('/getroom', authMiddleware,SupportTicketController.getRooms);
 
+router.get("/ticket-details/:id", authMiddleware, SupportTicketController.getTicketDetails);
+
 module.exports = router;
