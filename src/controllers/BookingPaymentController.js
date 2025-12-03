@@ -75,13 +75,13 @@ exports.initiate = async (req, res) => {
     const { bookingType, metadata = {} } = req.body;
     if (!bookingType || !metadata) return res.status(400).json({ success: false, message: 'bookingType and metadata are required' });
 
-    const rateCard = await PropertyRateCard.findByPk(metadata.rateCardId || rateCardId);
+    const rateCard = await PropertyRateCard.findByPk(metadata.rateCardId);
     if (!rateCard) {
       return res.status(400).json({ success: false, message: 'Invalid rateCardId' });
     }
 
-    const normalizedCheckIn = moment(checkInDate, ['YYYY-MM-DD','DD-MM-YYYY']).format('YYYY-MM-DD');
-    const normalizedCheckOut = moment(normalizedCheckIn).add(Number(duration || 0), 'months').format('YYYY-MM-DD');
+    const normalizedCheckIn = moment(metadata.checkInDate, ['YYYY-MM-DD','DD-MM-YYYY']).format('YYYY-MM-DD');
+    const normalizedCheckOut = moment(normalizedCheckIn).add(Number(metadata.duration || 0), 'months').format('YYYY-MM-DD');
 
     const rebuiltMeta = {
       bookingType: bookingType.toUpperCase() === 'PREBOOK' ? 'PREBOOK' : 'BOOK',
