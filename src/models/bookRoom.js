@@ -1,11 +1,11 @@
-const { DataTypes } = require("sequelize");
-const sequelize = require("../config/database");
-const User = require("./user");
-const PropertyRateCard = require("./propertyRateCard");
-const Room = require("./rooms");
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
+const User = require('./user');
+const PropertyRateCard = require('./propertyRateCard');
+const Room = require('./rooms');
 
 const Booking = sequelize.define(
-  "Booking",
+  'Booking',
   {
     id: {
       type: DataTypes.INTEGER,
@@ -19,13 +19,13 @@ const Booking = sequelize.define(
     userId: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      references: { model: User, key: "id" },
+      references: { model: User, key: 'id' },
     },
 
     rateCardId: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      references: { model: PropertyRateCard, key: "id" }, 
+      references: { model: PropertyRateCard, key: 'id' }, 
     },
 
     roomType: {
@@ -35,11 +35,11 @@ const Booking = sequelize.define(
 
     roomId: {
       type: DataTypes.INTEGER,
-      allowNull: true,     //  Admin  assign later
-      references: { model: Room, key: "id" },
+      allowNull: true,
+      references: { model: Room, key: 'id' },
     },
     assignedItems: {
-      type: DataTypes.JSON,   // stores array of item IDs: [1,5,7]
+      type: DataTypes.JSON,
       allowNull: true,
       defaultValue: [],
     },
@@ -67,12 +67,41 @@ const Booking = sequelize.define(
     status: {
       type: DataTypes.STRING,
       allowNull: false,
-      defaultValue: "pending",  
+      defaultValue: 'pending',
+    },
+
+    totalAmount: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: 'Total amount in Rupees (monthlyRent * duration + security deposit i.e. monthRent*2)',
+    },
+
+    remainingAmount: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: 'Remaining amount in Rupees',
+    },
+
+    bookingType: {
+      type: DataTypes.ENUM('PREBOOK', 'BOOK'),
+      allowNull: false,
+      defaultValue:'BOOK',
+    },
+
+    paymentStatus: {
+      type: DataTypes.ENUM('INITIATED', 'PARTIAL', 'COMPLETED'),
+      allowNull: false,
+      defaultValue: 'INITIATED',
+    },
+
+    meta: {
+      type: DataTypes.JSON,
+      allowNull: true,
     },
   },
 
   {
-    tableName: "bookings",
+    tableName: 'bookings',
   }
 );
 

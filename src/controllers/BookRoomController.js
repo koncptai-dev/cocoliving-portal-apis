@@ -1,4 +1,3 @@
-const sequelize = require('../config/database');
 const Booking = require('../models/bookRoom');
 const Rooms = require('../models/rooms');
 const User = require('../models/user');
@@ -11,12 +10,14 @@ const e = require('cors');
 
 
 //create booking for user
+// ⚠️⚠️this logic is moved to BookingPayment initiate then booking is created at phonepewebhook arrival
+// so previously what was /api/book-room/add is now a flow of /api/booking-payment/initiate -> /api/payments-webhook
+// this function will be deprecated
 exports.createBooking = async (req, res) => {
   try {
 
     const { rateCardId, checkInDate, duration } = req.body;
     const userId = req.user.id;
-    //fetch  ratecard
     const rateCard = await PropertyRateCard.findByPk(rateCardId);
     if (!rateCard) {
       return res.status(404).json({ message: "Rate card not found" });
@@ -32,7 +33,7 @@ exports.createBooking = async (req, res) => {
 
     const overlappingBooking = await Booking.findOne({
       where: {
-        userId, status: ["approved", "active", "pending"], [Op.or]: [
+        userId, status: { [Op.in]: ["approved", "active", "pending"] }, [Op.or]: [
           {
             checkOutDate: { [Op.is]: null }, // open-ended booking
             checkInDate: { [Op.lte]: checkOutDateFormatted || checkInDateFormatted }
@@ -50,7 +51,8 @@ exports.createBooking = async (req, res) => {
         existingBooking: overlappingBooking,
       });
     }
-
+    const securityDeposit = rateCard.rent*2;
+    const totalAmount = rateCard.rent*duration+securityDeposit;
     const booking = await Booking.create({
       userId,
       rateCardId,
@@ -61,6 +63,8 @@ exports.createBooking = async (req, res) => {
       duration,
       monthlyRent: rateCard.rent,
       status: "pending",
+      totalAmount:totalAmount,
+      remainingAmount:totalAmount,
     });
 
     
