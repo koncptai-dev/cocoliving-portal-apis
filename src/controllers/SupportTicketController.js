@@ -4,6 +4,7 @@ const Rooms = require('../models/rooms');
 const User = require('../models/user');
 const Booking = require('../models/bookRoom');
 const Property = require('../models/property');
+const Inventory = require('../models/inventory');
 const { Op } = require('sequelize');
 const { generateSupportTicketCode } = require('../helpers/SupportTicketCode');
 
@@ -74,6 +75,7 @@ exports.createTicket = async (req, res) => {
             supportCode,
             roomId: room.id,
             roomNumber: room.roomNumber,
+            propertyId: room.propertyId,
             date,
             issue,
             description,
@@ -242,4 +244,69 @@ exports.getRooms = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-    
+exports.getTicketDetails = async (req, res) => {
+  try {
+    const ticketId = req.params.id;
+    const loggedInUser = req.user;
+
+    const ticket = await SupportTicket.findOne({
+      where: { id: ticketId },
+      include: [
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "fullName", "email", "phone"],
+        },
+        {
+          model: Rooms,
+          as: "room",
+          attributes: ["id", "roomNumber", "propertyId"],
+          include: [
+            {
+              model: Property,
+              as: "property",
+              attributes: ["id", "name", "address"],
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!ticket) {
+      return res.status(404).json({ message: "Ticket not found" });
+    }
+
+    if (loggedInUser.role === "user") {
+      if (ticket.userId !== loggedInUser.id) {
+        return res.status(403).json({ message: "You are not allowed to view this ticket" });
+      }
+    }
+    let assignedAdmin = null;
+    if (ticket.assignedTo) {
+      assignedAdmin = await User.findOne({
+        where: { id: ticket.assignedTo },
+        attributes: ["id", "fullName", "email", "role"],
+      });
+    }
+
+    let inventory = null;
+    if (ticket.inventoryId) {
+      inventory = await Inventory.findOne({
+        where: { id: ticket.inventoryId },
+        attributes: ["id", "inventoryCode", "itemName", "category", "status"],
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Ticket details fetched",
+      ticket,
+      assignedAdmin,
+      inventory,
+    });
+
+  } catch (error) {
+    console.log("getTicketDetails error:", error);
+    return res.status(500).json({ message: error.message });
+  }
+};

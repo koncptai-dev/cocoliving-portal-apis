@@ -11,82 +11,88 @@ const e = require('cors');
 
 
 //create booking for user
-exports.createBooking = async (req, res) => {
-  try {
+// this logic is moved to BookingPayment initiate then booking is created at phonepewebhook arrival
+// so previously what was /api/book-room/add is now a flow of /api/booking-payment/initiate -> /api/payments-webhook
 
-    const { rateCardId, checkInDate, duration } = req.body;
-    const userId = req.user.id;
-    //fetch  ratecard
-    const rateCard = await PropertyRateCard.findByPk(rateCardId);
-    if (!rateCard) {
-      return res.status(404).json({ message: "Rate card not found" });
-    }
+// exports.createBooking = async (req, res) => {
+//   try {
+
+//     const { rateCardId, checkInDate, duration } = req.body;
+//     const userId = req.user.id;
+//     //fetch  ratecard
+//     const rateCard = await PropertyRateCard.findByPk(rateCardId);
+//     if (!rateCard) {
+//       return res.status(404).json({ message: "Rate card not found" });
+//     }
     
-    if (!duration || duration <= 0) {
-      return res.status(400).json({ message: "Please provide a valid duration in months" });
-    }
+//     if (!duration || duration <= 0) {
+//       return res.status(400).json({ message: "Please provide a valid duration in months" });
+//     }
     
-    let checkInDateFormatted = moment(checkInDate, ["DD-MM-YYYY", "YYYY-MM-DD"]).format("YYYY-MM-DD");
-    const checkOutDateFormatted = moment(checkInDateFormatted).add(duration, "months").format("YYYY-MM-DD");
+//     let checkInDateFormatted = moment(checkInDate, ["DD-MM-YYYY", "YYYY-MM-DD"]).format("YYYY-MM-DD");
+//     const checkOutDateFormatted = moment(checkInDateFormatted).add(duration, "months").format("YYYY-MM-DD");
 
 
-    const overlappingBooking = await Booking.findOne({
-      where: {
-        userId, status: ["approved", "active", "pending"], [Op.or]: [
-          {
-            checkOutDate: { [Op.is]: null }, // open-ended booking
-            checkInDate: { [Op.lte]: checkOutDateFormatted || checkInDateFormatted }
-          },
-          {
-            checkOutDate: { [Op.gte]: checkInDateFormatted },
-            checkInDate: { [Op.lte]: checkOutDateFormatted || checkInDateFormatted }
-          }
-        ]
-      }
-    })
-    if (overlappingBooking) {
-      return res.status(400).json({
-        message: "You already have an active booking during this period",
-        existingBooking: overlappingBooking,
-      });
-    }
-
-    const booking = await Booking.create({
-      userId,
-      rateCardId,
-      roomType: rateCard.roomType,
-      propertyId: rateCard.propertyId,
-      checkInDate: checkInDateFormatted,
-      checkOutDate: checkOutDateFormatted,
-      duration,
-      monthlyRent: rateCard.rent,
-      status: "pending",
-    });
+//     const overlappingBooking = await Booking.findOne({
+//       where: {
+//         userId, status: ["approved", "active", "pending"], [Op.or]: [
+//           {
+//             checkOutDate: { [Op.is]: null }, // open-ended booking
+//             checkInDate: { [Op.lte]: checkOutDateFormatted || checkInDateFormatted }
+//           },
+//           {
+//             checkOutDate: { [Op.gte]: checkInDateFormatted },
+//             checkInDate: { [Op.lte]: checkOutDateFormatted || checkInDateFormatted }
+//           }
+//         ]
+//       }
+//     })
+//     if (overlappingBooking) {
+//       return res.status(400).json({
+//         message: "You already have an active booking during this period",
+//         existingBooking: overlappingBooking,
+//       });
+//     }
+//     const securityDeposit = rateCard.rent*2;
+//     const totalAmount = rateCard.rent*duration+securityDeposit;
+//     const booking = await Booking.create({
+//       userId,
+//       rateCardId,
+//       roomType: rateCard.roomType,
+//       propertyId: rateCard.propertyId,
+//       checkInDate: checkInDateFormatted,
+//       checkOutDate: checkOutDateFormatted,
+//       duration,
+//       monthlyRent: rateCard.rent,
+//       status: "pending",
+//       totalAmount:totalAmount,
+//       remainingAmount:totalAmount,
+//     });
 
     
-    //for log activity getting user details
-    const user = await User.findByPk(req.user.id, { attributes: ['fullName'] });
-    if (!user) { return res.status(404).json({ message: "User not found" }); }
+//     //for log activity getting user details
+//     const user = await User.findByPk(req.user.id, { attributes: ['fullName'] });
+//     if (!user) { return res.status(404).json({ message: "User not found" }); }
 
-    //log activity after successful booking creation
-    await logActivity({
-      userId: req.user.id,
-      name: user.fullName,
-      role: req.user.role,
-      action: "New Booking",
-      entityType: "Booking",
-      entityId: booking.id,
-      details: { property: rateCard.propertyId,
-        roomType: rateCard.roomType,
-        duration },
-    });
+//     //log activity after successful booking creation
+//     await logActivity({
+//       userId: req.user.id,
+//       name: user.fullName,
+//       role: req.user.role,
+//       action: "New Booking",
+//       entityType: "Booking",
+//       entityId: booking.id,
+//       details: { property: rateCard.propertyId,
+//         roomType: rateCard.roomType,
+//         duration },
+//     });
 
-    res.status(201).json({ message: "Booking successful", booking });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error", error: error.message });
-  }
-}
+//     res.status(201).json({ message: "Booking successful", booking });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: "Server error", error: error.message });
+//   }
+// }
 
 exports.getUserBookings = async (req, res) => {
   try {
