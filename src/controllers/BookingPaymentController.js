@@ -90,7 +90,7 @@ exports.initiate = async (req, res) => {
       roomType: rateCard.roomType,
       checkInDate: normalizedCheckIn,
       checkOutDate: normalizedCheckOut,
-      duration: Number(duration),
+      duration: Number(metadata.duration),
       monthlyRent: Number(rateCard.rent),
       securityDeposit: Math.round(Number(rateCard.rent) * 2),
     };
