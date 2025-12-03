@@ -1,7 +1,5 @@
-// src/controllers/BookingPaymentController.js
 const { Op } = require('sequelize');
 const moment = require('moment');
-const sequelize = require('../config/database');
 
 const { createPayment } = require('../utils/phonepe/phonepeApi');
 const phonepeConfig = require('../utils/phonepe/phonepeConfig');
@@ -9,7 +7,6 @@ const phonepeConfig = require('../utils/phonepe/phonepeConfig');
 const Booking = require('../models/bookRoom');
 const PaymentTransaction = require('../models/paymentTransaction');
 const PropertyRateCard = require('../models/propertyRateCard');
-const User = require('../models/user');
 
 function canonicalizeMetadata(metadata){
   const keys = [
@@ -31,55 +28,10 @@ function canonicalizeMetadata(metadata){
   return JSON.stringify(out);
 }
 
-/**
- * Rebuild metadata from raw incoming object:
- * - normalize date formats
- * - ensure number fields are numbers
- * - compute checkOutDate if not provided
- */
-function buildRebuiltMeta(rawMeta, bookingType) {
-  const m = Object.assign({}, rawMeta);
-  // normalize numeric fields
-  if (m.duration !== undefined) m.duration = Number(m.duration || 0);
-  if (m.monthlyRent !== undefined) m.monthlyRent = Number(m.monthlyRent || 0);
-  if (m.rateCardId !== undefined) m.rateCardId = Number(m.rateCardId);
-  if (m.propertyId !== undefined) m.propertyId = Number(m.propertyId);
-  if (m.securityDeposit !== undefined) m.securityDeposit = Number(m.securityDeposit);
-
-  // normalize dates
-  if (m.checkInDate) {
-    m.checkInDate = moment(m.checkInDate, ['YYYY-MM-DD', 'DD-MM-YYYY']).format('YYYY-MM-DD');
-  }
-  if (m.checkOutDate) {
-    m.checkOutDate = moment(m.checkOutDate, ['YYYY-MM-DD', 'DD-MM-YYYY']).format('YYYY-MM-DD');
-  } else {
-    // compute from duration if available
-    if (m.checkInDate && Number.isFinite(m.duration) && m.duration > 0) {
-      m.checkOutDate = moment(m.checkInDate).add(Number(m.duration), 'months').format('YYYY-MM-DD');
-    } else {
-      m.checkOutDate = m.checkInDate || null;
-    }
-  }
-
-  // bookingType normalized
-  m.bookingType = bookingType && String(bookingType).toUpperCase() === 'PREBOOK' ? 'PREBOOK' : 'BOOK';
-
-  return m;
-}
-
 function paiseFromRupees(rupees) {
   return Math.round(Number(rupees || 0) * 100);
 }
 
-function computeTotalAmountRupees(meta) {
-  if (meta.totalAmount && Number.isFinite(Number(meta.totalAmount))) {
-    return Math.round(Number(meta.totalAmount));
-  }
-  const monthly = Number(meta.monthlyRent || 0);
-  const dur = Number(meta.duration || 0);
-  const sec = Number(meta.securityDeposit || 0);
-  return Math.round(monthly * dur + sec);
-}
 
 function createMerchantOrderId({ userId, bookingType }) {
   const typePart = (bookingType || 'full').toString().toLowerCase();
@@ -89,10 +41,6 @@ function createMerchantOrderId({ userId, bookingType }) {
   return base;
 }
 
-/**
- * Overlap check using same rules as original Booking.create
- * Return overlapping booking or null
- */
 async function checkOverlappingBooking(userId, checkInDate, checkOutDate) {
   const checkIn = moment(checkInDate, ['YYYY-MM-DD', 'DD-MM-YYYY']).format('YYYY-MM-DD');
   const checkOut = moment(checkOutDate, ['YYYY-MM-DD', 'DD-MM-YYYY']).format('YYYY-MM-DD');
@@ -117,17 +65,8 @@ async function checkOverlappingBooking(userId, checkInDate, checkOutDate) {
   return overlappingBooking;
 }
 
-/**
- * Initiate payment endpoint
- * - validates metadata
- * - runs overlap check (reject if overlapping approved/active/pending booking exists)
- * - auto-expire previous PENDING duplicates by marking them EXPIRED (uses EXPIRED enum)
- * - creates new PENDING PaymentTransaction with pendingBookingData
- * - calls PhonePe create and stores phonepe response in rawResponse and redirectUrl
- */
 exports.initiate = async (req, res) => {
   try {
-    // userId from JWT if present; if not present, accept body.userId (legacy)
     const authenticatedUserId = req.user && req.user.id;
     const bodyUserId = req.body.userId;
     const userId = authenticatedUserId || bodyUserId;
@@ -136,26 +75,27 @@ exports.initiate = async (req, res) => {
     const { bookingType, metadata = {} } = req.body;
     if (!bookingType || !metadata) return res.status(400).json({ success: false, message: 'bookingType and metadata are required' });
 
-    // validate required fields - same as earlier
-    const required = ['rateCardId', 'propertyId', 'roomType', 'checkInDate', 'duration', 'monthlyRent'];
-    for (const f of required) {
-      if (metadata[f] === undefined || metadata[f] === null) {
-        return res.status(400).json({ success: false, message: `metadata.${f} is required` });
-      }
+    const rateCard = await PropertyRateCard.findByPk(metadata.rateCardId || rateCardId);
+    if (!rateCard) {
+      return res.status(400).json({ success: false, message: 'Invalid rateCardId' });
     }
 
-    // Build canonical rebuilt meta (normalized)
-    const rebuiltMeta = buildRebuiltMeta(metadata, bookingType);
+    const normalizedCheckIn = moment(checkInDate, ['YYYY-MM-DD','DD-MM-YYYY']).format('YYYY-MM-DD');
+    const normalizedCheckOut = moment(normalizedCheckIn).add(Number(duration || 0), 'months').format('YYYY-MM-DD');
 
-    // Validate metadata consistency: caller must not send conflicting data
-    // If something is inconsistent (e.g., checkOutDate earlier than checkInDate) -> reject
-    if (rebuiltMeta.checkInDate && rebuiltMeta.checkOutDate) {
-      if (moment(rebuiltMeta.checkOutDate).isBefore(moment(rebuiltMeta.checkInDate))) {
-        return res.status(400).json({ success: false, message: 'metadata.checkOutDate cannot be before checkInDate' });
-      }
-    }
+    const rebuiltMeta = {
+      bookingType: bookingType.toUpperCase() === 'PREBOOK' ? 'PREBOOK' : 'BOOK',
+      rateCardId: rateCard.id,
+      propertyId: rateCard.propertyId,
+      roomType: rateCard.roomType,
+      checkInDate: normalizedCheckIn,
+      checkOutDate: normalizedCheckOut,
+      duration: Number(duration),
+      monthlyRent: Number(rateCard.rent),
+      securityDeposit: Math.round(Number(rateCard.rent) * 2),
+    };
 
-    // Overlap check: block initiation if overlapping approved/active/pending booking exists
+
     const overlap = await checkOverlappingBooking(userId, rebuiltMeta.checkInDate, rebuiltMeta.checkOutDate);
     if (overlap) {
       return res.status(400).json({
@@ -165,10 +105,13 @@ exports.initiate = async (req, res) => {
       });
     }
 
-    // Canonical string used to detect duplicate intent
-    const canonical = canonicalizeMetadata(Object.assign({}, rebuiltMeta, { bookingType: rebuiltMeta.bookingType }));
+    const canonical = canonicalizeMetadata({
+      bookingType: rebuiltMeta.bookingType,
+      rateCardId: rebuiltMeta.rateCardId,
+      checkInDate: rebuiltMeta.checkInDate,
+      duration: rebuiltMeta.duration,
+    });
 
-    // Auto-expire previous pending txn duplicates (we will mark status = 'EXPIRED' for those matching canonical)
     const existingPendingTxs = await PaymentTransaction.findAll({
       where: { userId, status: 'PENDING' },
       order: [['createdAt', 'ASC']],
@@ -178,7 +121,7 @@ exports.initiate = async (req, res) => {
       try {
         const oldCanon = oldTx.pendingBookingData ? canonicalizeMetadata(oldTx.pendingBookingData) : null;
         if (oldCanon && oldCanon === canonical) {
-          oldTx.status = 'EXPIRED'; // use EXPIRED enum present in model
+          oldTx.status = 'EXPIRED';
           oldTx.rawResponse = Object.assign({}, oldTx.rawResponse || {}, {
             autoExpired: true,
             expiredAt: new Date().toISOString(),
@@ -191,23 +134,29 @@ exports.initiate = async (req, res) => {
       }
     }
 
-    // compute amounts & merchantOrderId
-    const totalAmountRupees = computeTotalAmountRupees(rebuiltMeta);
+    const totalAmountRupees = rebuiltMeta.monthlyRent * rebuiltMeta.duration + rebuiltMeta.securityDeposit;
     const amountPaise = paiseFromRupees(totalAmountRupees);
     const merchantOrderId = createMerchantOrderId({ userId, bookingType: rebuiltMeta.bookingType });
 
-    // create PENDING transaction with pendingBookingData
     const tx = await PaymentTransaction.create({
       merchantOrderId,
       userId,
       amount: amountPaise,
       type: rebuiltMeta.bookingType === 'PREBOOK' ? 'PREBOOK' : 'FULL',
       status: 'PENDING',
-      pendingBookingData: Object.assign({}, rebuiltMeta, { totalAmount: totalAmountRupees, bookingType: rebuiltMeta.bookingType }),
+      pendingBookingData: {
+        bookingType: rebuiltMeta.bookingType,
+        rateCardId: rebuiltMeta.rateCardId,
+        checkInDate: rebuiltMeta.checkInDate,
+        checkOutDate: rebuiltMeta.checkOutDate,
+        duration: rebuiltMeta.duration,
+        monthlyRent: rebuiltMeta.monthlyRent,
+        securityDeposit: rebuiltMeta.securityDeposit,
+        totalAmount: totalAmountRupees,
+      },
       rawResponse: { note: 'pending transaction created' },
     });
 
-    // Build PhonePe payload
     const phonepePayload = {
       merchantOrderId,
       amount: amountPaise,
@@ -224,9 +173,7 @@ exports.initiate = async (req, res) => {
     if (phonepeResp && phonepeResp.success && phonepeResp.body) {
       tx.phonepeOrderId = phonepeResp.body.orderId || tx.phonepeOrderId || null;
       tx.redirectUrl = phonepeResp.body.redirectUrl || phonepeResp.body.checkoutUrl || tx.redirectUrl || null;
-      // keep status PENDING until webhook
     } else {
-      // mark FAILED if create call failed
       if (!phonepeResp || !phonepeResp.success) {
         tx.status = 'FAILED';
       }
@@ -245,9 +192,6 @@ exports.initiate = async (req, res) => {
   }
 };
 
-/**
- * getBookingPaymentSummary - returns booking, totals, transactions
- */
 exports.getBookingPaymentSummary = async (req, res) => {
   try {
     const bookingId = req.params.bookingId;

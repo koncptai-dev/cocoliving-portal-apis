@@ -1,9 +1,8 @@
-// utils/phonepe/phonepeConfig.js
 require('dotenv').config();
 
 const ENV = process.env.PHONEPE_ENV === 'prod' ? 'prod' : 'sandbox';
 
-// Base URLs (matches your existing pattern)
+// Base URLs 
 const BASE_URL =
   ENV === 'prod'
     ? 'https://api.phonepe.com/apis'
