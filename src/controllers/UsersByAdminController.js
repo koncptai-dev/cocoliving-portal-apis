@@ -19,44 +19,39 @@ exports.AddUser = async (req, res) => {
             return res.status(400).json({ message: "Email already exists" });
         }
 
-        //  Generate a unique token for registration
-        const registrationToken = crypto.randomBytes(32).toString("hex");
-
         const newUser = await User.create({
             email,
             fullName,
             phone,
             userType,
-            status: 0,
-            registrationToken
+            status: 1,
         });
 
-        //send registration link to user to entered email
-        const registrationLink = `${process.env.REGISTER_URL}?token=${registrationToken}`;
+        //send login link to user to entered email
+        const loginLink = process.env.LOGIN_URL;
 
         // email body
         const emailBody = `
             <div style="font-family: Arial, sans-serif; line-height: 1.6;">
                 <h2>Welcome to COCO LIVING, ${fullName}!</h2>
-                <p>Your account has been created by the Super Admin.</p>
-                <p>Please click the button below to complete your registration and set your password:</p>
-                <p style="text-align:center;">
-                <a href="${registrationLink}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
-                    Complete Registration
+                <p>Your account has been created by the  Admin.</p>
+                <p>Please click the button below to go to the login page. You will need to enter your email (${email}) and then request a one-time password (OTP) to sign in.</p>                <p style="text-align:center;">
+                <a href="${loginLink}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+                    Go to Login Page
                 </a>
                 </p>
                 <p>If the button doesn’t work, click this link:<br/>
-                <a href="${registrationLink}">${registrationLink}</a>
+                <a href="${loginLink}">${loginLink}</a>
                 </p>
                 <p>Thank you,<br/>The COCO LIVING Team</p>
             </div>
             `;
 
         //send the email
-        await mailsender(email, "Complete Your Registration - COCO LIVING", emailBody);
+        await mailsender(email, "Your New Account Details - COCO LIVING", emailBody);
 
         res.status(201).json({
-            message: `User added successfully.Registration email sent to ${email}`,
+            message: `User added successfully.Login email sent to ${email}`,
             user: newUser
         });
 
@@ -65,38 +60,6 @@ exports.AddUser = async (req, res) => {
         res.status(500).json({ message: "Server error", error: error.message });
     }
 }
-
-//verify registration Token
-exports.verifyRegistrationToken = async (req, res) => {
-    try {
-        const { token } = req.query;
-
-        if (!token) {
-            return res.status(400).json({ message: "Registration token is required" });
-        }
-
-        const user = await User.findOne({ where: { registrationToken: token, status: 0 } });
-
-        if (!user) {
-            return res.status(400).json({ message: "Invalid or expired registration token" });
-        }
-
-        res.status(200).json({
-            success: true,
-            message: "Token verified",
-            user: {
-                id: user.id,
-                email: user.email,
-                fullName: user.fullName,
-                phone: user.phone,
-                userType: user.userType
-            }
-        });
-
-    } catch (err) {
-        res.status(500).json({ message: "Server error", error: err.message });
-    }
-};
 
 exports.getAllUser = async (req, res) => {
     try {

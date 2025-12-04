@@ -180,6 +180,12 @@ exports.verifyLoginOtp = async (req, res) => {
         // delete OTP after successful login
         await OTP.destroy({ where: { identifier: email, type: 'email' } });
 
+          // mark email verified if first login
+        if (!user.isEmailVerified) {
+            user.isEmailVerified = true;
+            await user.save();
+        }
+        
         // determine login type
         const loginAs = (email === user.email) ? "user" : "parent";
 
