@@ -20,6 +20,8 @@ const InventoryRoutes = require('./routes/inventoryRoute');
 const ServiceHistoryRoutes = require('./routes/serviceHistory');
 const FoodMenuRoute = require('./routes/FoodMenuRoute');
 const ActivityRoute=require('./routes/ActivityRoutes');
+const BookingPaymentRoutes = require('./routes/BookingPaymentRoutes');
+const PaymentRoutes = require('./routes/PaymentRoutes');
 const path = require('path');
 const panRoutes=require('./routes/panRoutes');
 
@@ -28,6 +30,9 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE','PATCH'],
     credentials: true // if you're using cookies/sessions
 }));
+
+// must be BEFORE json parser , will break flow if changed
+app.post('/api/payments-webhook',require('./middleware/rawBody'),require('./controllers/PaymentController').phonePeWebhook);
 
 app.use(bodyParser.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -40,6 +45,8 @@ app.use('/api/events', Events);
 app.use('/api/common', Common);
 app.use('/api/user-by-superadmin', UserByAdminRoutes);
 app.use('/api/book-room', BookRoomRoute);
+app.use('/api/payments',PaymentRoutes);
+app.use('/api/booking-payments', BookingPaymentRoutes);
 app.use('/api/announcement', AnnouncementRoute); 
 app.use('/api/property', PropertyRoute);
 app.use('/api/admin-booking', AdminBooking);
