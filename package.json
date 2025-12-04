@@ -18,6 +18,7 @@
     "csv-parser": "^3.2.0",
     "dotenv": "^16.4.5",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
     "express-validator": "^7.2.1",
     "fast-csv": "^5.0.5",
     "json2csv": "^6.0.0-alpha.2",

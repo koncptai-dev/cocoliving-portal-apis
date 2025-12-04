@@ -152,7 +152,7 @@ exports.sendOTP = async (req, res) => {
 
 exports.registerUser = async (req, res) => {
     try {
-        const { fullName, email, phone, userType, gender, dateOfBirth, otp, registrationToken } = req.body;
+        const { fullName, email, phone, userType, gender, dateOfBirth, otp } = req.body;
 
         if (!email || !otp) {
             return res.status(400).json({ message: "Email & OTP are required" });
@@ -193,25 +193,7 @@ exports.registerUser = async (req, res) => {
         let userExist = await User.findOne({ where: { email } });
 
         if (userExist) {
-            if (!registrationToken || registrationToken !== userExist.registrationToken) {
-                return res.status(400).json({ message: "Invalid or missing registration token" });
-            }
-
-            // Update existing user details
-            userExist.fullName = fullName;
-            userExist.phone = phone;
-            userExist.gender = gender;
-            userExist.dateOfBirth = dateOfBirth;
-            userExist.status = 1;
-            userExist.isEmailVerified = true;
-            userExist.registrationToken = null;
-            await userExist.save();
-
-            return res.status(200).json({
-                success: true,
-                message: "User registration completed & email verified successfully",
-                user: userExist
-            });
+            return res.status(400).json({ message: "Email already registered. Please login." });
         }
 
         // Create new user 
@@ -224,7 +206,6 @@ exports.registerUser = async (req, res) => {
             dateOfBirth,
             role: 2,
             status: 1,
-            isEmailVerified: true,
         });
         return res.status(201).json({
             success: true,
@@ -264,87 +245,111 @@ exports.editUserProfile = async (req, res) => {
                 user.isPhoneVerified = false;
             }
 
-            delete updates.phone; // Prevent double handling in loop
+            delete updates.phone; //prevent multiple entry in loop 
         }
 
+        //parent email validation
+        if (updates.parentEmail !== undefined) {
+            if (user.userType === "student") {  
+                const newParentEmail = updates.parentEmail.trim();
 
-        for (const key in updates) {
-            const value = updates[key];
-
-            if (value === undefined || value === null) continue;
-
-            //skip field for professional
-            if (user.userType === "professional" && ["parentName", "parentMobile", "parentEmail", "collegeName", "course"].includes(key)) { continue }
-
-            //skip for student
-            if (user.userType === "student" && ["companyName", "position"].includes(key)) {
-                continue;
-            }
-            user[key] = typeof value === "string" ? value.trim() : value;
-
-        }
-
-        //if already has profileImage, delete the old one
-        if (req.file) {
-            if (user.profileImage) {
-                const oldPath = path.join(__dirname, '..', user.profileImage.replace(/^\//, ''));
-                if (fs.existsSync(oldPath)) {
-                    fs.unlinkSync(oldPath);
+                if (!newParentEmail) { 
+                    user.parentEmail = null; 
+                } else {
+                    if (newParentEmail === user.email) {
+                        return res.status(400).json({ message: "Parent email cannot be the same as user email" });
+                    }
+                    const conflict = await User.findOne({
+                        where: {
+                            email: newParentEmail, id: { [Op.ne]: user.id } // exclude current user
+                        }
+                    });
+                    if (conflict) {
+                        return res.status(400).json({ message: "Parent email cannot match another user's email" });
+                    }
+                    user.parentEmail = newParentEmail;
                 }
             }
-            user.profileImage = `/uploads/profilePicture/${req.file.filename}`;
-        }
-        await user.save();
+                delete updates.parentEmail; // Prevent multi entry in loop
+            }
 
-        return res.status(200).json({
-            message: 'Profile updated successfully',
-            user
-        });
-    } catch (err) {
-        return res.status(500).json({ message: 'Error updating profile', error: err.message });
+            for (const key in updates) {
+                const value = updates[key];
+
+                if (value === undefined || value === null) continue;
+
+                //skip field for professional
+                if (user.userType === "professional" && ["parentName", "parentMobile", "parentEmail", "collegeName", "course"].includes(key)) { continue }
+
+                //skip for student
+                if (user.userType === "student" && ["companyName", "position"].includes(key)) {
+                    continue;
+                }
+                user[key] = typeof value === "string" ? value.trim() : value;
+
+            }
+
+            //if already has profileImage, delete the old one
+            if (req.file) {
+                if (user.profileImage) {
+                    const oldPath = path.join(__dirname, '..', user.profileImage.replace(/^\//, ''));
+                    if (fs.existsSync(oldPath)) {
+                        fs.unlinkSync(oldPath);
+                    }
+                }
+                user.profileImage = `/uploads/profilePicture/${req.file.filename}`;
+            }
+            await user.save();
+
+            return res.status(200).json({
+                message: 'Profile updated successfully',
+                user
+            });
+        } catch (err) {
+            return res.status(500).json({ message: 'Error updating profile', error: err.message });
+        }
     }
-}
 
 //delete user account its soft delete only
 exports.deleteAccount = async (req, res) => {
-    try {
-        const userId = req.params.id;
+        try {
+            const userId = req.params.id;
 
-        //find user exist
-        const user = await User.findByPk(userId);
-        if (!user) {
-            return res.status(404).json({ message: 'user not found' })
+            //find user exist
+            const user = await User.findByPk(userId);
+            if (!user) {
+                return res.status(404).json({ message: 'user not found' })
+            }
+
+            //check already deleted
+            if (user.status === 0) {
+                return res.status(400).json({ message: 'user already deleted' })
+            }
+
+            //soft delete
+            await User.update({ status: 0 }, { where: { id: userId } })
+
+            return res.status(200).json({ message: 'User account deleted successfully' });
+        } catch (err) {
+            return res.status(500).json({ message: 'Error deleting user account', error: err.message });
         }
-
-        //check already deleted
-        if (user.status === 0) {
-            return res.status(400).json({ message: 'user already deleted' })
-        }
-
-        //soft delete
-        await User.update({ status: 0 }, { where: { id: userId } })
-
-        return res.status(200).json({ message: 'User account deleted successfully' });
-    } catch (err) {
-        return res.status(500).json({ message: 'Error deleting user account', error: err.message });
     }
-}
 
-//get the users by id
-exports.getUserById = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const user = await User.findByPk(id, { where: { status: 1 }, attributes: { exclude: ['password'] } });
+    //get the users by id
+    exports.getUserById = async (req, res) => {
+        try {
+            const { id } = req.params;
+            const user = await User.findByPk(id, { where: { status: 1 }, attributes: { exclude: ['password'] } });
 
-        if (!user || user.status === 0) {
-            return res.status(404).json({ message: 'No user found' });
+            if (!user || user.status === 0) {
+                return res.status(404).json({ message: 'No user found' });
+            }
+
+            return res.status(200).json({ success: true, user });
+        } catch (err) {
+            return res.status(500).json({ message: 'Error fetching users', error: err.message });
         }
-
-        return res.status(200).json({ success: true, user });
-    } catch (err) {
-        return res.status(500).json({ message: 'Error fetching users', error: err.message });
     }
-}
 
 
 

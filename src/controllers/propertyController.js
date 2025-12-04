@@ -173,10 +173,10 @@ exports.editProperties = async (req, res) => {
 
           if (existingRC) {
             // Prepare removedImages array for this rate card
-          let removedRoomImages = Array.isArray(rc.removedRoomImages) ? rc.removedRoomImages : [];
+            let removedRoomImages = Array.isArray(rc.removedRoomImages) ? rc.removedRoomImages : [];
 
             // Remove images from DB array
-            let updatedRoomImages = [...(existingRC.roomImages || [])];
+            let updatedRoomImages = Array.isArray(existingRC.roomImages) ? [...existingRC.roomImages] : [];
             updatedRoomImages = updatedRoomImages.filter(img => !removedRoomImages.includes(img));
 
             // Delete removed images from filesystem
@@ -190,7 +190,8 @@ exports.editProperties = async (req, res) => {
             }
 
             // Add new uploaded room images
-            const roomFiles = req.files?.filter(f => f.fieldname === `roomImages_${rc.roomType}`) || [];
+            const safeRoomType = rc.roomType.replace(/\s+/g, "_");
+            const roomFiles = req.files?.filter(f => f.fieldname === `roomImages_${safeRoomType}`) || [];
             const newRoomImages = roomFiles.map(f => `/uploads/roomImages/${f.filename}`);
 
             // Check max 10 images per room
@@ -282,7 +283,7 @@ exports.getProperties = async (req, res) => {
 exports.deleteProperty = async (req, res) => {
   try {
     const { id } = req.params;
-    const today=new Date();
+    const today = new Date();
 
     const property = await Property.findByPk(id);
 
@@ -292,10 +293,10 @@ exports.deleteProperty = async (req, res) => {
 
     //check for active or future booking
     const hasActiveOrFutureBookings = await Booking.findOne({
-      where:{
-        propertyId:id,
-        status:{[Op.in]:["approved","pending"]},
-        checkOutDate:{[Op.gte]:today}
+      where: {
+        propertyId: id,
+        status: { [Op.in]: ["approved", "pending"] },
+        checkOutDate: { [Op.gte]: today }
       }
     });
 
