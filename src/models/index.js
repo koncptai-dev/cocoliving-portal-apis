@@ -13,6 +13,7 @@ const PropertyRateCard=require('./propertyRateCard');
 const FoodMenu = require('./foodMenu');
 const Inventory = require('./inventory');
 const ServiceHistory = require('./serviceHistory');
+const PaymentTransaction = require('./paymentTransaction');
 
 User.hasMany(SupportTicket, {foreignKey: "userId", as: "tickets" });
 SupportTicket.belongsTo(User, {foreignKey: "userId", as: "user" });
@@ -70,6 +71,13 @@ Inventory.hasMany(ServiceHistory, { foreignKey: "inventoryId", as: "serviceHisto
 ServiceHistory.belongsTo(Inventory, { foreignKey: "inventoryId", as: "inventory" });
 ServiceHistory.belongsTo(SupportTicket, { foreignKey: "ticketId", as: "ticket" });
 
+// Payment ↔ Booking
+Booking.hasMany(PaymentTransaction, { foreignKey: "bookingId", as: "transactions" });
+PaymentTransaction.belongsTo(Booking, { foreignKey: "bookingId", as: "booking" });
+
+// Payment ↔ User
+User.hasMany(PaymentTransaction, { foreignKey: "userId", as: "transactions" });
+PaymentTransaction.belongsTo(User, { foreignKey: "userId", as: "user" });
 
 module.exports={
     sequelize,
@@ -85,5 +93,6 @@ module.exports={
     PropertyRateCard,
     FoodMenu,
     Inventory,
-    ServiceHistory
+    ServiceHistory,
+    PaymentTransaction,
 }
