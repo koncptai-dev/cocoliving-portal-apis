@@ -25,6 +25,23 @@ function parsePayload(req) {
   return req.body || {};
 }
 
+function verifyWebhookAuth(receivedHex) {
+  try {
+    if (!receivedHex) return false;
+    const expectedHex = computeExpectedWebhookHex();
+    return String(receivedHex).toLowerCase() === String(expectedHex).toLowerCase();
+  } catch (err) {
+    console.error('[WEBHOOK] verifyWebhookAuth error', err);
+    return false;
+  }
+}
+
+function isSuccessEvent(event, state) {
+  return String(event) === 'checkout.order.completed' && String(state || '').toUpperCase() === 'COMPLETED';
+}
+function isFailedEvent(event, state) {
+  return String(event) === 'checkout.order.failed' && String(state || '').toUpperCase() === 'FAILED';
+}
 
 async function recomputeBookingTotals(booking, t = null) {
   if (!booking) return null;
@@ -87,37 +104,21 @@ exports.phonePeWebhook = async (req, res) => {
       console.warn('[WEBHOOK] Missing Authorization header');
       return res.status(401).json({ message: 'Unauthorized webhook' });
     }
-    let receivedHex = '';
-    if (authHeader.toLowerCase().startsWith('sha256 ')) {
-      receivedHex = authHeader.slice(7).trim().toLowerCase();
-    } else {
-      receivedHex = authHeader.trim().toLowerCase();
-    }
-
-    const expectedHex = computeExpectedWebhookHex();
-    if (!receivedHex || receivedHex !== expectedHex) {
-      console.warn('[WEBHOOK] Authorization mismatch', { receivedHex, expectedHex });
+    let receivedHex = authHeader.toLowerCase().startsWith('sha256 ')
+      ? authHeader.slice(7).trim()
+      : authHeader.trim();
+    if (!verifyWebhookAuth(receivedHex)) {
+      console.warn('[WEBHOOK] Authorization mismatch', { receivedHex });
       return res.status(401).json({ message: 'Unauthorized webhook' });
     }
-
-    const payload = parsePayload(req);
-
-    const eventType =
-      payload.eventType ||
-      payload.event ||
-      payload.type ||
-      (payload.data && payload.data.eventType) ||
-      (payload.data && payload.data.type) ||
-      '';
-
-    const merchantOrderId =
-      payload.merchantOrderId ||
-      payload.orderId ||
-      (payload.data && (payload.data.merchantOrderId || payload.data.orderId)) ||
-      null;
-
+    const root = parsePayload(req);
+    const eventType = root.event || '';
+    const incomingPayload = root.payload || {};
+    const state = (incomingPayload.state || '').toUpperCase();
+    const merchantOrderId = incomingPayload.merchantOrderId || null;
+    const phonepeOrderId = incomingPayload.orderId || null;
     if (!merchantOrderId) {
-      console.warn('[WEBHOOK] merchantOrderId not found in payload; ignoring');
+      console.warn('[WEBHOOK] merchantOrderId not found in payload; ignoring', { eventType, root });
       return res.status(200).json({ message: 'Webhook processed (no merchantOrderId)' });
     }
 
@@ -129,35 +130,18 @@ exports.phonePeWebhook = async (req, res) => {
 
     console.info('[WEBHOOK] Handling event', { eventType, merchantOrderId, txId: tx.id });
 
-    const evtLower = String(eventType || '').toLowerCase();
-    const mappedStatus =
-      evtLower.includes('checkout.order.completed') || evtLower.includes('completed') && evtLower.includes('checkout.order')
-        ? 'SUCCESS'
-        : (evtLower.includes('checkout.order.failed') ? 'FAILED' : null);
-
-    if (tx.status === 'SUCCESS' && mappedStatus === 'FAILED') {
-      console.info('[WEBHOOK] Ignored FAILED webhook because tx already SUCCESS', { merchantOrderId, txId: tx.id });
-      return res.status(200).json({ message: 'Webhook ignored (transaction already SUCCESS)' });
-    }
-
-    const alreadyProcessed = tx.webhookProcessedAt || (tx.rawResponse && tx.rawResponse.webhookProcessed);
-    if (alreadyProcessed && mappedStatus && tx.status === mappedStatus) {
-      console.info('[WEBHOOK] Already processed, no-op', { merchantOrderId, txId: tx.id });
-      return res.status(200).json({ message: 'Webhook already processed' });
-    }
-
-    if (evtLower.includes('checkout.order.completed') || evtLower === 'checkout.order.completed') {
+    if (isSuccessEvent(eventType, state)) {
       await sequelize.transaction(async (t) => {
         await tx.reload({ transaction: t, lock: t.LOCK.UPDATE });
 
-        if (tx.status === 'SUCCESS' && (tx.webhookProcessedAt || (tx.rawResponse && tx.rawResponse.webhookProcessed))) {
+        if (tx.webhookProcessedAt && tx.status === 'SUCCESS') {
           console.info('[WEBHOOK] Transaction already SUCCESS and processed; no-op', tx.merchantOrderId);
           return;
         }
 
         tx.status = 'SUCCESS';
-        tx.phonepeOrderId = payload.orderId || (payload.data && payload.data.orderId) || tx.phonepeOrderId;
-        tx.rawResponse = Object.assign({}, tx.rawResponse || {}, { webhookPayload: payload, webhookProcessed: true });
+        tx.phonepeOrderId = phonepeOrderId || tx.phonepeOrderId;
+        tx.rawResponse = Object.assign({}, tx.rawResponse || {}, { webhookPayload: root, webhookProcessed: true });
         tx.webhookProcessedAt = new Date();
         await tx.save({ transaction: t });
 
@@ -183,13 +167,8 @@ exports.phonePeWebhook = async (req, res) => {
               status: { [Op.in]: ['approved', 'active', 'pending'] },
               [Op.or]: [
                 {
-                  checkOutDate: { [Op.is]: null },
-                  checkInDate: { [Op.lte]: checkOut },
-                },
-                {
-                  checkOutDate: { [Op.gte]: checkIn },
-                  checkInDate: { [Op.lte]: checkOut },
-                },
+                  checkOutDate: { [Op.is]: null }, checkInDate: { [Op.lte]: checkOut } },
+                { checkOutDate: { [Op.gte]: checkIn }, checkInDate: { [Op.lte]: checkOut } },
               ],
             },
             transaction: t,
@@ -235,25 +214,22 @@ exports.phonePeWebhook = async (req, res) => {
       return res.status(200).json({ message: 'Webhook processed (SUCCESS)' });
     }
 
-    if (evtLower.includes('checkout.order.failed') || evtLower === 'checkout.order.failed') {
+    if (isFailedEvent(eventType, state)) {
       if (tx.status === 'SUCCESS') {
         console.info('[WEBHOOK] Ignored FAILED webhook because tx already SUCCESS', { merchantOrderId: tx.merchantOrderId, txId: tx.id });
         return res.status(200).json({ message: 'Webhook ignored (transaction already SUCCESS)' });
       }
 
       tx.status = 'FAILED';
-      tx.rawResponse = Object.assign({}, tx.rawResponse || {}, { webhookPayload: payload, webhookProcessed: true });
+      tx.rawResponse = Object.assign({}, tx.rawResponse || {}, { webhookPayload: root, webhookProcessed: true });
       tx.webhookProcessedAt = new Date();
       await tx.save();
       console.info('[WEBHOOK] Transaction marked FAILED', tx.merchantOrderId);
       return res.status(200).json({ message: 'Webhook processed (FAILED)' });
     }
 
-    if (
-      evtLower.includes('pg.refund.completed') ||
-      evtLower.includes('pg.refund.failed')
-    ) {
-      console.info('[WEBHOOK] Ignoring refund event');
+    if (eventType === 'pg.refund.completed' || eventType === 'pg.refund.failed') {
+      console.info('[WEBHOOK] Ignoring refund event :', eventType);
       return res.status(200).json({ message: 'Webhook ignored (refunds disabled)' });
     }
 

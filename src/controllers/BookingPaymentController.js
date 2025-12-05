@@ -11,14 +11,8 @@ const PropertyRateCard = require('../models/propertyRateCard');
 function canonicalizeMetadata(metadata){
   const keys = [
     'rateCardId',
-    'propertyId',
-    'roomType',
     'checkInDate',
-    'checkOutDate',
     'duration',
-    'monthlyRent',
-    'assignedItems',
-    'roomId',
     'bookingType',
   ];
   const out = {};
@@ -67,12 +61,12 @@ async function checkOverlappingBooking(userId, checkInDate, checkOutDate) {
 
 exports.initiate = async (req, res) => {
   try {
-    const authenticatedUserId = req.user && req.user.id;
-    const bodyUserId = req.body.userId;
-    const userId = authenticatedUserId || bodyUserId;
-    if (!userId) return res.status(400).json({ success: false, message: 'userId required (or authenticate)' });
+    const userId = req.user?.id;
+    if (!userId) return res.status(400).json({ success: false, message: 'Unauthorized Access' });
 
     const { bookingType, metadata = {} } = req.body;
+    if (!metadata.duration || Number(metadata.duration)<1) return res.status(400).json({ success: false, message: 'duration must be atleast 1 month' });
+
     if (!bookingType || !metadata) return res.status(400).json({ success: false, message: 'bookingType and metadata are required' });
 
     const rateCard = await PropertyRateCard.findByPk(metadata.rateCardId);
@@ -119,7 +113,11 @@ exports.initiate = async (req, res) => {
 
     for (const oldTx of existingPendingTxs) {
       try {
-        const oldCanon = oldTx.pendingBookingData ? canonicalizeMetadata(oldTx.pendingBookingData) : null;
+        const oldCanon = oldTx.pendingBookingData ? canonicalizeMetadata({
+          bookingType:oldTx.pendingBookingData.bookingType,
+          rateCardId:oldTx.pendingBookingData.rateCardId,
+          checkInDate:oldTx.pendingBookingData.checkInDate,
+          duration:oldTx.pendingBookingData.duration,}) : null;
         if (oldCanon && oldCanon === canonical) {
           oldTx.status = 'EXPIRED';
           oldTx.rawResponse = Object.assign({}, oldTx.rawResponse || {}, {
@@ -153,6 +151,8 @@ exports.initiate = async (req, res) => {
         monthlyRent: rebuiltMeta.monthlyRent,
         securityDeposit: rebuiltMeta.securityDeposit,
         totalAmount: totalAmountRupees,
+        propertyId:rebuiltMeta.propertyId,
+        roomType:rebuiltMeta.roomType,
       },
       rawResponse: { note: 'pending transaction created' },
     });
