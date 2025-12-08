@@ -1,7 +1,7 @@
 const axios = require("axios");
 require("dotenv").config();
 
-const IDTO_URL = process.env.IDTO_BASE_URL;
+const IDTO_URL = process.env.IDTO_BASE_URL_PAN || "https://prod.idto.ai";
 const API_KEY = process.env.IDTO_API_KEY;
 const CLIENT_ID = process.env.IDTO_CLIENT_ID;
 
@@ -14,7 +14,7 @@ exports.verifyPANService = async (panNumber) => {
     try {
         const payload = { pan_number: panNumber.toUpperCase() };
 
-        const response = await axios.post(IDTO_URL, payload, {
+        const response = await axios.post(`${IDTO_URL}/verify/pan_verification`, payload, {
             headers: {
                 "X-API-KEY": API_KEY,
                 "X-Client-ID": CLIENT_ID,

@@ -41,7 +41,7 @@ const UserKYC = sequelize.define(
       allowNull: true,
     },
     ekycStatus: {
-      type: DataTypes.ENUM("pending", "verified", "failed"),
+      type: DataTypes.ENUM("verified", "not_verified"),
     },
     verifiedAtAadhaar: {
       type: DataTypes.DATE,

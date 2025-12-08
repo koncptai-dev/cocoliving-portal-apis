@@ -29,20 +29,34 @@ exports.verifyPAN = async (req, res) => {
         //call IDTO service if not verified 
         const response = await verifyPANService(panNumber);
 
-         // extract status from API
+        // extract status from API
         const panStatus = response?.status?.toLowerCase() === "success" ? "verified" : "not-verified";
 
         //  Save/update DB
-        await UserKYC.upsert({
-            userId,
-            panNumber,
-            panStatus,
-            verifiedAtPan: panStatus === "verified" ? new Date() : null,
-            panKycResponse: JSON.stringify(response)
-        });
+        let userKycRecord = await UserKYC.findOne({ where: { userId } });
 
-        return res.status(200).json({ success: true, message: "PAN verified successfully", data:  panNumber,
-                status: panStatus, });
+        if (userKycRecord) {
+            // Update existing row (may already have Aadhaar info)
+            userKycRecord.panNumber = panNumber;
+            userKycRecord.panStatus = panStatus;
+            userKycRecord.verifiedAtPan = panStatus === "verified" ? new Date() : null;
+            userKycRecord.panKycResponse = JSON.stringify(response);
+
+            await userKycRecord.save();
+        } else {
+            // Create new row if no record exists
+            await UserKYC.create({
+                userId,
+                panNumber,
+                panStatus,
+                verifiedAtPan: panStatus === "verified" ? new Date() : null,
+                panKycResponse: JSON.stringify(response)
+            });
+        }
+        return res.status(200).json({
+            success: true, message: "PAN verified successfully", data: panNumber,
+            status: panStatus,
+        });
     } catch (error) {
         console.error("Controller Error:", error.message);
         const statusCode = error.response?.status || 500;
