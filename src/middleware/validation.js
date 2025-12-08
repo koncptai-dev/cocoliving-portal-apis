@@ -1,38 +1,38 @@
 const { check,body } = require('express-validator');
 
-exports.validateSignup = [
-  check('fullName').trim().isLength({ min: 2 }).withMessage("Full name must be at least 2 characters").notEmpty().withMessage('Full name is required').matches(/^[A-Za-z\s]+$/).withMessage('Full name must contain only letters and spaces'),
-  check('email').isEmail().withMessage('Invalid Email').normalizeEmail(),
-  check('userType').notEmpty().withMessage('User type is required'),
-  check('dateOfBirth').notEmpty().withMessage('Date of Birth is required')
-    .isDate({ format: 'YYYY-MM-DD' }).withMessage('Invalid Date of Birth')
-    .custom((value) => {
-      const dob = new Date(value);
-      const today = new Date();
-      let age = today.getFullYear() - dob.getFullYear();
-      const m = today.getMonth() - dob.getMonth();
-      if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
-        age--;
-      }
-      if (age < 18) {
-        throw new Error('You must be at least 18 years old');
-      }
-      return true;
-    }),
+  exports.validateSignup = [
+    check('fullName').trim().isLength({ min: 2 }).withMessage("Full name must be at least 2 characters").notEmpty().withMessage('Full name is required').matches(/^[A-Za-z\s]+$/).withMessage('Full name must contain only letters and spaces'),
+    check('email').isEmail().withMessage('Invalid Email'),
+    check('userType').notEmpty().withMessage('User type is required'),
+    check('dateOfBirth').notEmpty().withMessage('Date of Birth is required')
+      .isDate({ format: 'YYYY-MM-DD' }).withMessage('Invalid Date of Birth')
+      .custom((value) => {
+        const dob = new Date(value);
+        const today = new Date();
+        let age = today.getFullYear() - dob.getFullYear();
+        const m = today.getMonth() - dob.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
+          age--;
+        }
+        if (age < 18) {
+          throw new Error('You must be at least 18 years old');
+        }
+        return true;
+      }),
 
-  check('phone').optional({ checkFalsy: true }).matches(/^\d{10}$/).withMessage('Phone must be a valid 10-digit number'), check('emergencyContact').optional().matches(/^\d{10}$/).withMessage('Emergency contact must be a valid 10-digit number'),
-]
+    check('phone').optional({ checkFalsy: true }).matches(/^\d{10}$/).withMessage('Phone must be a valid 10-digit number'), check('emergencyContact').optional().matches(/^\d{10}$/).withMessage('Emergency contact must be a valid 10-digit number'),
+  ]
 
 exports.editUserProfileValidator = [
   check("fullName").optional().trim().isLength({ min: 2 }).withMessage("Full name must be at least 2 characters").matches(/^[A-Za-z\s]+$/).withMessage('Full name must contain only letters and spaces'),
-  check("email").optional().isEmail().normalizeEmail().withMessage("Invalid email format"),
+  check("email").optional().isEmail().withMessage("Invalid email format"),
   check("phone").optional().matches(/^\+?[0-9\s\-]{7,15}$/).withMessage("Invalid phone number"),
   check("address").optional().trim().isLength({ max: 100 }).withMessage("Address must be under 100 characters"),
 
 ];
 
 exports.validateLogin = [
-  check("email").isEmail().withMessage("Invalid email format").normalizeEmail().notEmpty().withMessage("Email is required"),
+  check("email").isEmail().withMessage("Invalid email format").notEmpty().withMessage("Email is required"),
   // check("password").isLength({ min: 6 }).withMessage("Password must be at least 6 characters long").notEmpty().withMessage("Password is required"),
 ]
 
@@ -98,7 +98,7 @@ exports.supportTickValidate = [
 ]
 
 exports.addUserValidate = [
-  check('email').isEmail().withMessage('Invalid Email').normalizeEmail(),
+  check('email').isEmail().withMessage('Invalid Email'),
   check('fullName').trim().isLength({ min: 2 }).withMessage("Full name must be at least 2 characters").notEmpty().withMessage('Full name is required').matches(/^[A-Za-z\s]+$/).withMessage('Full name must contain only letters and spaces'),
   check('phone').optional().matches(/^\d{10}$/).withMessage('Phone must be a valid 10-digit number'),
  ]

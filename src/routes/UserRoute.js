@@ -6,7 +6,7 @@ const router = express.Router();
 const authenticateToken =  require('../middleware/auth');
 const upload = require('../middleware/upload');
 
-router.post('/register',validateSignup,validate,UserController.registerUser);
+router.post('/register',upload.single('profileImage'), validateSignup,validate,UserController.registerUser);
 router.put('/update-profile/:id',authenticateToken, upload.single('profileImage'),editUserProfileValidator,validate,UserController.editUserProfile);
 router.delete('/delete-account/:id', authenticateToken, UserController.deleteAccount);
 router.get('/getUser/:id', authenticateToken, UserController.getUserById);
