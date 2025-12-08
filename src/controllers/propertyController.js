@@ -168,66 +168,78 @@ exports.editProperties = async (req, res) => {
 
       for (const rc of rateCardArray) {
         // Fetch the existing rate card
-        const existingRC = await PropertyRateCard.findOne({
-          where: { propertyId: property.id, roomType: rc.roomType }, transaction: t
-        });
+        if (rc.id) {
+          const existingRC = await PropertyRateCard.findByPk(rc.id, { transaction: t });
 
-        if (existingRC) {
-          // Prepare removedImages array for this rate card
-          let removedRoomImages = rc.removedImages || [];
-          if (typeof removedRoomImages === "string") removedRoomImages = [removedRoomImages];
+          if (existingRC) {
+            // Prepare removedImages array for this rate card
+            let removedRoomImages = Array.isArray(rc.removedRoomImages) ? rc.removedRoomImages : [];
 
-          // Remove images from DB array
-          let updatedRoomImages = [...(existingRC.roomImages || [])];
-          updatedRoomImages = updatedRoomImages.filter(img => !removedRoomImages.includes(img));
+            // Remove images from DB array
+            let updatedRoomImages = Array.isArray(existingRC.roomImages) ? [...existingRC.roomImages] : [];
+            updatedRoomImages = updatedRoomImages.filter(img => !removedRoomImages.includes(img));
 
-          // Delete removed images from filesystem
-          for (const imgUrl of removedRoomImages) {
-            try {
-              const filePath = path.join(__dirname, '..', imgUrl.replace(/^\//, ''));
-              if (fs.existsSync(filePath)) await fs.promises.unlink(filePath);
-            } catch (err) {
-              console.error(`Failed to delete room image ${imgUrl}:`, err);
+            // Delete removed images from filesystem
+            for (const imgUrl of removedRoomImages) {
+              try {
+                const filePath = path.join(__dirname, '..', imgUrl.replace(/^\//, ''));
+                if (fs.existsSync(filePath)) await fs.promises.unlink(filePath);
+              } catch (err) {
+                console.error(`Failed to delete room image ${imgUrl}:`, err);
+              }
             }
-          }
 
-          // Add new uploaded room images
-          const roomFiles = req.files?.filter(f => f.fieldname === `roomImages_${rc.roomType}`) || [];
-          const newRoomImages = roomFiles.map(f => `/uploads/roomImages/${f.filename}`);
+            // Add new uploaded room images
+            const safeRoomType = rc.roomType.replace(/\s+/g, "_");
+            const roomFiles = req.files?.filter(f => f.fieldname === `roomImages_${safeRoomType}`) || [];
+            const newRoomImages = roomFiles.map(f => `/uploads/roomImages/${f.filename}`);
 
-          // Check max 10 images per room
-          if (updatedRoomImages.length + newRoomImages.length > 10) {
-            await t.rollback();
+            // Check max 10 images per room
+            if (updatedRoomImages.length + newRoomImages.length > 10) {
+              await t.rollback();
 
-            // Delete newly uploaded files to prevent orphan files
-            roomFiles.forEach(f => {
-              const filePath = path.join(__dirname, '..', 'uploads/roomImages', f.filename);
-              if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-            });
-            return res.status(400).json({ message: `Max 10 images allowed for room type ${rc.roomType}` });
-          }
+              // Delete newly uploaded files to prevent orphan files
+              roomFiles.forEach(f => {
+                const filePath = path.join(__dirname, '..', 'uploads/roomImages', f.filename);
+                if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+              });
+              return res.status(400).json({ message: `Max 10 images allowed for room type ${rc.roomType}` });
+            }
 
-          updatedRoomImages = [...updatedRoomImages, ...newRoomImages];
+            updatedRoomImages = [...updatedRoomImages, ...newRoomImages];
 
-          const roomAmenitiesParsed = Array.isArray(rc.roomAmenities)
-            ? rc.roomAmenities
-            : rc.roomAmenities?.split(",").map(a => a.trim()) || existingRC.roomAmenities;
-         
+            const roomAmenitiesParsed = Array.isArray(rc.roomAmenities)
+              ? rc.roomAmenities
+              : rc.roomAmenities?.split(",").map(a => a.trim()) || existingRC.roomAmenities;
+
             // Update the rate card
-          await existingRC.update({
-            rent: rc.rent !== undefined ? parseFloat(rc.rent) : existingRC.rent,
-            roomImages: updatedRoomImages,
-            roomAmenities: roomAmenitiesParsed
-          }, { transaction: t });
+            await existingRC.update({
+              roomType: rc.roomType,
+              rent: rc.rent !== undefined ? parseFloat(rc.rent) : existingRC.rent,
+              roomImages: updatedRoomImages,
+              roomAmenities: roomAmenitiesParsed
+            }, { transaction: t });
 
+          }
         } else {
           // If rate card didn't exist, create a new one (optional)
           const roomFiles = req.files?.filter(f => f.fieldname === `roomImages_${rc.roomType}`) || [];
           const roomImageUrls = roomFiles.map(f => `/uploads/roomImages/${f.filename}`);
-const roomAmenitiesParsed = Array.isArray(rc.roomAmenities)
+
+          if (roomImageUrls.length > 10) {
+            await t.rollback();
+            // Delete newly uploaded files 
+            roomFiles.forEach(f => {
+              const filePath = path.join(__dirname, '..', 'uploads/roomImages', f.filename);
+              if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+            });
+            return res.status(400).json({ message: `Max 10 images allowed for new room type ${rc.roomType}` });
+          }
+
+          const roomAmenitiesParsed = Array.isArray(rc.roomAmenities)
             ? rc.roomAmenities
             : rc.roomAmenities?.split(",").map(a => a.trim()) || existingRC.roomAmenities;
-         
+
           await PropertyRateCard.create({
             propertyId: property.id,
             roomType: rc.roomType,
@@ -247,7 +259,6 @@ const roomAmenitiesParsed = Array.isArray(rc.roomAmenities)
     res.status(500).json({ message: "Failed to update property" });
   }
 };
-
 
 exports.getProperties = async (req, res) => {
   try {
@@ -272,27 +283,25 @@ exports.getProperties = async (req, res) => {
 exports.deleteProperty = async (req, res) => {
   try {
     const { id } = req.params;
+    const today = new Date();
 
-    const property = await Property.findByPk(id, {
-      include: { model: Rooms, as: 'rooms', include: { model: Booking, as: 'bookings' } }
-    });
+    const property = await Property.findByPk(id);
 
     if (!property) {
       return res.status(404).json({ message: "Property not found" });
     }
 
-    const today = new Date();
-
     //check for active or future booking
-    const hasActiveOrFutureBookings = property.rooms.some(room =>
-      room.bookings.some(booking =>
-        (booking.status === 'approved' || booking.status === 'pending') &&
-        new Date(booking.checkOutDate) >= today
-      )
-    );
+    const hasActiveOrFutureBookings = await Booking.findOne({
+      where: {
+        propertyId: id,
+        status: { [Op.in]: ["approved", "pending"] },
+        checkOutDate: { [Op.gte]: today }
+      }
+    });
 
     if (hasActiveOrFutureBookings) {
-      return res.status(400).json({ message: "Cannot delete property: some rooms have active or future bookings." });
+      return res.status(400).json({ message: "Cannot delete property: There are active or future bookings linked to this property." });
     }
 
     // --- Delete property and room images from server ---
@@ -316,26 +325,60 @@ exports.deleteProperty = async (req, res) => {
   }
 }
 
-exports.checkRateCardDeletion = async (req, res) => {
+exports.deleteRateCard = async (req, res) => {
+  const t = await sequelize.transaction();
   try {
     const { propertyId, roomType } = req.body;
 
-    const property = await Property.findByPk(propertyId, {
-      include: { model: Rooms, as: 'rooms', include: { model: Booking, as: 'bookings' } }
+    const today = new Date();
+    const hasActiveOrFutureBooking = await Booking.findOne({
+      where: {
+        propertyId: propertyId,
+        roomType: roomType,
+        [Op.or]: [{ status: 'approved' }, { status: 'pending' }],
+        checkOutDate: { [Op.gte]: today }
+      },
+      transaction: t
     });
 
-    if (!property) return res.status(404).json({ message: "Property not found" });
+    if (hasActiveOrFutureBooking) {
+      await t.rollback();
+      return res.status(400).json({ message: `Cannot delete: Room type "${roomType}" has active or future bookings.` });
+    }
 
-    const roomsOfType = property.rooms.filter(r => r.roomType === roomType);
-    const hasActiveBooking = roomsOfType.some(r =>
-      r.bookings.some(b => (b.status === 'approved' || b.status === 'pending') &&
-        new Date(b.checkOutDate) >= new Date())
-    );
+    const rateCardToDelete = await PropertyRateCard.findOne({
+      where: { propertyId, roomType },
+      transaction: t
+    });
 
-    res.json({ canDelete: !hasActiveBooking });
+    if (!rateCardToDelete) {
+      await t.rollback();
+      return res.status(404).json({ message: "Rate card not found." });
+    }
+
+    // Delete images from file system
+    if (rateCardToDelete.roomImages && rateCardToDelete.roomImages.length > 0) {
+      for (const imgUrl of rateCardToDelete.roomImages) {
+        try {
+          const filePath = path.join(__dirname, '..', imgUrl.replace(/^\//, ''));
+          if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        } catch (err) {
+          console.error(`Failed to delete room image ${imgUrl}:`, err);
+        }
+      }
+    }
+
+    await PropertyRateCard.destroy({
+      where: { propertyId, roomType },
+      transaction: t
+    });
+
+    await t.commit();
+    res.status(200).json({ message: "Room type deleted successfully." });
+
   } catch (err) {
+    await t.rollback();
     console.error(err);
-    res.status(500).json({ message: "Failed to check deletion" });
+    res.status(500).json({ message: "Failed to delete room type." });
   }
 };
-
