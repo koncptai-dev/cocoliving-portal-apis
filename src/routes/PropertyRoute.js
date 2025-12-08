@@ -11,6 +11,6 @@ router.post("/add", upload.any(),validateProperty, validate, authMiddleware, pro
 router.get("/getAll", propertyController.getProperties);
 router.put("/edit/:id",upload.any(),editPropertyValidate, validate, authMiddleware, propertyController.editProperties);
 router.delete("/delete/:id", authMiddleware, propertyController.deleteProperty);
-router.post("/checkRateCardDeletion",authMiddleware,propertyController.checkRateCardDeletion);
+router.delete("/deleteRateCard", authMiddleware, propertyController.deleteRateCard);
 
 module.exports = router;

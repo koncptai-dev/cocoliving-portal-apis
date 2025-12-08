@@ -23,6 +23,8 @@ const ActivityRoute=require('./routes/ActivityRoutes');
 const BookingPaymentRoutes = require('./routes/BookingPaymentRoutes');
 const PaymentRoutes = require('./routes/PaymentRoutes');
 const path = require('path');
+const panRoutes=require('./routes/panRoutes');
+const digilocker=require('./routes/digilocker');
 
 app.use(cors({
     origin: '*', // Allow only your frontend's IP
@@ -55,6 +57,8 @@ app.use('/api/inventory', InventoryRoutes);
 app.use('/api/service-history', ServiceHistoryRoutes);
 app.use('/api/food-menu', FoodMenuRoute);
 app.use('/api/activity', ActivityRoute);
+app.use('/api/pan',panRoutes);
+app.use('/api/digilocker',digilocker);
 
 sequelize.sync({ alter: true }) //   ensures new models are created
   .then(() => console.log('✅ Database Synced'))

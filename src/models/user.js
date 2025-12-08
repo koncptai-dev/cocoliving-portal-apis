@@ -40,6 +40,10 @@ const User = sequelize.define('User', {
         allowNull: true,
         defaultValue: null
     },
+    isPhoneVerified: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false
+    },
     gender: {
         type: DataTypes.STRING,
         allowNull: true,
