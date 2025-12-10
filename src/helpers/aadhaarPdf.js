@@ -23,7 +23,7 @@ exports.generateAadhaarStylePDF = async (aadhaar, res) => {
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader(
     "Content-Disposition",
-    `inline; filename="aadhaar-kyc-${aadhaar.userId}.pdf"`
+    `inline; filename="aadhaar-kyc-${name}.pdf"`
   );
   doc.pipe(res);
 
