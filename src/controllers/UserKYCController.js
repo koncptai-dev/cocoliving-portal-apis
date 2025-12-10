@@ -1,5 +1,6 @@
 const User = require("../models/user");
 const UserKYC = require("../models/userKYC");
+const { generateAadhaarStylePDF } = require("../helpers/aadhaarPdf");
 
 exports.getUserKYC = async (req, res) => {
   try {
@@ -87,5 +88,27 @@ exports.getUserKYC = async (req, res) => {
       message: "Server error",
       error: error.message,
     });
+  }
+};
+
+exports.downloadAadhaar = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const userKYC = await UserKYC.findOne({
+      where: { userId, ekycStatus: "verified" },
+    });
+
+    if (!userKYC) {
+      return res.status(404).json({
+        success: false,
+        message: "Aadhaar not verified for this user",
+      });
+    }
+    await generateAadhaarStylePDF(userKYC, res);
+  } catch (error) {
+    console.error("Error downloading Aadhaar:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Failed to download Aadhaar" });
   }
 };
