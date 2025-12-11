@@ -1,38 +1,39 @@
 const { Op } = require('sequelize');
 const moment = require('moment');
 
-const { createPayment } = require('../utils/phonepe/phonepeApi');
+const { createPayment , initiateRefund , refundStatus} = require('../utils/phonepe/phonepeApi');
 const phonepeConfig = require('../utils/phonepe/phonepeConfig');
 
 const Booking = require('../models/bookRoom');
 const PaymentTransaction = require('../models/paymentTransaction');
 const PropertyRateCard = require('../models/propertyRateCard');
 
-function canonicalizeMetadata(metadata){
-  const keys = [
-    'rateCardId',
-    'checkInDate',
-    'duration',
-    'bookingType',
-  ];
-  const out = {};
-  keys.forEach((k) => {
-    if (metadata && Object.prototype.hasOwnProperty.call(metadata, k)) out[k] = metadata[k];
-  });
-  return JSON.stringify(out);
+function canonicalizeMetadata(metadata) {
+  if (!metadata || typeof metadata !== 'object') return '{}';
+
+  const allowedKeys = ['rateCardId', 'checkInDate', 'duration', 'bookingType'];
+
+  const filtered = {};
+  for (const key of allowedKeys) {
+    if (Object.prototype.hasOwnProperty.call(metadata, key)) {
+      filtered[key] = metadata[key];
+    }
+  }
+
+  const sorted = {};
+  for (const key of Object.keys(filtered).sort()) {
+    sorted[key] = filtered[key];
+  }
+
+  return JSON.stringify(sorted);
 }
 
 function paiseFromRupees(rupees) {
   return Math.round(Number(rupees || 0) * 100);
 }
 
-
-function createMerchantOrderId({ userId, bookingType }) {
-  const typePart = (bookingType || 'full').toString().toLowerCase();
-  const ts = Date.now();
-  let base = `booking-${userId}-${typePart}-${ts}`;
-  if (base.length > 63) base = base.slice(0, 63);
-  return base;
+function createMerchantOrderId(type, txId) {
+  return `${type}-${txId}`;
 }
 
 async function checkOverlappingBooking(userId, checkInDate, checkOutDate) {
@@ -133,11 +134,14 @@ exports.initiate = async (req, res) => {
     }
 
     const totalAmountRupees = rebuiltMeta.monthlyRent * rebuiltMeta.duration + rebuiltMeta.securityDeposit;
-    const amountPaise = paiseFromRupees(totalAmountRupees);
-    const merchantOrderId = createMerchantOrderId({ userId, bookingType: rebuiltMeta.bookingType });
+
+    let payableAmountRupees = totalAmountRupees;
+
+    if (rebuiltMeta.bookingType === "PREBOOK") { payableAmountRupees = Math.ceil(totalAmountRupees * 0.10);}
+    const amountPaise = paiseFromRupees(payableAmountRupees);
 
     const tx = await PaymentTransaction.create({
-      merchantOrderId,
+      merchantOrderId:createMerchantOrderId(userId,rebuiltMeta.checkInDate,rebuiltMeta.checkOutDate),
       userId,
       amount: amountPaise,
       type: rebuiltMeta.bookingType === 'PREBOOK' ? 'PREBOOK' : 'FULL',
@@ -151,19 +155,41 @@ exports.initiate = async (req, res) => {
         monthlyRent: rebuiltMeta.monthlyRent,
         securityDeposit: rebuiltMeta.securityDeposit,
         totalAmount: totalAmountRupees,
-        propertyId:rebuiltMeta.propertyId,
-        roomType:rebuiltMeta.roomType,
+        payableAmount: payableAmountRupees,
+        propertyId: rebuiltMeta.propertyId,
+        roomType: rebuiltMeta.roomType,
       },
-      rawResponse: { note: 'pending transaction created' },
+      rawResponse: { note: 'pending transaction created' }
+    });
+
+    const typeLower = rebuiltMeta.bookingType === 'PREBOOK' ? 'prebook' : 'full';
+    const merchantOrderId = createMerchantOrderId(typeLower, tx.id);
+    tx.merchantOrderId = merchantOrderId;
+    await tx.save();
+
+    
+    tx.rawResponse = Object.assign({}, tx.rawResponse || {}, {
+      calculated: { totalAmountRupees, payableAmountRupees }
     });
 
     const phonepePayload = {
-      merchantOrderId,
-      amount: amountPaise,
-      metaInfo: { udf1: String(userId), udf2: merchantOrderId },
+      merchantOrderId: tx.merchantOrderId,
+      metaInfo: {
+        udf1: tx.type, 
+        udf2: String(rebuiltMeta.rateCardId),
+        udf3: String(rebuiltMeta.propertyId),
+        udf4: rebuiltMeta.roomType,
+        udf5: String(userId),
+        udf6: "web-app",
+        udf7: tx.merchantOrderId,
+        udf8: rebuiltMeta.checkInDate,
+        udf9: String(rebuiltMeta.duration)
+      },
+      amount:amountPaise,
       paymentFlow: {
         type: 'PG_CHECKOUT',
-        merchantUrls: { redirectUrl: phonepeConfig.REDIRECT_URL },
+        message: `Coco Living - ${rebuiltMeta.roomType} Booking (Do Not Refresh)`,
+        merchantUrls: {redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${merchantOrderId}`},
       },
     };
 
@@ -192,13 +218,228 @@ exports.initiate = async (req, res) => {
   }
 };
 
+exports.initiateRemaining = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { bookingId } = req.body;
+
+    if (!userId || !bookingId) {
+      return res.status(400).json({ success: false, message: 'bookingId required' });
+    }
+
+    const booking = await Booking.findByPk(bookingId);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    if (booking.userId !== userId) {
+      return res.status(403).json({ success: false, message: 'Unauthorized booking access' });
+    }
+
+    const txs = await PaymentTransaction.findAll({
+      where: { bookingId, status: 'SUCCESS', type: { [Op.ne]: 'REFUND' } }
+    });
+
+    const totalPaidPaise = txs.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+    const totalAmountPaise = Math.round(Number(booking.totalAmount) * 100);
+    const remainingPaise = Math.max(totalAmountPaise - totalPaidPaise, 0);
+
+    if (remainingPaise <= 0) {
+      return res.json({ success: false, message: 'No remaining amount to pay' });
+    }
+    const tempOrderId = `remaining-tmp-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+
+    const draftTx = await PaymentTransaction.create({
+      userId,
+      bookingId,
+      amount: remainingPaise,
+      type: 'REMAINING',
+      status: 'PENDING',
+      merchantOrderId: tempOrderId,
+      rawResponse: { note: 'pending remaining transaction created' }
+    });
+
+    const finalOrderId = createMerchantOrderId('remaining', draftTx.id);
+    draftTx.merchantOrderId = finalOrderId;
+
+    await draftTx.save();
+
+
+    const phonepePayload = {
+      merchantOrderId:finalOrderId,
+      amount: remainingPaise,
+      metaInfo: {
+        udf1: 'REMAINING',
+        udf2: String(booking.rateCardId),
+        udf3: String(booking.propertyId),
+        udf4: booking.roomType,
+        udf5: String(userId),
+        udf6: "web-app",
+        udf7: finalOrderId,
+        udf8: booking.checkInDate,
+        udf9: String(booking.duration)
+      },
+      paymentFlow: {
+        type: 'PG_CHECKOUT',
+        message: `Coco Living - Remaining Payment`,
+        merchantUrls:{ redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${merchantOrderId}` },
+
+      }
+    };
+
+    const phonepeResp = await createPayment(phonepePayload);
+
+    draftTx.rawResponse = Object.assign({}, draftTx.rawResponse || {}, { phonepeCreateResponse: phonepeResp });
+    if (phonepeResp.success && phonepeResp.body) {
+      draftTx.phonepeOrderId = phonepeResp.body.orderId;
+      draftTx.redirectUrl = phonepeResp.body.redirectUrl || phonepeResp.body.checkoutUrl;
+    } else {
+      draftTx.status = 'FAILED';
+    }
+
+    await draftTx.save();
+
+    return res.json({
+      success: true,
+      redirectUrl: draftTx.redirectUrl,
+      transaction: draftTx
+    });
+  } catch (err) {
+    console.error('[initiateRemaining] error', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.refund = async (req, res) => {
+  try {
+    const actorId = req.user?.id;
+    const { transactionId, amountRupees } = req.body;
+
+    if (!transactionId || typeof amountRupees === 'undefined') {
+      return res.status(400).json({ success: false, message: 'transactionId and amountRupees are required' });
+    }
+
+    const originalTx = await PaymentTransaction.findByPk(transactionId);
+    if (!originalTx) return res.status(404).json({ success: false, message: 'Original transaction not found' });
+
+    if (originalTx.status !== 'SUCCESS' || String(originalTx.type || '').toUpperCase() === 'REFUND') {
+      return res.status(400).json({ success: false, message: 'Only successful non-refund transactions can be refunded' });
+    }
+
+    const allRefundTxs = await PaymentTransaction.findAll({
+      where: { type: 'REFUND' },
+      order: [['createdAt', 'ASC']],
+    });
+
+    const origMerchantOrderId = originalTx.merchantOrderId;
+    let refundedPaiseSoFar = 0;
+    for (const r of allRefundTxs) {
+      const rr = r.rawResponse || {};
+      if (rr && (rr.originalMerchantOrderId === origMerchantOrderId || (rr.phonepeRefundResponse && rr.phonepeRefundResponse.body && rr.phonepeRefundResponse.body.originalMerchantOrderId === origMerchantOrderId))) {
+        if (r.status === 'SUCCESS') refundedPaiseSoFar += Number(r.amount || 0);
+      }
+    }
+
+    const originalAmountPaise = Number(originalTx.amount || 0);
+    const refundablePaise = Math.max(originalAmountPaise - refundedPaiseSoFar, 0);
+
+    const reqAmountPaise = Math.round(Number(amountRupees || 0) * 100);
+
+    if (reqAmountPaise <= 0) return res.status(400).json({ success: false, message: 'Invalid refund amount' });
+    if (reqAmountPaise < 100) return res.status(400).json({ success: false, message: 'Minimum refund is ₹1 (100 paise) per PhonePe rules' });
+    if (reqAmountPaise > refundablePaise) return res.status(400).json({ success: false, message: `Refund amount exceeds refundable amount (max refundable: ₹${(refundablePaise/100).toFixed(2)})` });
+
+    const tempMerchantRefundId = `REFUND-TMP-${Date.now()}-${Math.floor(Math.random()*10000)}`;
+
+    const draftRefund = await PaymentTransaction.create({
+      userId: originalTx.userId || actorId,
+      bookingId: originalTx.bookingId || null,
+      amount: reqAmountPaise,
+      type: 'REFUND',
+      status: 'PENDING',
+      merchantOrderId: tempMerchantRefundId,
+      merchantRefundId: null,
+      rawResponse: { note: 'created refund draft', originalMerchantOrderId: origMerchantOrderId },
+    });
+
+    const finalMerchantRefundId = `REFUND-${draftRefund.id}`;
+
+    draftRefund.merchantRefundId = finalMerchantRefundId;
+    draftRefund.merchantOrderId = finalMerchantRefundId;
+    draftRefund.originalMerchantOrderId = origMerchantOrderId;
+    draftRefund.rawResponse = Object.assign({}, draftRefund.rawResponse || {}, { originalMerchantOrderId: origMerchantOrderId, merchantRefundId: finalMerchantRefundId });
+    await draftRefund.save();
+
+    const refundPayload = {
+      merchantRefundId: finalMerchantRefundId,
+      originalMerchantOrderId: origMerchantOrderId,
+      amount: reqAmountPaise,
+    };
+
+    const phonepeResp = await initiateRefund(refundPayload);
+
+    draftRefund.rawResponse = Object.assign({}, draftRefund.rawResponse || {}, { phonepeRefundResponse: phonepeResp, merchantRefundId: finalMerchantRefundId });
+
+    const returnedState = (phonepeResp && phonepeResp.body && (phonepeResp.body.state || '')).toString().toUpperCase();
+
+    if (phonepeResp && phonepeResp.success && phonepeResp.body && (returnedState === 'COMPLETED' || returnedState === 'CONFIRMED')) {
+      draftRefund.status = 'SUCCESS';
+    } else if (phonepeResp && phonepeResp.success && phonepeResp.body && returnedState === 'PENDING') {
+      draftRefund.status = 'PENDING';
+    } else {
+      draftRefund.status = 'FAILED';
+    }
+
+    await draftRefund.save();
+
+    return res.json({ success: true, message: 'Refund initiated', refundTransaction: draftRefund });
+
+  } catch (err) {
+    console.error('[refund] error', err);
+    return res.status(500).json({ success: false, message: err.message || 'Internal server error' });
+  }
+};
+
+exports.getRefundStatus = async (req, res) => {
+  try {
+    const { merchantRefundId } = req.params;
+
+    const tx = await PaymentTransaction.findOne({ where: { merchantRefundId: merchantRefundId, type: 'REFUND' }});
+    if (!tx) {
+      return res.status(404).json({ success: false, message: 'Refund transaction not found' });
+    }
+
+    const phonepeResp = await refundStatus(merchantRefundId);
+
+    const state = (phonepeResp?.body?.state || '').toUpperCase();
+
+    if (state === 'COMPLETED' || state === 'CONFIRMED') {
+      tx.status = 'SUCCESS';
+    } else if (state === 'FAILED') {
+      tx.status = 'FAILED';
+    } else {
+      tx.status = 'PENDING';
+    }
+
+    tx.rawResponse = { ...tx.rawResponse, refundStatusResponse: phonepeResp };
+    await tx.save();
+
+    return res.json({ success: true, transaction: tx, phonepe: phonepeResp });
+  } catch (err) {
+    console.error('[refundStatus] error', err);
+    return res.status(500).json({ success: false, message: err.message || 'Server error' });
+  }
+};
+
 exports.getBookingPaymentSummary = async (req, res) => {
   try {
     const bookingId = req.params.bookingId;
-    if (!bookingId) return res.status(400).json({ success: false, message: 'bookingId param is required' });
+    if (!bookingId)
+      return res.status(400).json({ success: false, message: 'bookingId param is required' });
 
     const booking = await Booking.findByPk(bookingId);
-    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+    if (!booking)
+      return res.status(404).json({ success: false, message: 'Booking not found' });
 
     const PaymentTransactionModel = require('../models/paymentTransaction');
     const transactions = await PaymentTransactionModel.findAll({
@@ -206,21 +447,47 @@ exports.getBookingPaymentSummary = async (req, res) => {
       order: [['createdAt', 'ASC']],
     });
 
-    const totalPaidPaise = transactions.filter(t => t.status === 'SUCCESS' && t.type !== 'REFUND').reduce((s, t) => s + Number(t.amount || 0), 0);
+    const totalPaidPaise = transactions
+      .filter(t => t.status === 'SUCCESS' && t.type !== 'REFUND')
+      .reduce((s, t) => s + Number(t.amount || 0), 0);
+
     const netPaidPaise = totalPaidPaise;
-    const totalAmountPaise = Number(booking.totalAmount || 0) * 100;
+    const totalRefundedPaise = transactions
+      .filter(t => t.status === 'SUCCESS' && t.type === 'REFUND')
+      .reduce((s, t) => s + Number(t.amount || 0), 0);
+
+    const totalRefundedRupees = Math.round(totalRefundedPaise / 100);
+
+    let totalAmountRupees = Number(booking.totalAmount || 0);
+    if (!totalAmountRupees) {
+      for (const t of transactions) {
+        if (t.pendingBookingData?.totalAmount) {
+          totalAmountRupees = Number(t.pendingBookingData.totalAmount);
+          break;
+        }
+      }
+    }
+
+    const totalAmountPaise = Math.round(totalAmountRupees * 100);
+
     const remainingPaise = Math.max(totalAmountPaise - netPaidPaise, 0);
+
+    const mappedTransactions = transactions.map(t => ({
+      ...t.toJSON(),
+      amountRupees: Math.round(Number(t.amount || 0) / 100),
+    }));
 
     return res.json({
       booking,
       bookingType: booking.bookingType,
       paymentStatus: booking.paymentStatus,
       totals: {
-        totalAmountRupees: booking.totalAmount || 0,
+        totalAmountRupees,
         totalPaidRupees: Math.round(netPaidPaise / 100),
         remainingRupees: Math.round(remainingPaise / 100),
+        totalRefundedRupees
       },
-      transactions,
+      transactions: mappedTransactions,
     });
   } catch (err) {
     console.error('[BookingPaymentController] getBookingPaymentSummary error', err);

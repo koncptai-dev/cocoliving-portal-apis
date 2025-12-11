@@ -22,6 +22,15 @@ const PaymentTransaction = sequelize.define(
       allowNull: false,
       unique: true,
     },
+    merchantRefundId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      unique: true,
+    },
+    originalMerchantOrderId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
     phonepeOrderId: {
       type: DataTypes.STRING,
       allowNull: true,
@@ -32,7 +41,7 @@ const PaymentTransaction = sequelize.define(
       comment: 'Amount in paise (integer)',
     },
     type: {
-      type: DataTypes.ENUM('PREBOOK', 'FULL', 'REMAINING','REFUND'),
+      type: DataTypes.ENUM('PREBOOK', 'FULL', 'REMAINING', 'REFUND'),
       allowNull: false,
     },
     status: {
