@@ -177,12 +177,7 @@ exports.phonePeWebhook = async (req, res) => {
 
       // Find the refund transaction
       const refundTx = await PaymentTransaction.findOne({
-        where: {
-          [Op.or]: [
-            { merchantRefundId: resolvedRefundId },
-            { refundId: resolvedRefundId }
-          ]
-        }
+        where: { merchantRefundId: resolvedRefundId }
       });
 
       if (!refundTx) {
@@ -196,7 +191,6 @@ exports.phonePeWebhook = async (req, res) => {
         refundWebhookReceivedAt: new Date().toISOString()
       });
       refundTx.merchantRefundId = resolvedRefundId;
-      refundTx.refundId = incomingPayload.refundId || refundTx.refundId;
       refundTx.webhookProcessedAt = new Date();
 
       const refundState = String(incomingPayload.state || "").toUpperCase();
