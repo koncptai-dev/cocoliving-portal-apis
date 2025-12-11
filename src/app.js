@@ -26,6 +26,7 @@ const path = require("path");
 const panRoutes = require("./routes/panRoutes");
 const digilocker = require("./routes/digilocker");
 const UserKYCRoutes = require("./routes/UserKYCRoutes");
+const AuditLogRoutes = require("./routes/AuditLog");
 
 app.use(
   cors({
@@ -67,6 +68,7 @@ app.use("/api/activity", ActivityRoute);
 app.use("/api/pan", panRoutes);
 app.use("/api/digilocker", digilocker);
 app.use("/api/admin/user", UserKYCRoutes);
+app.use("/api/logs", AuditLogRoutes);
 
 sequelize
   .sync({ alter: true }) //   ensures new models are created
