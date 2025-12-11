@@ -123,7 +123,51 @@ exports.rejectBooking = async (req, res) => {
   }
 };
 
-// NEW/REPLACE: Assign room to booking (atomic + capacity check)
+exports.cancelBooking = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { reason } = req.body || {};
+
+    const booking = await Booking.findByPk(bookingId);
+
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+
+    if (["cancelled", "completed"].includes(booking.status)) {
+      return res.status(400).json({ message: "Booking already cancelled or completed" });
+    }
+
+    booking.status = "cancelled";
+    booking.cancelReason = reason || null;
+    await booking.save();
+
+    if (booking.roomId) {
+      const room = await Rooms.findByPk(booking.roomId);
+      if (room) {
+        const active = await Booking.count({
+          where: {
+            roomId: room.id,
+            status: { [Op.in]: ["approved", "active"] }
+          }
+        });
+
+        room.status = active > 0 ? "booked" : "available";
+        await room.save();
+      }
+    }
+
+    return res.status(200).json({
+      message: "Booking cancelled successfully",
+      booking
+    });
+
+  } catch (err) {
+    console.error("cancelBooking error:", err);
+    return res.status(500).json({ message: "Internal server error", error: err.message });
+  }
+};
+
 exports.assignRoom = async (req, res) => {
   const t = await sequelize.transaction();
   try {
