@@ -1,11 +1,9 @@
 const User = require('../models/user');
+const UserKYC = require('../models/userKYC');
 const OTP = require('../models/otp');
-const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
 require('dotenv').config();
 const otpGenerator = require("otp-generator");
-// const jwt =require('jsonwebtoken');
-const { sendResetEmail } = require('../utils/emailService'); // Utility for sending emails
 const fs = require('fs');
 const path = require('path');
 const { mailsender } = require('../utils/emailService');
@@ -351,12 +349,16 @@ exports.getUserById = async (req, res) => {
         if (!user || user.status === 0) {
             return res.status(404).json({ message: 'No user found' });
         }
-
+        const kyc = await UserKYC.findOne({ where: { userId: user.id } });
+        if (kyc) {
+            user.dataValues.isPanVerified = kyc.panStatus === "verified";
+            user.dataValues.isAadhaarVerified = kyc.ekycStatus === "verified";
+        } else {
+            user.dataValues.isPanVerified = false;
+            user.dataValues.isAadhaarVerified = false;
+        }
         return res.status(200).json({ success: true, user });
     } catch (err) {
         return res.status(500).json({ message: 'Error fetching users', error: err.message });
     }
 }
-
-
-
