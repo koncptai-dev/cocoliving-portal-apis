@@ -1,25 +1,28 @@
 const axios = require("axios");
 require("dotenv").config();
 
+const otpApiEndpoint = "https://onlysms.co.in/api/otp.aspx";
+const smsApiEndpoint = "https://onlysms.co.in/api/sms.aspx";
+
 exports.smsSender = async (phone, type, data) => {
   let message = "";
   let apiEndpoint = "";
   if (type === "otp") {
     message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED`;
-    apiEndpoint = "https://onlysms.co.in/api/otp.aspx";
+    apiEndpoint = otpApiEndpoint;
   }
   const encodedMessage = encodeURIComponent(message);
 
   const fullUrl =
     `${apiEndpoint}` +
-    `?UserID=${process.env.OTP_USER_ID}` +
-    `&UserPass=${process.env.OTP_USER_PASS}` +
+    `?UserID=${process.env.SMS_USER_ID}` +
+    `&UserPass=${process.env.SMS_USER_PASS}` +
     `&MobileNo=${phone}` +
-    `&GSMID=${process.env.OTP_GSMID}` +
-    `&PEID=${process.env.OTP_PEID}` +
+    `&GSMID=${process.env.SMS_GSMID}` +
+    `&PEID=${process.env.SMS_PEID}` +
     `&Message=${encodedMessage}` +
-    `&TEMPID=${process.env.OTP_TEMPID}` +
-    `&UNICODE=${process.env.OTP_UNICODE}`;
+    `&TEMPID=${process.env.SMS_TEMPID}` +
+    `&UNICODE=${process.env.SMS_UNICODE}`;
 
   try {
     const response = await axios.get(fullUrl);
