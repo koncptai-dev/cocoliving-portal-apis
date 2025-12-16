@@ -108,8 +108,10 @@ exports.getDashboardStats = async (req, res) => {
       occupancyRate: parseFloat(occupancyRate),
       pendingBookings,
       monthlyRevenue: Math.max(0, monthlyRevenue),
-      openedTickets,
-      resolvedTickets,
+      supportTickets: {
+        activeTickets: openedTickets,
+        resolvedTickets: resolvedTickets,
+      },
     });
   } catch (error) {
     console.error("Error fetching dashboard stats:", error);
