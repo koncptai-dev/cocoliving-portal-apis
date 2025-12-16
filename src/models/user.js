@@ -100,6 +100,7 @@ const User = sequelize.define('User', {
     companyName: { type: DataTypes.STRING, allowNull: true },
     position: { type: DataTypes.STRING, allowNull: true },
 
+    fcmToken:{type:DataTypes.STRING,allowNull:true}
 }, {
     tableName: 'users'
 })
