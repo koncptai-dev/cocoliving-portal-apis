@@ -3,6 +3,9 @@ const Rooms = require("../models/rooms");
 const Property = require("../models/property");
 const PropertyRateCard = require("../models/propertyRateCard");
 const PaymentTransaction = require("../models/paymentTransaction");
+const SupportTicket = require("../models/supportTicket");
+const Events = require("../models/events");
+const { Op } = require("sequelize");
 const { logApiCall } = require("../helpers/auditLog");
 require("../models/index");
 
@@ -20,6 +23,33 @@ exports.getUserDashboard = async (req, res) => {
     }
 
     const userId = req.user.id;
+
+    // Check if user has any approved bookings
+    const approvedBookingsCount = await Booking.count({
+      where: {
+        userId,
+        status: { [Op.in]: ["approved", "active"] },
+      },
+    });
+
+    // If user has no approved bookings, return empty data
+    if (approvedBookingsCount === 0) {
+      await logApiCall(
+        req,
+        res,
+        200,
+        "Viewed user dashboard - no approved bookings",
+        "dashboard",
+        userId
+      );
+      return res.status(200).json({
+        message: "User dashboard fetched successfully",
+        bookings: [],
+        recentPayments: [],
+        openedTicketsCount: 0,
+        upcomingEvents: [],
+      });
+    }
 
     const bookings = await Booking.findAll({
       where: { userId },
@@ -174,6 +204,75 @@ exports.getUserDashboard = async (req, res) => {
       };
     });
 
+    // Count opened tickets for the user
+    const openedTicketsCount = await SupportTicket.count({
+      where: {
+        userId,
+        status: "open",
+      },
+    });
+
+    // Get user's property IDs from bookings for event filtering
+    const propertyIds = formattedBookings
+      .map((booking) => booking.propertyId)
+      .filter((id) => id !== null && id !== undefined);
+    const uniquePropertyIds = [...new Set(propertyIds)];
+
+    // Fetch upcoming events
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Build event query - show events for all properties (null) or user's properties
+    const eventWhere = {
+      is_active: true,
+      eventDate: {
+        [Op.gte]: today,
+      },
+    };
+
+    if (uniquePropertyIds.length > 0) {
+      eventWhere[Op.or] = [
+        { propertyId: null }, // Events for all properties
+        { propertyId: { [Op.in]: uniquePropertyIds } }, // Events for user's properties
+      ];
+    } else {
+      // User has no bookings, only show events for all properties
+      eventWhere.propertyId = null;
+    }
+
+    const upcomingEvents = await Events.findAll({
+      where: eventWhere,
+      include: [
+        {
+          model: Property,
+          as: "property",
+          attributes: ["id", "name"],
+          required: false,
+        },
+      ],
+      order: [["eventDate", "ASC"]],
+      limit: 10, // Get next 10 upcoming events
+    });
+
+    const formattedEvents = upcomingEvents.map((event) => {
+      const eventData = event.toJSON();
+      return {
+        id: eventData.id,
+        title: eventData.title,
+        eventDate: eventData.eventDate,
+        eventTime: eventData.eventTime,
+        location: eventData.location,
+        maxParticipants: eventData.maxParticipants,
+        description: eventData.description,
+        property: eventData.property
+          ? {
+              id: eventData.property.id,
+              name: eventData.property.name,
+            }
+          : null,
+      };
+    });
+
     await logApiCall(
       req,
       res,
@@ -186,6 +285,8 @@ exports.getUserDashboard = async (req, res) => {
       message: "User dashboard fetched successfully",
       bookings: formattedBookings,
       recentPayments: formattedPayments,
+      openedTicketsCount,
+      upcomingEvents: formattedEvents,
     });
   } catch (error) {
     console.error("Error fetching user dashboard:", error);
