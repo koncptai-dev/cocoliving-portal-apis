@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { mailsender } = require('../utils/emailService');
 const { Op } = require('sequelize');
+const { welcomeEmail } = require('../utils/emailTemplates/emailTemplates');
 
 exports.AddUser = async (req, res) => {
     try {
@@ -26,30 +27,17 @@ exports.AddUser = async (req, res) => {
             userType,
             status: 1,
         });
-
-        //send login link to user to entered email
-        const loginLink = process.env.LOGIN_URL;
-
-        // email body
-        const emailBody = `
-            <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-                <h2>Welcome to COCO LIVING, ${fullName}!</h2>
-                <p>Your account has been created by the  Admin.</p>
-                <p>Please click the button below to go to the login page. You will need to enter your email (${email}) and then request a one-time password (OTP) to sign in.</p>                <p style="text-align:center;">
-                <a href="${loginLink}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
-                    Go to Login Page
-                </a>
-                </p>
-                <p>If the button doesn’t work, click this link:<br/>
-                <a href="${loginLink}">${loginLink}</a>
-                </p>
-                <p>Thank you,<br/>The COCO LIVING Team</p>
-            </div>
-            `;
-
-        //send the email
-        await mailsender(email, "Your New Account Details - COCO LIVING", emailBody);
-
+        try {
+            const mail = welcomeEmail({firstName:newUser.fullName});
+            await mailsender(
+                newUser.email,
+                'Welcome to Coco Living',
+                mail.html,
+                mail.attachments
+            );
+        } catch (err) {
+            console.error('Welcome email failed:', err.message);
+        }
         res.status(201).json({
             message: `User added successfully.Login email sent to ${email}`,
             user: newUser

@@ -231,9 +231,34 @@ exports.assignRoom = async (req, res) => {
     const newActiveCount = activeCount + 1;
     room.status = newActiveCount >= room.capacity ? "booked" : "available";
     await room.save({ transaction: t });
-
+    // AFTER room.save({ transaction: t });
+    const updatedBooking = await Booking.findByPk(booking.id, {
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'fullName', 'email', 'phone']
+        },
+        {
+          model: Rooms,
+          as: 'room',
+          attributes: ['id', 'roomNumber'],
+          include: [{ model: Property, as: 'property' }]
+        },
+        {
+          model: PropertyRateCard,
+          as: 'rateCard',
+          include: [{ model: Property, as: 'property' }]
+        }
+      ],
+      transaction: t
+    });
     await t.commit();
-    return res.json({ message: "Room assigned successfully", booking });
+    return res.status(200).json({
+      message: "Room assigned successfully",
+      booking: updatedBooking
+    });
+
   } catch (err) {
     await t.rollback();
     console.error("Assign Room Error:", err);
