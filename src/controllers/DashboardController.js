@@ -104,6 +104,29 @@ exports.getDashboardStats = async (req, res) => {
       where: { status: "resolved" },
     });
 
+    // 7. Count of available rooms
+    const allRoomsWithBookings = await Rooms.findAll({
+      attributes: ["id", "capacity", "status"],
+      include: [
+        {
+          model: Booking,
+          as: "bookings",
+          where: {
+            status: { [Op.in]: ["pending", "approved", "active"] },
+          },
+          required: false,
+        },
+      ],
+    });
+
+    const availableRoomsCount = allRoomsWithBookings.filter((room) => {
+      const bookingsCount = room.bookings?.length || 0;
+      return (
+        room.status !== "unavailable" &&
+        bookingsCount < (room.capacity || 0)
+      );
+    }).length;
+
     res.status(200).json({
       totalUsers,
       occupancyRate: parseFloat(occupancyRate),
@@ -112,6 +135,9 @@ exports.getDashboardStats = async (req, res) => {
       supportTickets: {
         activeTickets: openedTickets,
         resolvedTickets: resolvedTickets,
+      },
+      pendingActions: {
+        availableRooms: availableRoomsCount,
       },
     });
     await logApiCall(req, res, 200, "Viewed dashboard stats", "dashboard");

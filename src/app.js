@@ -74,7 +74,7 @@ app.use("/api/admin/user", UserKYCRoutes);
 app.use("/api/logs", AuditLogRoutes);
 app.use('/api/fcm', FcmRoutes);
 app.use("/api/dashboard", DashboardRoutes);
-app.use("/api/user-dashboard", UserDashboardRoutes);
+app.use("/api/user", UserDashboardRoutes);
 
 sequelize
   .sync({ alter: true }) //   ensures new models are created
