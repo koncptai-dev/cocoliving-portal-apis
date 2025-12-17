@@ -7,6 +7,7 @@ const PropertyRateCard = require("../models/propertyRateCard");
 const { Op } = require('sequelize');
 const Inventory = require("../models/inventory");
 const moment = require('moment');
+const { logApiCall } = require("../helpers/auditLog");
 
 
 //get all booking for admin
@@ -24,9 +25,11 @@ exports.getAllBookings=async(req,res)=>{
     ]
     })
 
+    await logApiCall(req, res, 200, "Viewed all bookings list", "booking");
     res.status(200).json({ booking });
   }catch(err){
     console.log("error",err);
+    await logApiCall(req, res, 500, "Error occurred while fetching all bookings", "booking");
     return res.status(500).json({message:"Internal server error"});
   }
 
@@ -42,11 +45,13 @@ exports.approveBooking = async (req, res) => {
     });
 
     if (!booking) {
+      await logApiCall(req, res, 404, `Approved booking - booking not found (ID: ${bookingId})`, "booking", parseInt(bookingId));
       return res.status(404).json({ message: "Booking not found" });
     }
 
     // 🚨 BLOCK APPROVAL IF NO ROOM ASSIGNED
     if (!booking.roomId) {
+      await logApiCall(req, res, 400, `Approved booking - no room assigned (ID: ${bookingId})`, "booking", parseInt(bookingId));
       return res.status(400).json({
         message: "Cannot approve booking without assigning a room first."
       });
@@ -69,6 +74,7 @@ exports.approveBooking = async (req, res) => {
     room.status = activeBookings >= room.capacity ? "booked" : "available";
     await room.save();
 
+    await logApiCall(req, res, 200, `Approved booking (ID: ${bookingId})`, "booking", parseInt(bookingId));
     res.status(200).json({
       message: "Booking approved successfully",
       booking
@@ -76,6 +82,7 @@ exports.approveBooking = async (req, res) => {
 
   } catch (err) {
     console.error("approveBooking error:", err);
+    await logApiCall(req, res, 500, "Error occurred while approving booking", "booking", parseInt(req.params.bookingId) || 0);
     res.status(500).json({
       message: "Internal server error",
       error: err.message
@@ -88,7 +95,10 @@ exports.rejectBooking = async (req, res) => {
     const { bookingId } = req.params;
 
     const booking = await Booking.findByPk(bookingId);
-    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    if (!booking) {
+      await logApiCall(req, res, 404, `Rejected booking - booking not found (ID: ${bookingId})`, "booking", parseInt(bookingId));
+      return res.status(404).json({ message: "Booking not found" });
+    }
 
     // 1️⃣ Update booking status
     booking.status = "rejected";
@@ -109,6 +119,7 @@ exports.rejectBooking = async (req, res) => {
       await room.save();
     }
 
+    await logApiCall(req, res, 200, `Rejected booking (ID: ${bookingId})`, "booking", parseInt(bookingId));
     res.status(200).json({
       message: "Booking rejected",
       booking,
@@ -116,6 +127,7 @@ exports.rejectBooking = async (req, res) => {
 
   } catch (error) {
     console.error("rejectBooking error:", error);
+    await logApiCall(req, res, 500, "Error occurred while rejecting booking", "booking", parseInt(req.params.bookingId) || 0);
     res.status(500).json({
       message: "Server error",
       error: error.message
@@ -131,10 +143,12 @@ exports.cancelBooking = async (req, res) => {
     const booking = await Booking.findByPk(bookingId);
 
     if (!booking) {
+      await logApiCall(req, res, 404, `Cancelled booking - booking not found (ID: ${bookingId})`, "booking", parseInt(bookingId));
       return res.status(404).json({ message: "Booking not found" });
     }
 
     if (["cancelled", "completed"].includes(booking.status)) {
+      await logApiCall(req, res, 400, `Cancelled booking - already cancelled or completed (ID: ${bookingId})`, "booking", parseInt(bookingId));
       return res.status(400).json({ message: "Booking already cancelled or completed" });
     }
 
@@ -157,6 +171,7 @@ exports.cancelBooking = async (req, res) => {
       }
     }
 
+    await logApiCall(req, res, 200, `Cancelled booking (ID: ${bookingId})`, "booking", parseInt(bookingId));
     return res.status(200).json({
       message: "Booking cancelled successfully",
       booking
@@ -164,6 +179,7 @@ exports.cancelBooking = async (req, res) => {
 
   } catch (err) {
     console.error("cancelBooking error:", err);
+    await logApiCall(req, res, 500, "Error occurred while cancelling booking", "booking", parseInt(req.params.bookingId) || 0);
     return res.status(500).json({ message: "Internal server error", error: err.message });
   }
 };
@@ -182,6 +198,7 @@ exports.assignRoom = async (req, res) => {
 
     if (!booking) {
       await t.rollback();
+      await logApiCall(req, res, 404, `Assigned room - booking not found (ID: ${bookingId})`, "booking", parseInt(bookingId));
       return res.status(404).json({ message: "Booking not found" });
     }
 
@@ -192,6 +209,7 @@ exports.assignRoom = async (req, res) => {
 
     if (!room) {
       await t.rollback();
+      await logApiCall(req, res, 404, `Assigned room - room not found (ID: ${roomId})`, "booking", parseInt(bookingId));
       return res.status(404).json({ message: "Room not found" });
     }
 
@@ -203,6 +221,7 @@ exports.assignRoom = async (req, res) => {
 
       if (rateCard && rateCard.propertyId !== room.propertyId) {
         await t.rollback();
+        await logApiCall(req, res, 400, `Assigned room - room does not belong to booking's property (Booking ID: ${bookingId})`, "booking", parseInt(bookingId));
         return res.status(400).json({
           message: "Selected room does not belong to booking's property",
         });
@@ -220,6 +239,7 @@ exports.assignRoom = async (req, res) => {
 
     if (activeCount >= room.capacity) {
       await t.rollback();
+      await logApiCall(req, res, 400, `Assigned room - room already full (Booking ID: ${bookingId}, Room ID: ${roomId})`, "booking", parseInt(bookingId));
       return res.status(400).json({ message: "Room is already full" });
     }
 
@@ -233,10 +253,12 @@ exports.assignRoom = async (req, res) => {
     await room.save({ transaction: t });
 
     await t.commit();
+    await logApiCall(req, res, 200, `Assigned room ${roomId} to booking (ID: ${bookingId})`, "booking", parseInt(bookingId));
     return res.json({ message: "Room assigned successfully", booking });
   } catch (err) {
     await t.rollback();
     console.error("Assign Room Error:", err);
+    await logApiCall(req, res, 500, "Error occurred while assigning room", "booking", parseInt(req.params.bookingId) || 0);
     return res.status(500).json({ message: "Failed to assign room", error: err.message });
   }
 };
@@ -254,11 +276,13 @@ exports.assignInventory = async (req, res) => {
 
     if (!booking) {
       await t.rollback();
+      await logApiCall(req, res, 404, `Assigned inventory - booking not found (ID: ${bookingId})`, "booking", parseInt(bookingId));
       return res.status(404).json({ message: "Booking not found" });
     }
 
     if (!booking.roomId) {
       await t.rollback();
+      await logApiCall(req, res, 400, `Assigned inventory - room must be assigned first (ID: ${bookingId})`, "booking", parseInt(bookingId));
       return res.status(400).json({
         message: "Room must be assigned before assigning inventory"
       });
@@ -271,6 +295,7 @@ exports.assignInventory = async (req, res) => {
 
     if (!room) {
       await t.rollback();
+      await logApiCall(req, res, 400, `Assigned inventory - room not found (Booking ID: ${bookingId})`, "booking", parseInt(bookingId));
       return res.status(400).json({ message: "Room not found" });
     }
 
@@ -294,6 +319,7 @@ exports.assignInventory = async (req, res) => {
       const invalid = inventoryIds.filter(id => !foundIds.includes(id));
 
       await t.rollback();
+      await logApiCall(req, res, 400, `Assigned inventory - some items not available (Booking ID: ${bookingId})`, "booking", parseInt(bookingId));
       return res.status(400).json({
         message: "Some items are not available for this room",
         invalidItems: invalid
@@ -315,6 +341,7 @@ exports.assignInventory = async (req, res) => {
 
     await t.commit();
 
+    await logApiCall(req, res, 200, `Assigned ${inventoryIds.length} inventory items to booking (ID: ${bookingId})`, "booking", parseInt(bookingId));
     return res.status(200).json({
       message: "Inventory assigned successfully",
       assignedInventory: inventoryIds
@@ -323,6 +350,7 @@ exports.assignInventory = async (req, res) => {
   } catch (err) {
     await t.rollback();
     console.error("Assign Inventory Error:", err);
+    await logApiCall(req, res, 500, "Error occurred while assigning inventory", "booking", parseInt(req.params.bookingId) || 0);
     return res.status(500).json({
       message: "Internal server error",
       error: err.message

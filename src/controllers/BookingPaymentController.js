@@ -7,6 +7,7 @@ const phonepeConfig = require('../utils/phonepe/phonepeConfig');
 const Booking = require('../models/bookRoom');
 const PaymentTransaction = require('../models/paymentTransaction');
 const PropertyRateCard = require('../models/propertyRateCard');
+const { logApiCall } = require("../helpers/auditLog");
 
 function canonicalizeMetadata(metadata) {
   if (!metadata || typeof metadata !== 'object') return '{}';
@@ -63,15 +64,25 @@ async function checkOverlappingBooking(userId, checkInDate, checkOutDate) {
 exports.initiate = async (req, res) => {
   try {
     const userId = req.user?.id;
-    if (!userId) return res.status(400).json({ success: false, message: 'Unauthorized Access' });
+    if (!userId) {
+      await logApiCall(req, res, 400, "Initiated booking payment - unauthorized access", "payment");
+      return res.status(400).json({ success: false, message: 'Unauthorized Access' });
+    }
 
     const { bookingType, metadata = {} } = req.body;
-    if (!metadata.duration || Number(metadata.duration)<1) return res.status(400).json({ success: false, message: 'duration must be atleast 1 month' });
+    if (!metadata.duration || Number(metadata.duration)<1) {
+      await logApiCall(req, res, 400, "Initiated booking payment - invalid duration", "payment", userId);
+      return res.status(400).json({ success: false, message: 'duration must be atleast 1 month' });
+    }
 
-    if (!bookingType || !metadata) return res.status(400).json({ success: false, message: 'bookingType and metadata are required' });
+    if (!bookingType || !metadata) {
+      await logApiCall(req, res, 400, "Initiated booking payment - missing required fields", "payment", userId);
+      return res.status(400).json({ success: false, message: 'bookingType and metadata are required' });
+    }
 
     const rateCard = await PropertyRateCard.findByPk(metadata.rateCardId);
     if (!rateCard) {
+      await logApiCall(req, res, 400, "Initiated booking payment - invalid rateCardId", "payment", userId);
       return res.status(400).json({ success: false, message: 'Invalid rateCardId' });
     }
 
@@ -93,6 +104,7 @@ exports.initiate = async (req, res) => {
 
     const overlap = await checkOverlappingBooking(userId, rebuiltMeta.checkInDate, rebuiltMeta.checkOutDate);
     if (overlap) {
+      await logApiCall(req, res, 400, "Initiated booking payment - overlapping booking exists", "payment", userId);
       return res.status(400).json({
         success: false,
         message: 'You already have an active/approved/pending booking during this period',
@@ -206,6 +218,7 @@ exports.initiate = async (req, res) => {
     }
     await tx.save();
 
+    await logApiCall(req, res, 200, `Initiated booking payment (Transaction ID: ${tx.id}, Type: ${tx.type})`, "payment", userId);
     return res.json({
       message: 'Payment initiated',
       phonepe: phonepeResp,
@@ -214,6 +227,7 @@ exports.initiate = async (req, res) => {
     });
   } catch (err) {
     console.error('[BookingPaymentController] initiate error', err);
+    await logApiCall(req, res, 500, "Error occurred while initiating booking payment", "payment", req.user?.id || 0);
     return res.status(500).json({ success: false, message: `Failed to initiate payment: ${err.message || err}` });
   }
 };
@@ -224,15 +238,18 @@ exports.initiateRemaining = async (req, res) => {
     const { bookingId } = req.body;
 
     if (!userId || !bookingId) {
+      await logApiCall(req, res, 400, "Initiated remaining payment - bookingId required", "payment", userId);
       return res.status(400).json({ success: false, message: 'bookingId required' });
     }
 
     const booking = await Booking.findByPk(bookingId);
     if (!booking) {
+      await logApiCall(req, res, 404, `Initiated remaining payment - booking not found (ID: ${bookingId})`, "payment", userId);
       return res.status(404).json({ success: false, message: 'Booking not found' });
     }
 
     if (booking.userId !== userId) {
+      await logApiCall(req, res, 403, `Initiated remaining payment - unauthorized booking access (ID: ${bookingId})`, "payment", userId);
       return res.status(403).json({ success: false, message: 'Unauthorized booking access' });
     }
 
@@ -245,6 +262,7 @@ exports.initiateRemaining = async (req, res) => {
     const remainingPaise = Math.max(totalAmountPaise - totalPaidPaise, 0);
 
     if (remainingPaise <= 0) {
+      await logApiCall(req, res, 200, `Initiated remaining payment - no remaining amount (Booking ID: ${bookingId})`, "payment", userId);
       return res.json({ success: false, message: 'No remaining amount to pay' });
     }
     const tempOrderId = `remaining-tmp-${Date.now()}-${Math.floor(Math.random()*1000)}`;
@@ -299,6 +317,7 @@ exports.initiateRemaining = async (req, res) => {
 
     await draftTx.save();
 
+    await logApiCall(req, res, 200, `Initiated remaining payment (Transaction ID: ${draftTx.id}, Booking ID: ${bookingId})`, "payment", userId);
     return res.json({
       success: true,
       redirectUrl: draftTx.redirectUrl,
@@ -306,6 +325,7 @@ exports.initiateRemaining = async (req, res) => {
     });
   } catch (err) {
     console.error('[initiateRemaining] error', err);
+    await logApiCall(req, res, 500, "Error occurred while initiating remaining payment", "payment", req.user?.id || 0);
     return res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -316,13 +336,18 @@ exports.refund = async (req, res) => {
     const { transactionId, amountRupees } = req.body;
 
     if (!transactionId || typeof amountRupees === 'undefined') {
+      await logApiCall(req, res, 400, "Initiated refund - transactionId and amountRupees required", "payment", actorId);
       return res.status(400).json({ success: false, message: 'transactionId and amountRupees are required' });
     }
 
     const originalTx = await PaymentTransaction.findByPk(transactionId);
-    if (!originalTx) return res.status(404).json({ success: false, message: 'Original transaction not found' });
+    if (!originalTx) {
+      await logApiCall(req, res, 404, `Initiated refund - transaction not found (ID: ${transactionId})`, "payment", actorId);
+      return res.status(404).json({ success: false, message: 'Original transaction not found' });
+    }
 
     if (originalTx.status !== 'SUCCESS' || String(originalTx.type || '').toUpperCase() === 'REFUND') {
+      await logApiCall(req, res, 400, `Initiated refund - transaction cannot be refunded (ID: ${transactionId})`, "payment", actorId);
       return res.status(400).json({ success: false, message: 'Only successful non-refund transactions can be refunded' });
     }
 
@@ -345,9 +370,18 @@ exports.refund = async (req, res) => {
 
     const reqAmountPaise = Math.round(Number(amountRupees || 0) * 100);
 
-    if (reqAmountPaise <= 0) return res.status(400).json({ success: false, message: 'Invalid refund amount' });
-    if (reqAmountPaise < 100) return res.status(400).json({ success: false, message: 'Minimum refund is ₹1 (100 paise) per PhonePe rules' });
-    if (reqAmountPaise > refundablePaise) return res.status(400).json({ success: false, message: `Refund amount exceeds refundable amount (max refundable: ₹${(refundablePaise/100).toFixed(2)})` });
+    if (reqAmountPaise <= 0) {
+      await logApiCall(req, res, 400, `Initiated refund - invalid refund amount (Transaction ID: ${transactionId})`, "payment", actorId);
+      return res.status(400).json({ success: false, message: 'Invalid refund amount' });
+    }
+    if (reqAmountPaise < 100) {
+      await logApiCall(req, res, 400, `Initiated refund - amount below minimum (Transaction ID: ${transactionId})`, "payment", actorId);
+      return res.status(400).json({ success: false, message: 'Minimum refund is ₹1 (100 paise) per PhonePe rules' });
+    }
+    if (reqAmountPaise > refundablePaise) {
+      await logApiCall(req, res, 400, `Initiated refund - amount exceeds refundable (Transaction ID: ${transactionId})`, "payment", actorId);
+      return res.status(400).json({ success: false, message: `Refund amount exceeds refundable amount (max refundable: ₹${(refundablePaise/100).toFixed(2)})` });
+    }
 
     const tempMerchantRefundId = `REFUND-TMP-${Date.now()}-${Math.floor(Math.random()*10000)}`;
 
@@ -392,10 +426,12 @@ exports.refund = async (req, res) => {
 
     await draftRefund.save();
 
+    await logApiCall(req, res, 200, `Initiated refund (Refund ID: ${draftRefund.id}, Transaction ID: ${transactionId}, Amount: ₹${amountRupees})`, "payment", actorId);
     return res.json({ success: true, message: 'Refund initiated', refundTransaction: draftRefund });
 
   } catch (err) {
     console.error('[refund] error', err);
+    await logApiCall(req, res, 500, "Error occurred while initiating refund", "payment", req.user?.id || 0);
     return res.status(500).json({ success: false, message: err.message || 'Internal server error' });
   }
 };
@@ -406,6 +442,7 @@ exports.getRefundStatus = async (req, res) => {
 
     const tx = await PaymentTransaction.findOne({ where: { merchantRefundId: merchantRefundId, type: 'REFUND' }});
     if (!tx) {
+      await logApiCall(req, res, 404, `Viewed refund status - refund transaction not found (ID: ${merchantRefundId})`, "payment", req.user?.id || 0);
       return res.status(404).json({ success: false, message: 'Refund transaction not found' });
     }
 
@@ -424,9 +461,11 @@ exports.getRefundStatus = async (req, res) => {
     tx.rawResponse = { ...tx.rawResponse, refundStatusResponse: phonepeResp };
     await tx.save();
 
+    await logApiCall(req, res, 200, `Viewed refund status (ID: ${merchantRefundId}, Status: ${tx.status})`, "payment", req.user?.id || 0);
     return res.json({ success: true, transaction: tx, phonepe: phonepeResp });
   } catch (err) {
     console.error('[refundStatus] error', err);
+    await logApiCall(req, res, 500, "Error occurred while fetching refund status", "payment", req.user?.id || 0);
     return res.status(500).json({ success: false, message: err.message || 'Server error' });
   }
 };
@@ -434,12 +473,16 @@ exports.getRefundStatus = async (req, res) => {
 exports.getBookingPaymentSummary = async (req, res) => {
   try {
     const bookingId = req.params.bookingId;
-    if (!bookingId)
+    if (!bookingId) {
+      await logApiCall(req, res, 400, "Viewed booking payment summary - bookingId required", "payment", req.user?.id || 0);
       return res.status(400).json({ success: false, message: 'bookingId param is required' });
+    }
 
     const booking = await Booking.findByPk(bookingId);
-    if (!booking)
+    if (!booking) {
+      await logApiCall(req, res, 404, `Viewed booking payment summary - booking not found (ID: ${bookingId})`, "payment", req.user?.id || 0);
       return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
 
     const PaymentTransactionModel = require('../models/paymentTransaction');
     const transactions = await PaymentTransactionModel.findAll({

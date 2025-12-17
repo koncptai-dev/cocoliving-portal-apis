@@ -5,6 +5,7 @@ const Property = require('../models/property');
 const Booking = require('../models/bookRoom');
 const Room = require('../models/rooms');
 const PropertyRateCard = require('../models/propertyRateCard');
+const { logApiCall } = require("../helpers/auditLog");
 
 // exports.createFoodMenu = async (req, res) => {
 //   try {
@@ -79,12 +80,14 @@ exports.upsertFoodMenu = async (req, res) => {
     const { propertyId, menu } = req.body;
 
     if (!menu || !propertyId) {
+      await logApiCall(req, res, 400, "Upserted food menu - property ID and menu required", "foodMenu");
       return res.status(400).json({ message: "Property ID & menu are required" });
     }
 
     // Check if property exists
     const property = await Property.findByPk(propertyId);
     if (!property) {
+      await logApiCall(req, res, 404, `Upserted food menu - property not found (ID: ${propertyId})`, "foodMenu");
       return res.status(404).json({ message: "Property not found" });
     }
 
@@ -95,15 +98,18 @@ exports.upsertFoodMenu = async (req, res) => {
       // Update existing menu
       existingMenu.menu = menu;
       await existingMenu.save();
+      await logApiCall(req, res, 200, `Updated food menu (Property ID: ${propertyId}, Menu ID: ${existingMenu.id})`, "foodMenu", existingMenu.id);
       return res.status(200).json({ message: "Food menu updated successfully", menu: existingMenu });
     } else {
       // Create new menu
       const newMenu = await FoodMenu.create({ propertyId, menu });
+      await logApiCall(req, res, 201, `Created new food menu (Property ID: ${propertyId}, Menu ID: ${newMenu.id})`, "foodMenu", newMenu.id);
       return res.status(201).json({ message: "Food menu created successfully", menu: newMenu });
     }
 
   } catch (error) {
     console.error("Error upserting food menu:", error);
+    await logApiCall(req, res, 500, "Error occurred while upserting food menu", "foodMenu");
     res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -124,9 +130,11 @@ exports.getFoodMenus = async (req, res) => {
 
     const totalPages = Math.ceil(count / limit);
 
+    await logApiCall(req, res, 200, "Viewed food menus list", "foodMenu");
     res.status(200).json({ menus, currentPage: page, totalPages });
   } catch (error) {
     console.error("Error fetching food menus:", error);
+    await logApiCall(req, res, 500, "Error occurred while fetching food menus", "foodMenu");
     res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -139,16 +147,19 @@ exports.deleteFoodMenu = async (req, res) => {
     const menu = await FoodMenu.findByPk(id);
 
     if (!menu) {
+      await logApiCall(req, res, 404, `Deleted food menu - menu not found (ID: ${id})`, "foodMenu", parseInt(id));
       return res.status(404).json({ message: `Food menu not found.` });
     }
 
     // Delete the menu entry
     await menu.destroy();
 
+    await logApiCall(req, res, 200, `Deleted food menu (ID: ${id})`, "foodMenu", parseInt(id));
     res.status(200).json({ message: "Food menu deleted successfully" });
 
   } catch (error) {
     console.error("Error deleting food menu:", error);
+    await logApiCall(req, res, 500, "Error occurred while deleting food menu", "foodMenu", parseInt(req.params.id) || 0);
     res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -179,6 +190,7 @@ exports.getUserMenus = async (req, res) => {
     });
 
     if (!bookings.length) {
+      await logApiCall(req, res, 404, "Viewed user menus - no active bookings found", "foodMenu", userId);
       return res.status(404).json({
         message: "No active bookings or properties found for this user",
       });
@@ -190,6 +202,7 @@ exports.getUserMenus = async (req, res) => {
     ];
 
     if (!propertyIds.length) {
+      await logApiCall(req, res, 404, "Viewed user menus - no valid property IDs found", "foodMenu", userId);
       return res.status(404).json({ message: "No valid property IDs found" });
     }
 
@@ -210,6 +223,7 @@ exports.getUserMenus = async (req, res) => {
     });
 
     if (!menus.length) {
+      await logApiCall(req, res, 404, "Viewed user menus - no menus found for properties", "foodMenu", userId);
       return res.status(404).json({ message: "No menus found for properties" });
     }
 
@@ -219,9 +233,11 @@ exports.getUserMenus = async (req, res) => {
       weekMenu: menu.menu, // Monday → Sunday
     }));
 
+    await logApiCall(req, res, 200, "Viewed user menus", "foodMenu", userId);
     return res.json({ menus: finalMenus });
   } catch (error) {
     console.error("Error fetching user menus:", error);
+    await logApiCall(req, res, 500, "Error occurred while fetching user menus", "foodMenu", req.user?.id || 0);
     return res.status(500).json({ message: "Failed to fetch user menus" });
   }
 };

@@ -5,6 +5,7 @@ const PaymentTransaction = require("../models/paymentTransaction");
 const SupportTicket = require("../models/supportTicket");
 const { Op } = require("sequelize");
 const sequelize = require("../config/database");
+const { logApiCall } = require("../helpers/auditLog");
 require("../models/index");
 
 exports.getDashboardStats = async (req, res) => {
@@ -113,8 +114,10 @@ exports.getDashboardStats = async (req, res) => {
         resolvedTickets: resolvedTickets,
       },
     });
+    await logApiCall(req, res, 200, "Viewed dashboard stats", "dashboard");
   } catch (error) {
     console.error("Error fetching dashboard stats:", error);
+    await logApiCall(req, res, 500, "Error occurred while fetching dashboard stats", "dashboard");
     res.status(500).json({
       message: "Internal server error",
       error: error.message,
@@ -317,14 +320,16 @@ exports.getReport = async (req, res) => {
       openedTickets,
       monthlyGraphData: {
         revenue: monthlyRevenueData,
-        roomOccupancy: monthlyOccupancyData,
-      },
-    });
-  } catch (error) {
-    console.error("Error fetching report:", error);
-    res.status(500).json({
-      message: "Internal server error",
-      error: error.message,
-    });
-  }
+      roomOccupancy: monthlyOccupancyData,
+    },
+  });
+  await logApiCall(req, res, 200, "Viewed report data", "dashboard");
+} catch (error) {
+  console.error("Error fetching report:", error);
+  await logApiCall(req, res, 500, "Error occurred while fetching report", "dashboard");
+  res.status(500).json({
+    message: "Internal server error",
+    error: error.message,
+  });
+}
 };

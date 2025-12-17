@@ -4,6 +4,7 @@ const csvParser = require("csv-parser");
 const json2csv = require("json2csv");
 const { Inventory, Property, Rooms } = require("../models");
 const generateInventoryCode = require("../helpers/InventoryCode");
+const { logApiCall } = require("../helpers/auditLog");
 
 // EXPORT INVENTORY TO CSV
 exports.exportInventory = async (req, res) => {
@@ -28,6 +29,7 @@ exports.exportInventory = async (req, res) => {
     });
 
     if (!inventories.length) {
+      await logApiCall(req, res, 404, "Exported inventory - no inventory data found", "inventory");
       return res.status(404).json({ message: "No inventory data found" });
     }
 
@@ -60,12 +62,14 @@ exports.exportInventory = async (req, res) => {
     const filePath = path.join(exportDir, fileName);
     fs.writeFileSync(filePath, csv);
 
+    await logApiCall(req, res, 200, `Exported inventory to CSV (Property ID: ${propertyId || 'all'})`, "inventory");
     res.download(filePath, (err) => {
       if (err) console.error("Error sending file:", err);
       fs.unlinkSync(filePath);
     });
   } catch (error) {
     console.error("Error exporting inventory:", error);
+    await logApiCall(req, res, 500, "Error occurred while exporting inventory", "inventory");
     res.status(500).json({
       message: "Error exporting inventory",
       error: error.message,
@@ -77,6 +81,7 @@ exports.exportInventory = async (req, res) => {
 exports.importInventory = async (req, res) => {
   try {
     if (!req.file) {
+      await logApiCall(req, res, 400, "Imported inventory - no CSV file uploaded", "inventory");
       return res.status(400).json({ message: "No CSV file uploaded" });
     }
 
@@ -143,6 +148,7 @@ exports.importInventory = async (req, res) => {
 
         fs.unlinkSync(filePath);
 
+        await logApiCall(req, res, 200, `Imported inventory from CSV (Inserted: ${inserted}, Skipped: ${skippedRows.length})`, "inventory");
         return res.json({
           message: "CSV Import Summary",
           totalRows: importedRows.length,
@@ -152,11 +158,13 @@ exports.importInventory = async (req, res) => {
         });
       } catch (error) {
         console.error("Error processing CSV:", error);
+        await logApiCall(req, res, 500, "Error occurred while processing CSV import", "inventory");
         res.status(500).json({ message: "Error processing CSV", error: error.message });
       }
     });
   } catch (error) {
     console.error("Error importing CSV:", error);
+    await logApiCall(req, res, 500, "Error occurred while importing inventory CSV", "inventory");
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
@@ -185,12 +193,14 @@ exports.downloadTemplate = async (req, res) => {
     const filePath = path.join(exportDir, "inventory_template.csv");
     fs.writeFileSync(filePath, csv);
 
+    await logApiCall(req, res, 200, "Downloaded inventory CSV template", "inventory");
     res.download(filePath, "inventory_template.csv", (err) => {
       if (err) console.error("Template download error:", err);
       fs.unlinkSync(filePath);
     });
   } catch (error) {
     console.error("Error creating template:", error);
+    await logApiCall(req, res, 500, "Error occurred while downloading inventory template", "inventory");
     res.status(500).json({ message: "Error generating template", error: error.message });
   }
 };

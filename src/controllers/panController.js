@@ -1,5 +1,6 @@
 const { verifyPANService } = require('../utils/panService');
 const UserKYC = require('../models/userKYC');
+const { logApiCall } = require("../helpers/auditLog");
 
 exports.verifyPAN = async (req, res) => {
     try {
@@ -7,6 +8,7 @@ exports.verifyPAN = async (req, res) => {
         const userId = req.user.id;
 
         if (!panNumber) {
+            await logApiCall(req, res, 400, "Verified PAN - PAN number required", "userKYC", userId);
             return res.status(400).json({ message: "PAN number is required" });
         }
 
@@ -16,6 +18,7 @@ exports.verifyPAN = async (req, res) => {
         });
 
         if (userPanRecord && userPanRecord.panStatus === "verified") {
+            await logApiCall(req, res, 200, `Verified PAN - already verified (User ID: ${userId})`, "userKYC", userId);
             return res.status(200).json(
                 {
                     success: true, message: "PAN already verified", data: {
@@ -53,6 +56,7 @@ exports.verifyPAN = async (req, res) => {
                 panKycResponse: JSON.stringify(response)
             });
         }
+        await logApiCall(req, res, 200, `Verified PAN - ${panStatus === "verified" ? "success" : "failed"} (User ID: ${userId})`, "userKYC", userId);
         return res.status(200).json({
             success: true, message: "PAN verified successfully", data: panNumber,
             status: panStatus,
@@ -61,7 +65,7 @@ exports.verifyPAN = async (req, res) => {
         console.error("Controller Error:", error.message);
         const statusCode = error.response?.status || 500;
         const message = error.response?.data?.message || error.message || "Internal Server Error during verification.";
-
+        await logApiCall(req, res, statusCode, "Error occurred while verifying PAN", "userKYC", req.user?.id || 0);
         res.status(statusCode).json({ success: false, message: message, });
     }
 }

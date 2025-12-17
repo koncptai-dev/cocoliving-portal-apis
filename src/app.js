@@ -29,6 +29,7 @@ const UserKYCRoutes = require("./routes/UserKYCRoutes");
 const AuditLogRoutes = require("./routes/AuditLog");
 const FcmRoutes = require("./routes/FcmRoutes");
 const DashboardRoutes = require("./routes/DashboardRoutes");
+const UserDashboardRoutes = require("./routes/UserDashboardRoutes");
 
 app.use(
   cors({
@@ -73,6 +74,7 @@ app.use("/api/admin/user", UserKYCRoutes);
 app.use("/api/logs", AuditLogRoutes);
 app.use('/api/fcm', FcmRoutes);
 app.use("/api/dashboard", DashboardRoutes);
+app.use("/api/user-dashboard", UserDashboardRoutes);
 
 sequelize
   .sync({ alter: true }) //   ensures new models are created

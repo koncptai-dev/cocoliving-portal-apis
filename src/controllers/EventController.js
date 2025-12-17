@@ -4,6 +4,7 @@ const EventParticipation = require('../models/eventParticipation');
 const User = require('../models/user');
 const { Op } = require('sequelize');
 const { Property } = require('../models');
+const { logApiCall } = require("../helpers/auditLog");
 
 //create events
 exports.createEvent = async (req, res) => {
@@ -13,12 +14,14 @@ exports.createEvent = async (req, res) => {
     //validate date of event
     const eventDateObj = new Date(eventDate);
     if (isNaN(eventDateObj.getTime())) {
+      await logApiCall(req, res, 400, "Created event - invalid event date", "event");
       return res.status(400).json({ message: "Invalid event date" });
     }
     // Validate time (HH:mm:ss)
     let validEventTime = null;
     if (eventTime) {
       if (!/^([01]\d|2[0-3]):([0-5]\d)(:[0-5]\d)?$/.test(eventTime)) {
+        await logApiCall(req, res, 400, "Created event - invalid event time", "event");
         return res.status(400).json({ message: "Invalid event time. Format should be HH:mm or HH:mm:ss" });
       }
       validEventTime = eventTime.length === 5 ? `${eventTime}:00` : eventTime;
@@ -26,6 +29,7 @@ exports.createEvent = async (req, res) => {
 
     //validate max participants
     if (isNaN(maxParticipants) || parseInt(maxParticipants) <= 0) {
+      await logApiCall(req, res, 400, "Created event - invalid max participants", "event");
       return res.status(400).json({ message: "Max participants must be a positive number." });
     }
 
@@ -38,10 +42,12 @@ exports.createEvent = async (req, res) => {
       }
     })
     if (existingEvent) {
+      await logApiCall(req, res, 400, "Created event - event already exists for property and date", "event");
       return res.status(400).json({ message: "Event already exists for this property and date." });
     }
 
     if (!propertyId || propertyId === "all") {
+      await logApiCall(req, res, 400, "Created event - property must be selected", "event");
       return res.status(400).json({ message: "Property must be selected for this event." });
     }
 
@@ -54,8 +60,10 @@ exports.createEvent = async (req, res) => {
       description,
       propertyId
     });
+    await logApiCall(req, res, 201, `Created new event: ${title} (ID: ${newEvent.id})`, "event", newEvent.id);
     return res.status(201).json(newEvent);
   } catch (err) {
+    await logApiCall(req, res, 500, "Error occurred while creating event", "event");
     return res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -69,11 +77,17 @@ exports.updateEvents = async (req, res) => {
     const event = await Events.findByPk(eventId, {
       include: [{ model: EventParticipation }]
     });
-    if (!event) return res.status(404).json({ message: "Event not found" });
+    if (!event) {
+      await logApiCall(req, res, 404, `Updated event - event not found (ID: ${eventId})`, "event", parseInt(eventId));
+      return res.status(404).json({ message: "Event not found" });
+    }
 
     //validate date of event const eventDateObj = eventDate ? new Date(eventDate) : event.eventDate;
     const eventDateObj = eventDate ? new Date(eventDate) : event.eventDate;
-    if (eventDate && isNaN(eventDateObj.getTime())) { return res.status(400).json({ message: "Invalid event date" }); }
+    if (eventDate && isNaN(eventDateObj.getTime())) {
+      await logApiCall(req, res, 400, `Updated event - invalid event date (ID: ${eventId})`, "event", parseInt(eventId));
+      return res.status(400).json({ message: "Invalid event date" });
+    }
 
     // Validate time
     let validEventTime = event.eventTime;
@@ -81,6 +95,7 @@ exports.updateEvents = async (req, res) => {
       if (!eventTime) {
         validEventTime = null; // allow clearing
       } else if (!/^([01]\d|2[0-3]):([0-5]\d)(:[0-5]\d)?$/.test(eventTime)) {
+        await logApiCall(req, res, 400, `Updated event - invalid event time (ID: ${eventId})`, "event", parseInt(eventId));
         return res.status(400).json({ message: "Invalid event time. Format should be HH:mm or HH:mm:ss" });
       } else {
         validEventTime = eventTime.length === 5 ? `${eventTime}:00` : eventTime;
@@ -92,10 +107,16 @@ exports.updateEvents = async (req, res) => {
     const isEditing = !!event;
     const eventDateOnly = new Date(eventDateObj);
     eventDateOnly.setHours(0, 0, 0, 0);
-    if (!isEditing && eventDateOnly < today) { return res.status(400).json({ message: "Event date cannot be in the past." }); }
+    if (!isEditing && eventDateOnly < today) {
+      await logApiCall(req, res, 400, `Updated event - event date cannot be in past (ID: ${eventId})`, "event", parseInt(eventId));
+      return res.status(400).json({ message: "Event date cannot be in the past." });
+    }
 
     //validate max participants
-    if (maxParticipants && (isNaN(maxParticipants) || parseInt(maxParticipants) <= 0)) { return res.status(400).json({ message: "Max participants must be a positive number." }); }
+    if (maxParticipants && (isNaN(maxParticipants) || parseInt(maxParticipants) <= 0)) {
+      await logApiCall(req, res, 400, `Updated event - invalid max participants (ID: ${eventId})`, "event", parseInt(eventId));
+      return res.status(400).json({ message: "Max participants must be a positive number." });
+    }
 
     const duplicateEvent = await Events.findOne({
       where: {
@@ -106,6 +127,7 @@ exports.updateEvents = async (req, res) => {
     });
 
     if (duplicateEvent) {
+      await logApiCall(req, res, 400, `Updated event - duplicate event exists (ID: ${eventId})`, "event", parseInt(eventId));
       return res.status(400).json({ message: "Event already exists for this property and date." });
     }
 
@@ -118,9 +140,11 @@ exports.updateEvents = async (req, res) => {
       description: description ?? event.description,
     });
 
+    await logApiCall(req, res, 200, `Updated event: ${event.title} (ID: ${eventId})`, "event", parseInt(eventId));
     return res.status(200).json({ message: "Event updated successfully", event });
   } catch (err) {
     console.error(err);
+    await logApiCall(req, res, 500, "Error occurred while updating event", "event", parseInt(req.params.eventId) || 0);
     return res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -130,11 +154,16 @@ exports.deleteEvent = async (req, res) => {
   try {
     const { eventId } = req.params;
     const event = await Events.findByPk(eventId);
-    if (!event) return res.status(404).json({ message: "Event not found" });
+    if (!event) {
+      await logApiCall(req, res, 404, `Deleted event - event not found (ID: ${eventId})`, "event", parseInt(eventId));
+      return res.status(404).json({ message: "Event not found" });
+    }
     await event.destroy();
+    await logApiCall(req, res, 200, `Deleted event: ${event.title} (ID: ${eventId})`, "event", parseInt(eventId));
     return res.status(200).json({ message: "Event deleted successfully" });
   } catch (err) {
     console.error(err);
+    await logApiCall(req, res, 500, "Error occurred while deleting event", "event", parseInt(req.params.eventId) || 0);
     return res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -225,9 +254,11 @@ exports.getAllEvents = async (req, res) => {
       };
     });
 
+    await logApiCall(req, res, 200, "Viewed all events list", "event");
     res.json(formatted);
 
   } catch (err) {
+    await logApiCall(req, res, 500, "Error occurred while fetching all events", "event");
     res.status(500).json({ error: err.message });
   }
 }
@@ -236,15 +267,20 @@ exports.toggleEventStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const event = await Events.findByPk(id);
-    if (!event) return res.status(404).json({ message: "Event not found" });
+    if (!event) {
+      await logApiCall(req, res, 404, `Toggled event status - event not found (ID: ${id})`, "event", parseInt(id));
+      return res.status(404).json({ message: "Event not found" });
+    }
 
     // Toggle the is_active field
     event.is_active = !event.is_active;
     await event.save();
 
+    await logApiCall(req, res, 200, `Toggled event status to ${event.is_active ? 'active' : 'inactive'} (ID: ${id})`, "event", parseInt(id));
     return res.json({ message: 'Event Status Is updated', event });
   } catch (err) {
     console.error(err);
+    await logApiCall(req, res, 500, "Error occurred while toggling event status", "event", parseInt(req.params.id) || 0);
     return res.status(500).json({ message: "Internal server error" });
   }
 };

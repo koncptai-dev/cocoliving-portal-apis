@@ -4,6 +4,7 @@ const Booking = require('../models/bookRoom');
 const Rooms = require('../models/rooms');
 const Property = require('../models/property');
 const { Op } = require('sequelize');
+const { logApiCall } = require("../helpers/auditLog");
 require('dotenv').config();
 
 // Get user details with booking history
@@ -34,12 +35,15 @@ exports.getUserDetailsWithBookings = async (req, res) => {
         });
 
         if (!user) {
+            await logApiCall(req, res, 404, `Viewed user details with bookings - user not found (ID: ${id})`, "user", parseInt(id));
             return res.status(404).json({ message: 'No user found' });
         }
 
+        await logApiCall(req, res, 200, `Viewed user details with bookings (ID: ${id})`, "user", parseInt(id));
         return res.status(200).json({ success: true, user });
     } catch (err) {
         console.error(err);
+        await logApiCall(req, res, 500, "Error occurred while fetching user details with bookings", "user", parseInt(req.params.id) || 0);
         return res.status(500).json({ message: 'Error fetching user details', error: err.message });
     }
 };
