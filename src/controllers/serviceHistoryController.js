@@ -2,7 +2,7 @@ const ServiceHistory = require("../models/serviceHistory");
 const Inventory = require("../models/inventory");
 const { Op } = require("sequelize");
 const SupportTicket = require("../models/supportTicket");
-
+const User = require("../models/user");
 // Create a service record for one inventory item
 exports.createServiceRecord = async (req, res) => {
   try {
@@ -60,6 +60,11 @@ exports.getServiceHistoryForItem = async (req, res) => {
           as: "ticket",
           attributes: ["id", "issue", "priority", "status", "assignedTo"],
         },
+        {
+          model: User,
+          as: "assignedAdmin",
+          attributes: ["id", "fullName", "email"],
+        },
       ],
     });
 
@@ -85,6 +90,11 @@ exports.getAllServiceRecords = async (req, res) => {
           model: SupportTicket,
           as: "ticket",
           attributes: ["id", "issue", "priority", "status", "assignedTo"],
+        },
+        {
+          model: User,
+          as: "assignedAdmin",
+          attributes: ["id", "fullName", "email"],
         },
       ],
       order: [["serviceDate", "DESC"]],

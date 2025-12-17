@@ -78,8 +78,51 @@ async function initiateRefund(payload) {
   };
 }
 
+/**
+ * Create a MOBILE SDK order (PhonePe App)
+ */
+async function createMobileOrder({ merchantOrderId, amount, userId }) {
+  const token = await getPhonePeAuthToken();
+
+  const res = await fetch(
+    `${BASE_URL}/checkout/v2/sdk/order`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `O-Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        merchantOrderId,
+        amount,
+        expireAfter: 1200,
+        metaInfo: {
+          udf1: String(userId || ''),
+        },
+        paymentFlow: { type: 'PG_CHECKOUT' },
+      }),
+    }
+  );
+
+  const json = await res.json().catch(() => null);
+
+  if (!res.ok || !json) {
+    throw new Error('Failed to create PhonePe mobile order');
+  }
+
+  const body = json.body || json;
+
+  return {
+    orderId: body.orderId,
+    token: body.token,
+    state: body.state,
+    expireAt: body.expireAt,
+  };
+}
+
 module.exports = {
   createPayment,
   getOrderStatus,
   initiateRefund,
+  createMobileOrder,
 };

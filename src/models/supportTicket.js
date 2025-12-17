@@ -62,8 +62,11 @@ const SupportTicket = sequelize.define('SupportTicket', {
         defaultValue: 'open'
     },
     assignedTo: {
-        type: DataTypes.TEXT,
-        allowNull: true
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: 'users', key: 'id' },
+        onUpdate: 'CASCADE',
+        onDelete: 'SET NULL'
     },
     image: {
         type: DataTypes.ARRAY(DataTypes.STRING),  //  To store image path or URL
@@ -72,6 +75,10 @@ const SupportTicket = sequelize.define('SupportTicket', {
     videos: {
         type: DataTypes.ARRAY(DataTypes.STRING), // To store video paths or URLs
         allowNull: true
+    },
+    resolutionNotes:{
+        type: DataTypes.TEXT,
+        allowNull: true,
     },
     inventoryId: {
         type: DataTypes.INTEGER,
