@@ -32,7 +32,7 @@ exports.sendResetEmail = async (email, code) => {
 }
 
 //mail sender
-const mailsender=async (email,title,body)=>{
+const mailsender=async (email,title,body,attachments=[])=>{
 
     try{
         let transporter=nodemailer.createTransport({
@@ -49,6 +49,7 @@ const mailsender=async (email,title,body)=>{
             to:`${email}`,
             subject:`${title}`,
             html:`${body}`,
+            attachments,
         })
         // console.log('information',info);
         return info;

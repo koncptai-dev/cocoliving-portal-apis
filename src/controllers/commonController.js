@@ -1,13 +1,14 @@
 const User = require('../models/user');
 const UserPermission = require('../models/userPermissoin');
 const Pages = require('../models/page');
-const OTP = require("../models/otp"); 
+const OTP = require("../models/otp");
+const {otpEmail} = require('../utils/emailTemplates/emailTemplates');
 const otpGenerator = require("otp-generator");
 const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
 require('dotenv').config();
 const jwt = require('jsonwebtoken');
-const { mailsender , sendResetEmail } = require('../utils/emailService'); // Utility for sending emails
+const { mailsender , sendResetEmail } = require('../utils/emailService');
 const { logApiCall } = require("../helpers/auditLog");
 
 exports.login = async (req, res) => {
@@ -147,12 +148,13 @@ exports.sendLoginOtp = async (req, res) => {
             otp,
             expiresAt: new Date(Date.now() + 5 * 60 * 1000), // expires in 5 min
         });
-
+        const mail = otpEmail({otp});
         // send OTP email
         await mailsender(
             email,
             "Your Login OTP",
-            `<p>Your OTP for login is <b>${otp}</b>. It expires in 5 minutes.</p>`
+            mail.html,
+            mail.attachments
         );
 
         req.user = { id: user.id };

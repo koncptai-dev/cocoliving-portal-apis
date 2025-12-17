@@ -7,8 +7,8 @@ const otpGenerator = require("otp-generator");
 const fs = require('fs');
 const path = require('path');
 const { mailsender } = require('../utils/emailService');
+const { welcomeEmail , otpEmail } = require('../utils/emailTemplates/emailTemplates');
 const { logApiCall } = require("../helpers/auditLog");
-
 //send phone OTP
 exports.sendPhoneOTP = async (req, res) => {
     try {
@@ -152,10 +152,12 @@ exports.sendOTP = async (req, res) => {
 
         await OTP.create({ identifier: email, type: 'email', otp, expiresAt });
 
+        const mail = otpEmail({otp});
         await mailsender(
             email,
-            "OTP Verification",
-            `Your OTP for registration is: ${otp}\n\nThis OTP is valid for 5 minutes.`
+            "Your Verification OTP",
+            mail.html,
+            mail.attachments
         );
 
         await logApiCall(req, res, 200, `Sent email OTP for registration to ${email}`, "user");
@@ -240,6 +242,17 @@ exports.registerUser = async (req, res) => {
             role: 2,
             status: 1,
         });
+        try {
+            const mail = welcomeEmail({firstName: newUser.fullName});
+            await mailsender(
+                newUser.email,
+                'Welcome to Coco Living',
+                mail.html,
+                mail.attachments
+            );
+        } catch (err) {
+            console.error('Welcome email failed:', err.message);
+        }
         await logApiCall(req, res, 201, `Registered new user: ${fullName} (${email})`, "user", newUser.id);
         return res.status(201).json({
             success: true,

@@ -1,7 +1,7 @@
 const { Op } = require('sequelize');
 const moment = require('moment');
 
-const { createPayment , initiateRefund , refundStatus} = require('../utils/phonepe/phonepeApi');
+const { createPayment , initiateRefund , refundStatus , createMobileOrder } = require('../utils/phonepe/phonepeApi');
 const phonepeConfig = require('../utils/phonepe/phonepeConfig');
 
 const Booking = require('../models/bookRoom');
@@ -64,6 +64,7 @@ async function checkOverlappingBooking(userId, checkInDate, checkOutDate) {
 exports.initiate = async (req, res) => {
   try {
     const userId = req.user?.id;
+    const isMobile = req.headers['x-client'] === 'mobile';
     if (!userId) {
       await logApiCall(req, res, 400, "Initiated booking payment - unauthorized access", "payment");
       return res.status(400).json({ success: false, message: 'Unauthorized Access' });
@@ -153,7 +154,7 @@ exports.initiate = async (req, res) => {
     const amountPaise = paiseFromRupees(payableAmountRupees);
 
     const tx = await PaymentTransaction.create({
-      merchantOrderId:createMerchantOrderId(userId,rebuiltMeta.checkInDate,rebuiltMeta.checkOutDate),
+      merchantOrderId: `tmp-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
       userId,
       amount: amountPaise,
       type: rebuiltMeta.bookingType === 'PREBOOK' ? 'PREBOOK' : 'FULL',
@@ -192,39 +193,78 @@ exports.initiate = async (req, res) => {
         udf3: String(rebuiltMeta.propertyId),
         udf4: rebuiltMeta.roomType,
         udf5: String(userId),
-        udf6: "web-app",
+        udf6: isMobile?"mobile-app":"web-app",
         udf7: tx.merchantOrderId,
         udf8: rebuiltMeta.checkInDate,
         udf9: String(rebuiltMeta.duration)
       },
       amount:amountPaise,
-      paymentFlow: {
-        type: 'PG_CHECKOUT',
-        message: `Coco Living - ${rebuiltMeta.roomType} Booking (Do Not Refresh)`,
-        merchantUrls: {redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${merchantOrderId}`},
-      },
+      paymentFlow: isMobile
+        ? { type: 'PG_CHECKOUT' }
+        : {
+            type: 'PG_CHECKOUT',
+            message: `Coco Living - ${rebuiltMeta.roomType} Booking (Do Not Refresh)`,
+            merchantUrls: {
+              redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${merchantOrderId}`,
+            },
+          },
     };
+    if (isMobile) {
+      const mobResp = await createMobileOrder({
+        merchantOrderId: tx.merchantOrderId,
+        amount: amountPaise,
+        userId,
+      });
 
-    const phonepeResp = await createPayment(phonepePayload);
+      tx.phonepeOrderId = mobResp.orderId || null;
+      tx.rawResponse = {
+        ...(tx.rawResponse || {}),
+        client: 'mobile',
+        phonepeCreateResponse: mobResp,
+      };
+      await tx.save();
 
-    tx.rawResponse = Object.assign({}, tx.rawResponse || {}, { phonepeCreateResponse: phonepeResp });
-    if (phonepeResp && phonepeResp.success && phonepeResp.body) {
-      tx.phonepeOrderId = phonepeResp.body.orderId || tx.phonepeOrderId || null;
-      tx.redirectUrl = phonepeResp.body.redirectUrl || phonepeResp.body.checkoutUrl || tx.redirectUrl || null;
+      return res.json({
+        message: 'Payment initiated',
+        success: true,
+        merchantOrderId: tx.merchantOrderId,
+        phonepe: {
+          orderId: mobResp.orderId,
+          token: mobResp.token,
+          paymentMode: 'SDK',
+        },
+        transactionId: tx.id,
+      });
+
     } else {
-      if (!phonepeResp || !phonepeResp.success) {
+      const phonepeResp = await createPayment(phonepePayload);
+
+      tx.rawResponse = Object.assign({}, tx.rawResponse || {}, {
+        client: 'web',
+        phonepeCreateResponse: phonepeResp,
+      });
+
+      if (phonepeResp && phonepeResp.success && phonepeResp.body) {
+        tx.phonepeOrderId = phonepeResp.body.orderId || tx.phonepeOrderId || null;
+        tx.redirectUrl =
+          phonepeResp.body.redirectUrl ||
+          phonepeResp.body.checkoutUrl ||
+          tx.redirectUrl ||
+          null;
+      } else {
         tx.status = 'FAILED';
       }
-    }
-    await tx.save();
 
-    await logApiCall(req, res, 200, `Initiated booking payment (Transaction ID: ${tx.id}, Type: ${tx.type})`, "payment", userId);
-    return res.json({
-      message: 'Payment initiated',
-      phonepe: phonepeResp,
-      redirectUrl: tx.redirectUrl,
-      transaction: tx,
-    });
+      await tx.save();
+
+      await logApiCall(req, res, 200, `Initiated booking payment (Transaction ID: ${tx.id}, Type: ${tx.type})`, "payment", userId);
+      return res.json({
+        message: 'Payment initiated',
+        success: true,
+        redirectUrl: tx.redirectUrl,
+        transaction: tx,
+      });
+    }
   } catch (err) {
     console.error('[BookingPaymentController] initiate error', err);
     await logApiCall(req, res, 500, "Error occurred while initiating booking payment", "payment", req.user?.id || 0);
@@ -235,6 +275,7 @@ exports.initiate = async (req, res) => {
 exports.initiateRemaining = async (req, res) => {
   try {
     const userId = req.user?.id;
+    const isMobile = req.headers['x-client'] === 'mobile';
     const { bookingId } = req.body;
 
     if (!userId || !bookingId) {
@@ -253,6 +294,9 @@ exports.initiateRemaining = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Unauthorized booking access' });
     }
 
+    if(booking.status !== 'APPROVED'){
+      return res.status(422).json({ success: false, message: 'Can Only pay remaining after Booking gets Approved'})
+    }
     const txs = await PaymentTransaction.findAll({
       where: { bookingId, status: 'SUCCESS', type: { [Op.ne]: 'REFUND' } }
     });
@@ -297,32 +341,72 @@ exports.initiateRemaining = async (req, res) => {
         udf8: booking.checkInDate,
         udf9: String(booking.duration)
       },
-      paymentFlow: {
-        type: 'PG_CHECKOUT',
-        message: `Coco Living - Remaining Payment`,
-        merchantUrls:{ redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${merchantOrderId}` },
-
-      }
+      paymentFlow: isMobile
+        ? { type: 'PG_CHECKOUT' }
+        : {
+            type: 'PG_CHECKOUT',
+            message: `Coco Living - Remaining Payment`,
+            merchantUrls: {
+              redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${finalOrderId}`,
+            },
+          },
     };
 
-    const phonepeResp = await createPayment(phonepePayload);
+    if (isMobile) {
+      const mobResp = await createMobileOrder({
+        merchantOrderId: finalOrderId,
+        amount: remainingPaise,
+        userId,
+      });
 
-    draftTx.rawResponse = Object.assign({}, draftTx.rawResponse || {}, { phonepeCreateResponse: phonepeResp });
-    if (phonepeResp.success && phonepeResp.body) {
-      draftTx.phonepeOrderId = phonepeResp.body.orderId;
-      draftTx.redirectUrl = phonepeResp.body.redirectUrl || phonepeResp.body.checkoutUrl;
+      draftTx.phonepeOrderId = mobResp.orderId || null;
+      draftTx.rawResponse = {
+        ...(draftTx.rawResponse || {}),
+        client: 'mobile',
+        phonepeCreateResponse: mobResp,
+      };
+
+      await draftTx.save();
+
+      return res.json({
+        success: true,
+        merchantOrderId: finalOrderId,
+        phonepe: {
+          orderId: mobResp.orderId,
+          token: mobResp.token,
+          paymentMode: 'SDK',
+        },
+        transactionId: draftTx.id,
+      });
+
     } else {
-      draftTx.status = 'FAILED';
+      const phonepeResp = await createPayment(phonepePayload);
+
+      draftTx.rawResponse = {
+        ...(draftTx.rawResponse || {}),
+        client: 'web',
+        phonepeCreateResponse: phonepeResp,
+      };
+
+      if (phonepeResp.success && phonepeResp.body) {
+        draftTx.phonepeOrderId = phonepeResp.body.orderId;
+        draftTx.redirectUrl =
+          phonepeResp.body.redirectUrl ||
+          phonepeResp.body.checkoutUrl ||
+          null;
+      } else {
+        draftTx.status = 'FAILED';
+      }
+
+      await draftTx.save();
+
+      await logApiCall(req, res, 200, `Initiated remaining payment (Transaction ID: ${draftTx.id}, Booking ID: ${bookingId})`, "payment", userId);
+      return res.json({
+        success: true,
+        redirectUrl: draftTx.redirectUrl,
+        transaction: draftTx,
+      });
     }
-
-    await draftTx.save();
-
-    await logApiCall(req, res, 200, `Initiated remaining payment (Transaction ID: ${draftTx.id}, Booking ID: ${bookingId})`, "payment", userId);
-    return res.json({
-      success: true,
-      redirectUrl: draftTx.redirectUrl,
-      transaction: draftTx
-    });
   } catch (err) {
     console.error('[initiateRemaining] error', err);
     await logApiCall(req, res, 500, "Error occurred while initiating remaining payment", "payment", req.user?.id || 0);

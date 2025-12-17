@@ -6,6 +6,7 @@ const Booking = require('../models/bookRoom');
 const Property = require('../models/property');
 const Inventory = require('../models/inventory');
 const { Op } = require('sequelize');
+const { logTicketEvent } = require("../utils/ticketLog");
 const { generateSupportTicketCode } = require('../helpers/SupportTicketCode');
 const { logApiCall } = require("../helpers/auditLog");
 
@@ -95,6 +96,12 @@ exports.createTicket = async (req, res) => {
             inventoryId: inventoryId || null,
             inventoryName: inventoryName || null,
         })
+        await logTicketEvent({
+            ticketId: ticket.id,
+            actionType: "TICKET_CREATED",
+            newValue: { status: ticket.status },
+            actorId: userId,
+        });
 
         await logApiCall(req, res, 201, `Created support ticket: ${issue} (ID: ${ticket.id})`, "supportTicket", ticket.id);
         res.status(201).json({ message: "successfully created", ticket });
@@ -178,7 +185,7 @@ exports.getAllTickets = async (req, res) => {
 exports.updateTicketStatus = async (req, res) => {
     const ticketId = req.params.id;
     try {
-        const { status, assignedTo } = req.body;
+        const { status, assignedTo, resolutionNotes } = req.body;
 
         const userId = req.user.id;
         const userRole = req.user.role;
@@ -189,20 +196,88 @@ exports.updateTicketStatus = async (req, res) => {
             await logApiCall(req, res, 404, `Updated support ticket status - ticket not found (ID: ${ticketId})`, "supportTicket", parseInt(ticketId));
             return res.status(404).json({ message: "Ticket not found" });
         }
-
+        // Super Admin
         if (userRole === 1) {
-            if (status) ticket.status = status;
-            if (assignedTo) ticket.assignedTo = assignedTo;
+            if ( typeof status !== "undefined" && status !== ticket.status ) {
+            await logTicketEvent({
+                ticketId: ticket.id,
+                actionType: "STATUS_UPDATE",
+                oldValue: { status: ticket.status },
+                newValue: { status },
+                actorId: userId,
+            });
+
+            ticket.status = status;
+            }
+
+            // ASSIGNMENT CHANGE
+            if ( typeof assignedTo !== "undefined" && assignedTo !== ticket.assignedTo ) {
+            await logTicketEvent({
+                ticketId: ticket.id,
+                actionType: "ASSIGNMENT",
+                oldValue: { assignedTo: ticket.assignedTo },
+                newValue: { assignedTo },
+                actorId: userId,
+            });
+
+            ticket.assignedTo = assignedTo;
+            }
         }
+        // Normal Admin
         else if (userRole === 3) {
             if (ticket.assignedTo !== userId) {
                 await logApiCall(req, res, 403, `Updated support ticket status - not assigned to ticket (ID: ${ticketId})`, "supportTicket", parseInt(ticketId));
                 return res.status(403).json({ message: "You are not assigned to this ticket" });
             }
-            if (status) ticket.status = status;
+            // STATUS CHANGE
+            if (typeof status !== "undefined" && status !== ticket.status) {
+                await logTicketEvent({
+                    ticketId: ticket.id,
+                    actionType: "STATUS_UPDATE",
+                    oldValue: { status: ticket.status },
+                    newValue: { status },
+                    actorId: userId,
+                });
+
+                ticket.status = status;
+            }
         }
+
+        // Resolution Notes validation
+        const previousResolutionNotes = ticket.resolutionNotes;
+
+        if ( typeof resolutionNotes !== "undefined" && resolutionNotes !== previousResolutionNotes ) {
+            const effectiveStatus = typeof status !== "undefined" ? status : ticket.status;
+            if (!["resolved"].includes(effectiveStatus)) {
+                return res.status(400).json({
+                message: "Resolution notes can only be added when status is resolved",
+                });
+            }
+
+            if ( userRole !== 1 && !(userRole === 3 && ticket.assignedTo === userId )) {
+                return res.status(403).json({ message: "Only assigned admins can add resolution notes", });
+            }
+            if (resolutionNotes !== null && resolutionNotes.trim() === "") {      
+                return res.status(400).json({ message: "Resolution notes cannot be empty", });
+            }
+            ticket.resolutionNotes = resolutionNotes;
+
+            await logTicketEvent({
+                ticketId: ticket.id,
+                actionType: previousResolutionNotes
+                ? "RESOLUTION_NOTES_UPDATED"
+                : "RESOLUTION_NOTES_ADDED",
+                oldValue: previousResolutionNotes
+                ? { resolutionNotes: previousResolutionNotes }
+                : null,
+                newValue: { resolutionNotes },
+                actorId: userId,
+            });
+        }
+
+
         await ticket.save();
-        if (["in-progress", "resolved"].includes(ticket.status.toLowerCase())) {
+        if (ticket.status && ["in-progress", "resolved"].includes(ticket.status.toLowerCase())) {
             const { createFromTicket } = require("../controllers/serviceHistoryController");
             await createFromTicket(ticket);
         }
@@ -296,7 +371,7 @@ exports.getTicketDetails = async (req, res) => {
       return res.status(404).json({ message: "Ticket not found" });
     }
 
-    if (loggedInUser.role === "user") {
+    if (loggedInUser.role === 2) {
       if (ticket.userId !== loggedInUser.id) {
         await logApiCall(req, res, 403, `Viewed support ticket details - not authorized (ID: ${ticketId})`, "supportTicket", parseInt(ticketId));
         return res.status(403).json({ message: "You are not allowed to view this ticket" });

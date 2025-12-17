@@ -14,6 +14,7 @@ const FoodMenu = require('./foodMenu');
 const Inventory = require('./inventory');
 const ServiceHistory = require('./serviceHistory');
 const PaymentTransaction = require('./paymentTransaction');
+const TicketLog = require('./ticketLog');
 
 User.hasMany(SupportTicket, {foreignKey: "userId", as: "tickets" });
 SupportTicket.belongsTo(User, {foreignKey: "userId", as: "user" });
@@ -71,6 +72,10 @@ Inventory.hasMany(ServiceHistory, { foreignKey: "inventoryId", as: "serviceHisto
 ServiceHistory.belongsTo(Inventory, { foreignKey: "inventoryId", as: "inventory" });
 ServiceHistory.belongsTo(SupportTicket, { foreignKey: "ticketId", as: "ticket" });
 
+// ServiceHistory → Assigned Admin
+User.hasMany(ServiceHistory, { foreignKey: "assignedTo", as: "assignedServiceHistory" });
+ServiceHistory.belongsTo(User, { foreignKey: "assignedTo", as: "assignedAdmin" });
+
 // Payment ↔ Booking
 Booking.hasMany(PaymentTransaction, { foreignKey: "bookingId", as: "transactions" });
 PaymentTransaction.belongsTo(Booking, { foreignKey: "bookingId", as: "booking" });
@@ -78,6 +83,12 @@ PaymentTransaction.belongsTo(Booking, { foreignKey: "bookingId", as: "booking" }
 // Payment ↔ User
 User.hasMany(PaymentTransaction, { foreignKey: "userId", as: "transactions" });
 PaymentTransaction.belongsTo(User, { foreignKey: "userId", as: "user" });
+
+SupportTicket.hasMany(TicketLog, { foreignKey: "ticketId", as: 'logs' });
+TicketLog.belongsTo(SupportTicket, { foreignKey: "ticketId", as: 'ticket' });
+
+User.hasMany(TicketLog, { foreignKey: "performedBy", as: 'performedLogs' });
+TicketLog.belongsTo(User, { foreignKey: 'performedBy', as: 'actor' });
 
 module.exports={
     sequelize,
