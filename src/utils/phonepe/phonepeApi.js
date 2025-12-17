@@ -76,7 +76,6 @@ async function initiateRefund(payload) {
 // Create Order ( Mobile App )
 async function createMobileOrder({ merchantOrderId, amount, userId }) {
   const token = await getPhonePeAuthToken();
-  console.log('PhonePe Mobile SDK URL:', MOBILE_SDK_ORDER_URL);
   const res = await fetch(MOBILE_SDK_ORDER_URL, {
       method: 'POST',
       headers: {
