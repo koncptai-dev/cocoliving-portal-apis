@@ -128,6 +128,7 @@ exports.getDashboardStats = async (req, res) => {
     }).length;
 
     res.status(200).json({
+      message: "Dashboard stats fetched successfully",
       totalUsers,
       occupancyRate: parseFloat(occupancyRate),
       pendingBookings,
@@ -145,7 +146,7 @@ exports.getDashboardStats = async (req, res) => {
     console.error("Error fetching dashboard stats:", error);
     await logApiCall(req, res, 500, "Error occurred while fetching dashboard stats", "dashboard");
     res.status(500).json({
-      message: "Internal server error",
+      message: "Error occurred while fetching dashboard stats",
       error: error.message,
     });
   }
@@ -340,6 +341,7 @@ exports.getReport = async (req, res) => {
     }
 
     res.status(200).json({
+      message: "Report fetched successfully",
       completeRevenue: Math.max(0, completeRevenue),
       totalUsers,
       occupancyRate: parseFloat(occupancyRate),
@@ -354,7 +356,7 @@ exports.getReport = async (req, res) => {
   console.error("Error fetching report:", error);
   await logApiCall(req, res, 500, "Error occurred while fetching report", "dashboard");
   res.status(500).json({
-    message: "Internal server error",
+    message: "Error occurred while fetching report",
     error: error.message,
   });
 }

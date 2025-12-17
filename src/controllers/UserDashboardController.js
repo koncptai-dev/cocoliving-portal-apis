@@ -2,13 +2,20 @@ const Booking = require("../models/bookRoom");
 const Rooms = require("../models/rooms");
 const Property = require("../models/property");
 const PropertyRateCard = require("../models/propertyRateCard");
+const PaymentTransaction = require("../models/paymentTransaction");
 const { logApiCall } = require("../helpers/auditLog");
 require("../models/index");
 
 exports.getUserDashboard = async (req, res) => {
   try {
     if (!req.user || !req.user.id) {
-      await logApiCall(req, res, 401, "Viewed user dashboard - unauthorized", "dashboard");
+      await logApiCall(
+        req,
+        res,
+        401,
+        "Viewed user dashboard - unauthorized",
+        "dashboard"
+      );
       return res.status(401).json({ message: "Unauthorized" });
     }
 
@@ -109,17 +116,90 @@ exports.getUserDashboard = async (req, res) => {
       };
     });
 
-    await logApiCall(req, res, 200, "Viewed user dashboard", "dashboard", userId);
+    // Fetch recent payment transactions
+    const recentPayments = await PaymentTransaction.findAll({
+      where: { userId },
+      include: [
+        {
+          model: Booking,
+          as: "booking",
+          attributes: [
+            "id",
+            "propertyId",
+            "roomType",
+            "checkInDate",
+            "checkOutDate",
+            "status",
+            "totalAmount",
+          ],
+          required: false,
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+      limit: 10, // Get last 10 payments
+    });
+
+    const formattedPayments = recentPayments.map((payment) => {
+      const paymentData = payment.toJSON();
+      const amountPaise = Number(paymentData.amount || 0);
+      return {
+        id: paymentData.id,
+        merchantOrderId: paymentData.merchantOrderId,
+        merchantRefundId: paymentData.merchantRefundId || null,
+        phonepeOrderId:
+          paymentData.phonepeOrderId ||
+          (paymentData.rawResponse &&
+            paymentData.rawResponse.phonepeCreateResponse &&
+            paymentData.rawResponse.phonepeCreateResponse.body &&
+            paymentData.rawResponse.phonepeCreateResponse.body.orderId) ||
+          null,
+        bookingId: paymentData.bookingId || null,
+        amountPaise,
+        amountRupees: Math.round(amountPaise / 100),
+        type: paymentData.type,
+        status: paymentData.status,
+        createdAt: paymentData.createdAt,
+        updatedAt: paymentData.updatedAt,
+        booking: paymentData.booking
+          ? {
+              id: paymentData.booking.id,
+              propertyId: paymentData.booking.propertyId,
+              roomType: paymentData.booking.roomType,
+              checkInDate: paymentData.booking.checkInDate,
+              checkOutDate: paymentData.booking.checkOutDate,
+              status: paymentData.booking.status,
+              totalAmount: paymentData.booking.totalAmount,
+            }
+          : null,
+      };
+    });
+
+    await logApiCall(
+      req,
+      res,
+      200,
+      "Viewed user dashboard",
+      "dashboard",
+      userId
+    );
     res.status(200).json({
+      message: "User dashboard fetched successfully",
       bookings: formattedBookings,
+      recentPayments: formattedPayments,
     });
   } catch (error) {
     console.error("Error fetching user dashboard:", error);
-    await logApiCall(req, res, 500, "Error occurred while fetching user dashboard", "dashboard", req.user?.id || 0);
+    await logApiCall(
+      req,
+      res,
+      500,
+      "Error occurred while fetching user dashboard",
+      "dashboard",
+      req.user?.id || 0
+    );
     res.status(500).json({
-      message: "Internal server error",
+      message: "Error occurred while fetching user dashboard",
       error: error.message,
     });
   }
 };
-
