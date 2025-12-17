@@ -3,12 +3,11 @@ const {
   CREATE_PAYMENT_URL,
   ORDER_STATUS_URL_TEMPLATE,
   REFUND_URL,
+  MOBILE_SDK_ORDER_URL
 } = require('./phonepeConfig');
 const { getPhonePeAuthToken } = require('./phonepeAuth');
 
-/**
- * Create a payment on PhonePe Standard Checkout
- */
+// Create Payment Website
 async function createPayment(payload) {
   const token = await getPhonePeAuthToken();
 
@@ -30,9 +29,7 @@ async function createPayment(payload) {
   };
 }
 
-/**
- * Fetch order status from PhonePe
- */
+// Fetch Order Status
 async function getOrderStatus(merchantOrderId) {
   const token = await getPhonePeAuthToken();
   const url = ORDER_STATUS_URL_TEMPLATE.replace('{merchantOrderId}', encodeURIComponent(merchantOrderId));
@@ -54,9 +51,7 @@ async function getOrderStatus(merchantOrderId) {
   };
 }
 
-/**
- * Initiate refund with PhonePe
- */
+// Initiate Refund
 async function initiateRefund(payload) {
   const token = await getPhonePeAuthToken();
 
@@ -78,15 +73,11 @@ async function initiateRefund(payload) {
   };
 }
 
-/**
- * Create a MOBILE SDK order (PhonePe App)
- */
+// Create Order ( Mobile App )
 async function createMobileOrder({ merchantOrderId, amount, userId }) {
   const token = await getPhonePeAuthToken();
-
-  const res = await fetch(
-    `${BASE_URL}/checkout/v2/sdk/order`,
-    {
+  console.log('PhonePe Mobile SDK URL:', MOBILE_SDK_ORDER_URL);
+  const res = await fetch(MOBILE_SDK_ORDER_URL, {
       method: 'POST',
       headers: {
         Authorization: `O-Bearer ${token}`,
@@ -106,7 +97,7 @@ async function createMobileOrder({ merchantOrderId, amount, userId }) {
 
   const json = await res.json().catch(() => null);
 
-  if (!res.ok || !json) {
+  if (!res.ok) {
     throw new Error('Failed to create PhonePe mobile order');
   }
 
