@@ -2,7 +2,8 @@ const ServiceHistory = require("../models/serviceHistory");
 const Inventory = require("../models/inventory");
 const { Op } = require("sequelize");
 const SupportTicket = require("../models/supportTicket");
-
+const User = require("../models/user");
+const { logApiCall } = require("../helpers/auditLog");
 // Create a service record for one inventory item
 exports.createServiceRecord = async (req, res) => {
   try {
@@ -16,12 +17,16 @@ exports.createServiceRecord = async (req, res) => {
       status,
     } = req.body;
 
-    if (!issueDescription)
+    if (!issueDescription) {
+      await logApiCall(req, res, 400, "Created service record - issueDescription required", "serviceHistory", parseInt(inventoryId));
       return res.status(400).json({ message: "issueDescription is required" });
+    }
 
     const item = await Inventory.findByPk(inventoryId);
-    if (!item)
+    if (!item) {
+      await logApiCall(req, res, 404, `Created service record - inventory item not found (ID: ${inventoryId})`, "serviceHistory", parseInt(inventoryId));
       return res.status(404).json({ message: "Inventory item not found" });
+    }
 
     const record = await ServiceHistory.create({
       inventoryId,
@@ -33,9 +38,11 @@ exports.createServiceRecord = async (req, res) => {
       status: status || "Open",
     });
 
+    await logApiCall(req, res, 201, `Created service record (ID: ${record.id}, Inventory ID: ${inventoryId})`, "serviceHistory", record.id);
     return res.status(201).json({ message: "Service record created", record });
   } catch (err) {
     console.error("ServiceHistory create error:", err);
+    await logApiCall(req, res, 500, "Error occurred while creating service record", "serviceHistory", parseInt(req.params.inventoryId) || 0);
     return res
       .status(500)
       .json({ message: "Internal Server Error", error: err.message });
@@ -48,8 +55,10 @@ exports.getServiceHistoryForItem = async (req, res) => {
     const { inventoryId } = req.params;
 
     const item = await Inventory.findByPk(inventoryId);
-    if (!item)
+    if (!item) {
+      await logApiCall(req, res, 404, `Viewed service history - inventory item not found (ID: ${inventoryId})`, "serviceHistory", parseInt(inventoryId));
       return res.status(404).json({ message: "Inventory item not found" });
+    }
 
     const records = await ServiceHistory.findAll({
       where: { inventoryId },
@@ -60,12 +69,19 @@ exports.getServiceHistoryForItem = async (req, res) => {
           as: "ticket",
           attributes: ["id", "issue", "priority", "status", "assignedTo"],
         },
+        {
+          model: User,
+          as: "assignedAdmin",
+          attributes: ["id", "fullName", "email"],
+        },
       ],
     });
 
+    await logApiCall(req, res, 200, `Viewed service history for inventory item (ID: ${inventoryId})`, "serviceHistory", parseInt(inventoryId));
     return res.status(200).json({ serviceHistory: records });
   } catch (err) {
     console.error("ServiceHistory list error:", err);
+    await logApiCall(req, res, 500, "Error occurred while fetching service history", "serviceHistory", parseInt(req.params.inventoryId) || 0);
     return res
       .status(500)
       .json({ message: "Internal Server Error", error: err.message });
@@ -85,6 +101,11 @@ exports.getAllServiceRecords = async (req, res) => {
           model: SupportTicket,
           as: "ticket",
           attributes: ["id", "issue", "priority", "status", "assignedTo"],
+        },
+        {
+          model: User,
+          as: "assignedAdmin",
+          attributes: ["id", "fullName", "email"],
         },
       ],
       order: [["serviceDate", "DESC"]],
@@ -106,13 +127,17 @@ exports.updateServiceRecord = async (req, res) => {
     const updates = req.body;
 
     const record = await ServiceHistory.findByPk(id);
-    if (!record)
+    if (!record) {
+      await logApiCall(req, res, 404, `Updated service record - record not found (ID: ${id})`, "serviceHistory", parseInt(id));
       return res.status(404).json({ message: "Service record not found" });
+    }
 
     await record.update(updates);
+    await logApiCall(req, res, 200, `Updated service record (ID: ${id})`, "serviceHistory", parseInt(id));
     return res.status(200).json({ message: "Service record updated", record });
   } catch (err) {
     console.error("ServiceHistory update error:", err);
+    await logApiCall(req, res, 500, "Error occurred while updating service record", "serviceHistory", parseInt(req.params.id) || 0);
     return res
       .status(500)
       .json({ message: "Internal Server Error", error: err.message });
@@ -128,18 +153,22 @@ exports.deleteServiceRecord = async (req, res) => {
       where: { id, inventoryId },
     });
 
-    if (!record)
+    if (!record) {
+      await logApiCall(req, res, 404, `Deleted service record - record not found (ID: ${id}, Inventory ID: ${inventoryId})`, "serviceHistory", parseInt(id));
       return res
         .status(404)
         .json({ message: "Service record not found for this inventory" });
+    }
 
     await record.destroy();
 
+    await logApiCall(req, res, 200, `Deleted service record (ID: ${id}, Inventory ID: ${inventoryId})`, "serviceHistory", parseInt(id));
     return res
       .status(200)
       .json({ message: "Service record deleted successfully" });
   } catch (err) {
     console.error("ServiceHistory delete error:", err);
+    await logApiCall(req, res, 500, "Error occurred while deleting service record", "serviceHistory", parseInt(req.params.id) || 0);
     return res
       .status(500)
       .json({ message: "Internal Server Error", error: err.message });

@@ -212,11 +212,9 @@ router.post(
       };
 
       const last4 = String(uidData.$.uid).slice(-4);
-      console.log(last4);
 
       const kycRes = aadhaarData.Certificate.CertificateData.KycRes;
       const ekycStatus = kycRes.$.ret === "Y" ? "verified" : "not_verified";
-      console.log(ekycStatus);
 
       const [kycRecord, created] = await UserKYC.findOrCreate({
         where: { userId },

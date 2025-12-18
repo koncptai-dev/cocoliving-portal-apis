@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const PropertyRateCard = require('../models/propertyRateCard');
 const { log } = require('console');
+const { logApiCall } = require("../helpers/auditLog");
 
 //helper for preventing adding image into property and room Image
 const deleteFiles = (files) => {
@@ -28,6 +29,7 @@ exports.createProperty = async (req, res) => {
     if (existing) {
       deleteFiles(req.files || []);
       await t.rollback();
+      await logApiCall(req, res, 400, `Created property - property already exists (${name})`, "property");
       return res.status(400).json({ message: "Property already exists" });
     }
 
@@ -42,6 +44,7 @@ exports.createProperty = async (req, res) => {
     if (imageUrls.length > 20) {
       deleteFiles(propertyFiles);
       await t.rollback();
+      await logApiCall(req, res, 400, "Created property - too many images (max 20)", "property");
       return res.status(400).json({ message: "You can upload a maximum of 20 images." });
     }
 
@@ -69,6 +72,7 @@ exports.createProperty = async (req, res) => {
           if (roomImageUrls.length > 10) {
             deleteFiles([...propertyFiles, ...roomImages]);
             await t.rollback();
+            await logApiCall(req, res, 400, `Created property - too many room images for ${rc.roomType} (max 10)`, "property");
             return res.status(400).json({ message: `You can upload maximum of 10 images for room type ${rc.roomType}` })
           }
 
@@ -87,11 +91,13 @@ exports.createProperty = async (req, res) => {
     }
 
     await t.commit();
+    await logApiCall(req, res, 201, `Created new property: ${name} (ID: ${property.id})`, "property", property.id);
     res.status(201).json({ message: "Property created successfully", property });
   } catch (error) {
     deleteFiles(req.files || []);
     await t.rollback();
     console.error(error);
+    await logApiCall(req, res, 500, "Error occurred while creating property", "property");
     res.status(500).json({ message: "Failed to create property" });
   }
 };
@@ -103,14 +109,22 @@ exports.editProperties = async (req, res) => {
     let { name, address, description, images, amenities, is_active, removedImages, rateCard } = req.body;
 
     const property = await Property.findByPk(id, { transaction: t });
-    if (!property) { await t.rollback(); return res.status(404).json({ message: "Property not found" }); }
+    if (!property) {
+      await t.rollback();
+      await logApiCall(req, res, 404, `Updated property - property not found (ID: ${id})`, "property", parseInt(id));
+      return res.status(404).json({ message: "Property not found" });
+    }
 
     // Check duplicate name
     if (name) {
       const existing = await Property.findOne({
         where: { name, id: { [Op.ne]: id } }, transaction: t
       });
-      if (existing) { await t.rollback(); return res.status(400).json({ message: "Property with same name already exists" }); }
+      if (existing) {
+        await t.rollback();
+        await logApiCall(req, res, 400, `Updated property - property with same name already exists (ID: ${id})`, "property", parseInt(id));
+        return res.status(400).json({ message: "Property with same name already exists" });
+      }
     }
 
     // Amenities array
@@ -147,6 +161,7 @@ exports.editProperties = async (req, res) => {
         const filePath = path.join(__dirname, '..', 'uploads/propertyImages', f.filename);
         if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
       });
+      await logApiCall(req, res, 400, `Updated property - too many images (max 20) (ID: ${id})`, "property", parseInt(id));
       return res.status(400).json({ message: "You can upload up to 20 property images only." });
     }
 
@@ -203,6 +218,7 @@ exports.editProperties = async (req, res) => {
                 const filePath = path.join(__dirname, '..', 'uploads/roomImages', f.filename);
                 if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
               });
+              await logApiCall(req, res, 400, `Updated property - too many room images for ${rc.roomType} (ID: ${id})`, "property", parseInt(id));
               return res.status(400).json({ message: `Max 10 images allowed for room type ${rc.roomType}` });
             }
 
@@ -233,6 +249,7 @@ exports.editProperties = async (req, res) => {
               const filePath = path.join(__dirname, '..', 'uploads/roomImages', f.filename);
               if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
             });
+            await logApiCall(req, res, 400, `Updated property - too many images for new room type ${rc.roomType} (ID: ${id})`, "property", parseInt(id));
             return res.status(400).json({ message: `Max 10 images allowed for new room type ${rc.roomType}` });
           }
 
@@ -251,11 +268,13 @@ exports.editProperties = async (req, res) => {
       }
     }
     await t.commit();
+    await logApiCall(req, res, 200, `Updated property: ${property.name} (ID: ${id})`, "property", parseInt(id));
     res.status(200).json({ message: "Property updated successfully", property });
 
   } catch (err) {
     await t.rollback();
     console.error(err);
+    await logApiCall(req, res, 500, "Error occurred while updating property", "property", parseInt(req.params.id) || 0);
     res.status(500).json({ message: "Failed to update property" });
   }
 };
@@ -274,8 +293,10 @@ exports.getProperties = async (req, res) => {
     });
     const totalPages = Math.ceil(count / limit);
     //for frontend
+    await logApiCall(req, res, 200, "Viewed properties list", "property");
     res.json({ properties, currentPage: page, totalPages });
   } catch (error) {
+    await logApiCall(req, res, 500, "Error occurred while fetching properties", "property");
     res.status(500).json({ message: "Failed to fetch properties" });
   }
 };
@@ -288,6 +309,7 @@ exports.deleteProperty = async (req, res) => {
     const property = await Property.findByPk(id);
 
     if (!property) {
+      await logApiCall(req, res, 404, `Deleted property - property not found (ID: ${id})`, "property", parseInt(id));
       return res.status(404).json({ message: "Property not found" });
     }
 
@@ -301,6 +323,7 @@ exports.deleteProperty = async (req, res) => {
     });
 
     if (hasActiveOrFutureBookings) {
+      await logApiCall(req, res, 400, `Deleted property - has active bookings (ID: ${id})`, "property", parseInt(id));
       return res.status(400).json({ message: "Cannot delete property: There are active or future bookings linked to this property." });
     }
 
@@ -318,9 +341,11 @@ exports.deleteProperty = async (req, res) => {
 
     await property.destroy();
 
+    await logApiCall(req, res, 200, `Deleted property: ${property.name} (ID: ${id})`, "property", parseInt(id));
     res.status(200).json({ message: "Property deleted successfully" });
   } catch (err) {
     console.error(err);
+    await logApiCall(req, res, 500, "Error occurred while deleting property", "property", parseInt(req.params.id) || 0);
     res.status(500).json({ message: "Failed to delete property" });
   }
 }
@@ -343,6 +368,7 @@ exports.deleteRateCard = async (req, res) => {
 
     if (hasActiveOrFutureBooking) {
       await t.rollback();
+      await logApiCall(req, res, 400, `Deleted rate card - has active bookings (Property ID: ${propertyId}, Room Type: ${roomType})`, "property");
       return res.status(400).json({ message: `Cannot delete: Room type "${roomType}" has active or future bookings.` });
     }
 
@@ -353,6 +379,7 @@ exports.deleteRateCard = async (req, res) => {
 
     if (!rateCardToDelete) {
       await t.rollback();
+      await logApiCall(req, res, 404, `Deleted rate card - rate card not found (Property ID: ${propertyId}, Room Type: ${roomType})`, "property");
       return res.status(404).json({ message: "Rate card not found." });
     }
 
@@ -374,11 +401,13 @@ exports.deleteRateCard = async (req, res) => {
     });
 
     await t.commit();
+    await logApiCall(req, res, 200, `Deleted rate card: ${roomType} (Property ID: ${propertyId})`, "property", propertyId);
     res.status(200).json({ message: "Room type deleted successfully." });
 
   } catch (err) {
     await t.rollback();
     console.error(err);
+    await logApiCall(req, res, 500, "Error occurred while deleting rate card", "property");
     res.status(500).json({ message: "Failed to delete room type." });
   }
 };

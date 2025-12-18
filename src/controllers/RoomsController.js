@@ -4,6 +4,9 @@ const Booking = require('../models/bookRoom');
 const Property = require('../models/property');
 const Inventory  = require('../models/inventory');
 const { generateInventoryCode } = require('../helpers/InventoryCode');
+const { logApiCall } = require("../helpers/auditLog");
+const fs = require('fs');
+const path = require('path');
 
 const { Op } = require('sequelize');
 
@@ -16,12 +19,14 @@ exports.AddRooms = async (req, res) => {
         //check property exist or not
         const property = await Property.findByPk(propertyId);
         if (!property) {
+            await logApiCall(req, res, 404, `Added room - property not found (ID: ${propertyId})`, "room");
             return res.status(404).json({ message: "Property not found" });
         }
 
         //check rooms are exist -> unique room number
         const existingRoom = await Rooms.findOne({ where: { roomNumber, propertyId } });
         if (existingRoom) {
+            await logApiCall(req, res, 400, `Added room - room already exists (${roomNumber})`, "room");
             return res.status(400).json({ message: "Room already exists for this property" });
         }
 
@@ -31,12 +36,13 @@ exports.AddRooms = async (req, res) => {
             propertyId, roomNumber, roomType, capacity, floorNumber, monthlyRent, depositAmount: monthlyRent * 2, preferredUserType, description, status:finalStatus
         })        
 
+        await logApiCall(req, res, 201, `Added new room: ${roomNumber} (ID: ${newRoom.id})`, "room", newRoom.id);
         return res.status(201).json({ message: 'Rooms added successfully', room: newRoom })
 
     } catch (err) {
         console.log("error->", err
         );
-
+        await logApiCall(req, res, 500, "Error occurred while adding room", "room");
         return res.status(500).json({ message: "Internal server error" });
     }
 }
@@ -50,6 +56,7 @@ exports.EditRooms = async (req, res) => {
         //find existing room
         const room = await Rooms.findByPk(id);
         if (!room) {
+            await logApiCall(req, res, 404, `Updated room - room not found (ID: ${id})`, "room", parseInt(id));
             return res.status(404).json({ message: "Room not found" });
         }
 
@@ -57,6 +64,7 @@ exports.EditRooms = async (req, res) => {
         if (updatedData.roomNumber!==undefined && updatedData.roomNumber !== room.roomNumber) {
             const exist = await Rooms.findOne({ where: { roomNumber: updatedData.roomNumber, propertyId: room.propertyId, id: { [Op.ne]: room.id } } });
             if (exist) {
+                await logApiCall(req, res, 400, `Updated room - room number already exists (ID: ${id})`, "room", parseInt(id));
                 return res.status(400).json({ message: "Room number already exists for this property" });
             }
         }
@@ -76,10 +84,12 @@ exports.EditRooms = async (req, res) => {
             updatedData  // keep other updates
         );
 
+        await logApiCall(req, res, 200, `Updated room: ${room.roomNumber} (ID: ${id})`, "room", parseInt(id));
         return res.status(200).json({ message: "Room updated successfully", room });
 
     } catch (err) {
         console.log("error", err);
+        await logApiCall(req, res, 500, "Error occurred while updating room", "room", parseInt(req.params.id) || 0);
         return res.status(500).json({ message: "Internal server error" });
     }
 }
@@ -92,6 +102,7 @@ exports.DeleteRooms = async (req, res) => {
 
         const room = await Rooms.findByPk(id);
         if (!room) {
+            await logApiCall(req, res, 404, `Deleted room - room not found (ID: ${id})`, "room", parseInt(id));
             return res.status(404).json({ message: "Room not found" });
         }
 
@@ -106,6 +117,7 @@ exports.DeleteRooms = async (req, res) => {
         });
 
         if (hasActiveOrFutureBookings) {
+            await logApiCall(req, res, 400, `Deleted room - has active bookings (ID: ${id})`, "room", parseInt(id));
             return res.status(400).json({ message: "Room cannot be deleted, it has active or future bookings" });
         }
 
@@ -120,11 +132,12 @@ exports.DeleteRooms = async (req, res) => {
 
 
         await room.destroy();
+        await logApiCall(req, res, 200, `Deleted room: ${room.roomNumber} (ID: ${id})`, "room", parseInt(id));
         res.status(200).json({ message: "Room deleted successfully" });
 
     } catch (err) {
         console.log("error", err);
-
+        await logApiCall(req, res, 500, "Error occurred while deleting room", "room", parseInt(req.params.id) || 0);
         return res.status(500).json({ message: "Internal server error" });
     }
 }
@@ -200,14 +213,16 @@ exports.getAllRooms = async (req, res) => {
 
         const totalPages=Math.ceil(count / limit);
 
+        await logApiCall(req, res, 200, "Viewed all rooms list", "room");
         res.status(200).json({ rooms: formattedRooms,currentPage: page, totalPages, totalRooms: count });
     } catch (err) {
         console.log("error", err);
-
+        await logApiCall(req, res, 500, "Error occurred while fetching rooms list", "room");
         return res.status(500).json({ message: "Internal server error" });
     }
 
 }
+
 exports.getRoomsByProperty = async (req, res) => {
   try {
     const { propertyId } = req.params;
@@ -218,17 +233,21 @@ exports.getRoomsByProperty = async (req, res) => {
     });
 
     if (!rooms || rooms.length === 0) {
+      await logApiCall(req, res, 404, `Viewed rooms by property - no rooms found (Property ID: ${propertyId})`, "room");
       return res
         .status(404)
         .json({ message: "No rooms found for this property" });
     }
 
+    await logApiCall(req, res, 200, `Viewed rooms by property (Property ID: ${propertyId})`, "room");
     res.status(200).json(rooms);
   } catch (error) {
     console.error("Error fetching rooms by property:", error);
+    await logApiCall(req, res, 500, "Error occurred while fetching rooms by property", "room");
     res.status(500).json({ message: "Server error fetching rooms" });
   }
 };
+
 exports.getAvailableRooms = async (req, res) => {
   try {
     const { propertyId, roomType } = req.params;
@@ -251,9 +270,11 @@ exports.getAvailableRooms = async (req, res) => {
       room => (room.bookings?.length || 0) < room.capacity
     );
 
+    await logApiCall(req, res, 200, `Viewed available rooms (Property ID: ${propertyId}, Room Type: ${roomType})`, "room");
     res.json({ rooms: availableRooms });
   } catch (err) {
     console.error("Error fetching available rooms:", err);
+    await logApiCall(req, res, 500, "Error occurred while fetching available rooms", "room");
     res.status(500).json({ message: "Failed to load available rooms" });
   }
 };
@@ -267,12 +288,15 @@ exports.getInventoryForProperty = async (req, res) => {
       order: [["itemName", "ASC"]],
     });
 
+    await logApiCall(req, res, 200, `Viewed inventory for property (Property ID: ${propertyId})`, "room");
     return res.json({ items });
   } catch (err) {
     console.error("getInventoryForProperty:", err);
+    await logApiCall(req, res, 500, "Error occurred while fetching inventory for property", "room");
     return res.status(500).json({ message: "Failed to fetch inventory" });
   }
 };
+
 exports.assignInventoryManual = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -281,12 +305,14 @@ exports.assignInventoryManual = async (req, res) => {
 
     if (!Array.isArray(itemIds) || itemIds.length === 0) {
       await t.rollback();
+      await logApiCall(req, res, 400, "Failed to assign inventory manually - no itemIds provided", "room", parseInt(roomId));
       return res.status(400).json({ message: "No itemIds provided" });
     }
 
     const room = await Rooms.findByPk(roomId, { transaction: t });
     if (!room) {
       await t.rollback();
+      await logApiCall(req, res, 404, `Failed to assign inventory manually - room not found (ID: ${roomId})`, "room", parseInt(roomId));
       return res.status(404).json({ message: "Room not found" });
     }
 
@@ -299,6 +325,7 @@ exports.assignInventoryManual = async (req, res) => {
     for (const item of items) {
       if (item.propertyId !== room.propertyId) {
         await t.rollback();
+        await logApiCall(req, res, 400, `Failed to assign inventory manually - item belongs to different property (Room ID: ${roomId})`, "room", parseInt(roomId));
         return res.status(400).json({
           message: `Item ${item.id} belongs to a different property`,
         });
@@ -312,6 +339,7 @@ exports.assignInventoryManual = async (req, res) => {
 
 
     await t.commit();
+    await logApiCall(req, res, 200, `Assigned ${itemIds.length} inventory items manually to room (ID: ${roomId})`, "room", parseInt(roomId));
     return res.json({
       message: "Inventory assigned manually",
       assigned: itemIds.length,
@@ -319,9 +347,11 @@ exports.assignInventoryManual = async (req, res) => {
   } catch (err) {
     await t.rollback();
     console.error("assignInventoryManual:", err);
+    await logApiCall(req, res, 500, "Error occurred while assigning inventory manually", "room", parseInt(req.params.roomId) || 0);
     return res.status(500).json({ message: "Failed manual assignment" });
   }
 };
+
 // AUTO ASSIGN INVENTORY TO ROOM (BATCH SAFE)
 exports.assignInventoryAuto = async (req, res) => {
   try {
@@ -330,16 +360,21 @@ exports.assignInventoryAuto = async (req, res) => {
     // items = [{ itemName: "Bed", quantity: 3 }, ...]
 
     if (!roomId) {
+      await logApiCall(req, res, 400, "Failed to auto-assign inventory - roomId required", "room");
       return res.status(400).json({ message: "roomId is required" });
     }
 
     if (!items || !Array.isArray(items) || items.length === 0) {
+      await logApiCall(req, res, 400, "Failed to auto-assign inventory - no items provided", "room", parseInt(roomId));
       return res.status(400).json({ message: "No inventory items provided" });
     }
 
     // Find room and property
     const room = await Rooms.findByPk(roomId);
-    if (!room) return res.status(404).json({ message: "Room not found" });
+    if (!room) {
+      await logApiCall(req, res, 404, `Failed to auto-assign inventory - room not found (ID: ${roomId})`, "room", parseInt(roomId));
+      return res.status(404).json({ message: "Room not found" });
+    }
 
     const propertyId = room.propertyId;
 
@@ -383,6 +418,7 @@ exports.assignInventoryAuto = async (req, res) => {
       }
     }
 
+    await logApiCall(req, res, 201, `Auto-assigned ${createdItems.length} inventory items to room (ID: ${roomId})`, "room", parseInt(roomId));
     return res.status(201).json({
       success: true,
       message: "Inventory auto-assigned successfully",
@@ -391,6 +427,7 @@ exports.assignInventoryAuto = async (req, res) => {
 
   } catch (error) {
     console.error("assignInventoryAuto Error:", error);
+    await logApiCall(req, res, 500, "Error occurred while auto-assigning inventory", "room", parseInt(req.params.roomId) || 0);
     return res.status(500).json({ message: "Internal server error", error });
   }
 };

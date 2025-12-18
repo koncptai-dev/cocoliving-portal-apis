@@ -5,17 +5,20 @@ const ENV = process.env.PHONEPE_ENV === 'prod' ? 'prod' : 'sandbox';
 // Base URLs 
 const BASE_URL =
   ENV === 'prod'
-    ? 'https://api.phonepe.com/apis'
+    ? 'https://api.phonepe.com/apis/pg'
     : 'https://api-preprod.phonepe.com/apis/pg-sandbox';
 
 module.exports = {
-  // Standard Checkout - Create Payment
+  // Create Payment ( WEB )
   CREATE_PAYMENT_URL: `${BASE_URL}/checkout/v2/pay`,
 
-  // Standard Checkout - Order Status
+  // Create Order ( MOBILE APP )
+  MOBILE_SDK_ORDER_URL: `${BASE_URL}/checkout/v2/sdk/order`,
+
+  //  Order Status
   ORDER_STATUS_URL_TEMPLATE: `${BASE_URL}/checkout/v2/order/{merchantOrderId}/status`,
 
-  // Refund API
+  // Refund
   REFUND_URL:
     ENV === 'prod'
       ? 'https://api.phonepe.com/apis/pg/payments/v2/refund'

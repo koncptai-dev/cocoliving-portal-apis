@@ -7,6 +7,7 @@ const phonepeConfig = require('../utils/phonepe/phonepeConfig');
 const sequelize = require('../config/database');
 const { Op } = require('sequelize');
 const moment = require('moment');
+const { logApiCall } = require("../helpers/auditLog");
 
 function computeExpectedWebhookHex() {
   const username = (phonepeConfig.WEBHOOK_USERNAME || '').trim();
@@ -75,8 +76,10 @@ async function recomputeBookingTotals(booking, t = null) {
 exports.checkOrderStatus = async (req, res) => {
   try {
     const { merchantOrderId } = req.params;
-    if (!merchantOrderId)
+    if (!merchantOrderId) {
+      await logApiCall(req, res, 400, "Checked order status - merchantOrderId required", "payment");
       return res.status(400).json({ message: "merchantOrderId required" });
+    }
 
     // 1. Fetch from PhonePe
     const phonepeResp = await getOrderStatus(merchantOrderId);
@@ -117,6 +120,7 @@ exports.checkOrderStatus = async (req, res) => {
     )
       derivedStatus = "FAILED";
 
+    await logApiCall(req, res, 200, `Checked order status: ${merchantOrderId} (Status: ${derivedStatus})`, "payment");
     return res.status(200).json({
       status: derivedStatus,
       phonepe: phonepeResp,
@@ -124,6 +128,7 @@ exports.checkOrderStatus = async (req, res) => {
     });
   } catch (err) {
     console.error("[PaymentController] checkOrderStatus error", err);
+    await logApiCall(req, res, 500, "Error occurred while checking order status", "payment");
     return res
       .status(500)
       .json({ message: "Server error", error: err.message });
@@ -350,7 +355,10 @@ exports.phonePeWebhook = async (req, res) => {
 exports.getUserTransactions = async (req, res) => {
   try {
     const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    if (!userId) {
+      await logApiCall(req, res, 401, "Viewed user transactions - unauthorized", "payment");
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
 
     const page = Math.max(1, parseInt(req.query.page || '1', 10));
     const limit = Math.min(100, Math.max(5, parseInt(req.query.limit || '20', 10)));
@@ -398,6 +406,7 @@ exports.getUserTransactions = async (req, res) => {
       };
     });
 
+    await logApiCall(req, res, 200, `Viewed user transactions (${count} total)`, "payment", userId);
     return res.json({
       success: true,
       page,
@@ -407,6 +416,7 @@ exports.getUserTransactions = async (req, res) => {
     });
   } catch (err) {
     console.error('[PaymentController] getUserTransactions error', err);
+    await logApiCall(req, res, 500, "Error occurred while fetching user transactions", "payment", req.user?.id || 0);
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 };
@@ -450,6 +460,7 @@ exports.getTransactions = async (req, res) => {
       offset,
     });
 
+    await logApiCall(req, res, 200, `Viewed all transactions (${count} total)`, "payment");
     return res.json({
       success: true,
       pagination: {
@@ -462,6 +473,7 @@ exports.getTransactions = async (req, res) => {
     });
   } catch (err) {
     console.error("getTransactions error", err);
+    await logApiCall(req, res, 500, "Error occurred while fetching all transactions", "payment");
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -470,7 +482,10 @@ exports.getRefundInfo = async (req, res) => {
     const txId = req.params.transactionId;
 
     const tx = await PaymentTransaction.findByPk(txId);
-    if (!tx) return res.status(404).json({ message: 'Transaction not found' });
+    if (!tx) {
+      await logApiCall(req, res, 404, `Viewed refund info - transaction not found (ID: ${txId})`, "payment", parseInt(txId));
+      return res.status(404).json({ message: 'Transaction not found' });
+    }
 
     const originalOrderId = tx.merchantOrderId;
 
@@ -486,6 +501,7 @@ exports.getRefundInfo = async (req, res) => {
     const refundedPaise = successfulRefunds || 0;
     const maxRefundable = Math.max(paidPaise - refundedPaise, 0);
 
+    await logApiCall(req, res, 200, `Viewed refund info for transaction (ID: ${txId})`, "payment", parseInt(txId));
     return res.json({
       transactionId: txId,
       merchantOrderId: originalOrderId,
@@ -496,6 +512,7 @@ exports.getRefundInfo = async (req, res) => {
     });
   } catch (err) {
     console.error('Refund Info Error:', err);
+    await logApiCall(req, res, 500, "Error occurred while fetching refund info", "payment", parseInt(req.params.transactionId) || 0);
     res.status(500).json({ message: 'Server error' });
   }
 };

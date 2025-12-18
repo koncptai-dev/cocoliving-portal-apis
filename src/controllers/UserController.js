@@ -7,6 +7,8 @@ const otpGenerator = require("otp-generator");
 const fs = require('fs');
 const path = require('path');
 const { mailsender } = require('../utils/emailService');
+const { welcomeEmail , otpEmail } = require('../utils/emailTemplates/emailTemplates');
+const { logApiCall } = require("../helpers/auditLog");
 
 //send phone OTP
 exports.sendPhoneOTP = async (req, res) => {
@@ -14,12 +16,17 @@ exports.sendPhoneOTP = async (req, res) => {
         const { phone } = req.body;
         const userId = req.user.id;
 
-        if (!phone) return res.status(400).json({ message: "Phone is required" });
+        if (!phone) {
+            await logApiCall(req, res, 400, "Failed to send phone OTP - phone number required", "user", userId);
+            return res.status(400).json({ message: "Phone is required" });
+        }
         if (!/^\d{10}$/.test(phone)) {
+            await logApiCall(req, res, 400, "Failed to send phone OTP - invalid phone format", "user", userId);
             return res.status(400).json({ message: "Invalid phone format" });
         }
         const user = await User.findByPk(userId);
         if (!user) {
+            await logApiCall(req, res, 404, "Failed to send phone OTP - user not found", "user", userId);
             return res.status(404).json({ message: "User not found" });
         }
 
@@ -46,12 +53,14 @@ exports.sendPhoneOTP = async (req, res) => {
         // Send via SMS API (twilio / 2factor / msg91)
         console.log("Phone OTP:", otp);
 
+        await logApiCall(req, res, 200, "Sent phone OTP for verification", "user", userId);
         return res.status(200).json({
             success: true,
             message: "OTP sent to phone successfully"
         });
 
     } catch (error) {
+        await logApiCall(req, res, 500, "Error occurred while sending phone OTP", "user", req.user?.id || 0);
         return res.status(500).json({ message: error.message });
     }
 }
@@ -61,23 +70,30 @@ exports.verifyPhoneOTP = async (req, res) => {
         const { phone, otp } = req.body;
         const userId = req.user.id;
 
-        if (!phone || !otp)
+        if (!phone || !otp) {
+            await logApiCall(req, res, 400, "Failed to verify phone OTP - phone and OTP required", "user", userId);
             return res.status(400).json({ message: "Phone & OTP are required" });
+        }
 
         const record = await OTP.findOne({
             where: { identifier: phone, type: "phone" },
             order: [["createdAt", "DESC"]]
         });
 
-        if (!record) return res.status(400).json({ message: "OTP expired or not found" });
+        if (!record) {
+            await logApiCall(req, res, 400, "Failed to verify phone OTP - OTP expired or not found", "user", userId);
+            return res.status(400).json({ message: "OTP expired or not found" });
+        }
 
         if (record.expiresAt < new Date()) {
             await OTP.destroy({ where: { identifier: phone, type: 'phone' } });
+            await logApiCall(req, res, 400, "Failed to verify phone OTP - OTP expired", "user", userId);
             return res.status(400).json({ message: "OTP expired" });
         }
 
         if (record.otp !== otp) {
             await record.save();
+            await logApiCall(req, res, 400, "Failed to verify phone OTP - incorrect OTP", "user", userId);
             return res.status(400).json({ message: "Incorrect OTP" });
         }
 
@@ -89,12 +105,14 @@ exports.verifyPhoneOTP = async (req, res) => {
             { where: { id: userId } }
         );
 
+        await logApiCall(req, res, 200, "Verified phone number successfully", "user", userId);
         res.status(200).json({
             success: true,
             message: "Phone number verified successfully",
         });
 
     } catch (err) {
+        await logApiCall(req, res, 500, "Error occurred while verifying phone OTP", "user", userId);
         return res.status(500).json({ message: err.message });
     }
 }
@@ -108,15 +126,18 @@ exports.sendOTP = async (req, res) => {
         });
 
         if (!email) {
+            await logApiCall(req, res, 400, "Failed to send email OTP - email required", "user");
             return res.status(400).json({ success: false, message: "Email is required" });
         }
         if (!/^\S+@\S+\.\S+$/.test(email)) {
+            await logApiCall(req, res, 400, "Failed to send email OTP - invalid email format", "user");
             return res.status(400).json({ success: false, message: "Invalid email format" });
         }
 
         const existingUser = await User.findOne({ where: { email } });
 
         if (existingUser && !existingUser.registrationToken) {
+            await logApiCall(req, res, 401, "Failed to send email OTP - user already registered", "user");
             return res.status(401).json({ success: false, message: 'User is already registered' });
         }
 
@@ -132,18 +153,22 @@ exports.sendOTP = async (req, res) => {
 
         await OTP.create({ identifier: email, type: 'email', otp, expiresAt });
 
+        const mail = otpEmail({otp});
         await mailsender(
             email,
-            "OTP Verification",
-            `Your OTP for registration is: ${otp}\n\nThis OTP is valid for 5 minutes.`
+            "Your Verification OTP",
+            mail.html,
+            mail.attachments
         );
 
+        await logApiCall(req, res, 200, `Sent email OTP for registration to ${email}`, "user");
         return res.status(200).json({
             success: true,
             message: "OTP sent successfully",
         });
 
     } catch (err) {
+        await logApiCall(req, res, 500, "Error occurred while sending email OTP", "user");
         return res.status(500).json({ success: false, message: err.message });
     }
 };
@@ -153,6 +178,7 @@ exports.registerUser = async (req, res) => {
         const { fullName, email, phone, userType, gender, dateOfBirth, otp } = req.body;
 
         if (!email || !otp) {
+            await logApiCall(req, res, 400, "Failed to register user - email and OTP required", "user");
             return res.status(400).json({ message: "Email & OTP are required" });
         }
 
@@ -162,11 +188,13 @@ exports.registerUser = async (req, res) => {
         });
 
         if (!otpRecord) {
+            await logApiCall(req, res, 400, "Failed to register user - OTP not found or expired", "user");
             return res.status(400).json({ message: "OTP not found or expired" });
         }
 
         if (otpRecord.attempts >= 5) {
             await OTP.destroy({ where: { email } });
+            await logApiCall(req, res, 429, "Failed to register user - too many wrong OTP attempts", "user");
             return res.status(429).json({
                 success: false,
                 message: "Too many wrong attempts. Request a new OTP."
@@ -175,12 +203,14 @@ exports.registerUser = async (req, res) => {
 
         if (otpRecord.expiresAt < new Date()) {
             await OTP.destroy({ where: { email } });
+            await logApiCall(req, res, 400, "Failed to register user - OTP expired", "user");
             return res.status(400).json({ message: "OTP expired. Request a new one." });
         }
 
         if (otpRecord.otp !== otp) {
             otpRecord.attempts += 1;
             await otpRecord.save();
+            await logApiCall(req, res, 400, "Failed to register user - incorrect OTP", "user");
             return res.status(400).json({ message: "Incorrect OTP" });
         }
 
@@ -191,6 +221,7 @@ exports.registerUser = async (req, res) => {
         let userExist = await User.findOne({ where: { email } });
 
         if (userExist) {
+            await logApiCall(req, res, 400, "Failed to register user - email already registered", "user");
             return res.status(400).json({ message: "Email already registered. Please login." });
         }
 
@@ -212,6 +243,18 @@ exports.registerUser = async (req, res) => {
             role: 2,
             status: 1,
         });
+        try {
+            const mail = welcomeEmail({firstName: newUser.fullName});
+            await mailsender(
+                newUser.email,
+                'Welcome to Coco Living',
+                mail.html,
+                mail.attachments
+            );
+        } catch (err) {
+            console.error('Welcome email failed:', err.message);
+        }
+        await logApiCall(req, res, 201, `Registered new user: ${fullName} (${email})`, "user", newUser.id);
         return res.status(201).json({
             success: true,
             message: "User registered & verified successfully",
@@ -219,6 +262,7 @@ exports.registerUser = async (req, res) => {
         });
 
     } catch (error) {
+        await logApiCall(req, res, 500, "Error occurred while registering user", "user");
         return res.status(500).json({ message: "Server error", error: error.message });
     }
 };
@@ -231,6 +275,7 @@ exports.editUserProfile = async (req, res) => {
 
         const user = await User.findByPk(id);
         if (!user) {
+            await logApiCall(req, res, 404, `Updated user profile - user not found (ID: ${id})`, "user", parseInt(id));
             return res.status(404).json({ message: 'User not found' });
         }
 
@@ -240,6 +285,7 @@ exports.editUserProfile = async (req, res) => {
             const newPhone = updates.phone;
 
             if (user.isPhoneVerified) {
+                await logApiCall(req, res, 400, `Updated user profile - phone cannot be edited after verification (ID: ${id})`, "user", parseInt(id));
                 return res.status(400).json({
                     message: "Phone number cannot be edited after verification"
                 });
@@ -262,6 +308,7 @@ exports.editUserProfile = async (req, res) => {
                     user.parentEmail = null;
                 } else {
                     if (newParentEmail === user.email) {
+                        await logApiCall(req, res, 400, `Updated user profile - parent email cannot be same as user email (ID: ${id})`, "user", parseInt(id));
                         return res.status(400).json({ message: "Parent email cannot be the same as user email" });
                     }
                     const conflict = await User.findOne({
@@ -270,6 +317,7 @@ exports.editUserProfile = async (req, res) => {
                         }
                     });
                     if (conflict) {
+                        await logApiCall(req, res, 400, `Updated user profile - parent email conflict (ID: ${id})`, "user", parseInt(id));
                         return res.status(400).json({ message: "Parent email cannot match another user's email" });
                     }
                     user.parentEmail = newParentEmail;
@@ -306,11 +354,13 @@ exports.editUserProfile = async (req, res) => {
         }
         await user.save();
 
+        await logApiCall(req, res, 200, `Updated user profile: ${user.fullName} (ID: ${id})`, "user", parseInt(id));
         return res.status(200).json({
             message: 'Profile updated successfully',
             user
         });
     } catch (err) {
+        await logApiCall(req, res, 500, "Error occurred while updating user profile", "user", parseInt(req.params.id) || 0);
         return res.status(500).json({ message: 'Error updating profile', error: err.message });
     }
 }
@@ -323,19 +373,23 @@ exports.deleteAccount = async (req, res) => {
         //find user exist
         const user = await User.findByPk(userId);
         if (!user) {
+            await logApiCall(req, res, 404, `Deleted user account - user not found (ID: ${userId})`, "user", parseInt(userId));
             return res.status(404).json({ message: 'user not found' })
         }
 
         //check already deleted
         if (user.status === 0) {
+            await logApiCall(req, res, 400, `Deleted user account - user already deleted (ID: ${userId})`, "user", parseInt(userId));
             return res.status(400).json({ message: 'user already deleted' })
         }
 
         //soft delete
         await User.update({ status: 0 }, { where: { id: userId } })
 
+        await logApiCall(req, res, 200, `Deleted user account: ${user.fullName} (ID: ${userId})`, "user", parseInt(userId));
         return res.status(200).json({ message: 'User account deleted successfully' });
     } catch (err) {
+        await logApiCall(req, res, 500, "Error occurred while deleting user account", "user", parseInt(req.params.id) || 0);
         return res.status(500).json({ message: 'Error deleting user account', error: err.message });
     }
 }
@@ -347,6 +401,7 @@ exports.getUserById = async (req, res) => {
         const user = await User.findByPk(id, { where: { status: 1 }, attributes: { exclude: ['password'] } });
 
         if (!user || user.status === 0) {
+            await logApiCall(req, res, 404, `Viewed user details - user not found (ID: ${id})`, "user", parseInt(id));
             return res.status(404).json({ message: 'No user found' });
         }
         const kyc = await UserKYC.findOne({ where: { userId: user.id } });
@@ -357,8 +412,10 @@ exports.getUserById = async (req, res) => {
             user.dataValues.isPanVerified = false;
             user.dataValues.isAadhaarVerified = false;
         }
+        await logApiCall(req, res, 200, `Viewed user details: ${user.fullName} (ID: ${id})`, "user", parseInt(id));
         return res.status(200).json({ success: true, user });
     } catch (err) {
+        await logApiCall(req, res, 500, "Error occurred while fetching user details", "user", parseInt(req.params.id) || 0);
         return res.status(500).json({ message: 'Error fetching users', error: err.message });
     }
 }
