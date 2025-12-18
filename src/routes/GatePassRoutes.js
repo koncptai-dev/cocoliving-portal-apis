@@ -32,7 +32,7 @@ router.get(
   GatePassController.getUserGatePasses
 );
 
-// Admin routes
+// Parent routes
 router.get("/all", authenticateToken, GatePassController.getAllGatePasses);
 
 router.put(
@@ -41,6 +41,13 @@ router.put(
   validateGatePassStatus,
   validate,
   GatePassController.approveOrRejectGatePass
+);
+
+// Admin routes
+router.get(
+  "/admin/all",
+  authenticateToken,
+  GatePassController.getAdminGatePasses
 );
 
 module.exports = router;
