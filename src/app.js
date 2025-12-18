@@ -3,6 +3,7 @@ const bodyParser = require("body-parser");
 const cors = require("cors");
 const sequelize = require("./config/database");
 const app = express();
+app.set("trust proxy", 1);
 const admin = require("./routes/AdminRoutes");
 const User = require("./routes/UserRoute");
 const Rooms = require("./routes/RoomsRoutes");
