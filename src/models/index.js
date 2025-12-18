@@ -16,6 +16,7 @@ const ServiceHistory = require("./serviceHistory");
 const PaymentTransaction = require("./paymentTransaction");
 const TicketLog = require("./ticketLog");
 const GatePass = require("./gatePass");
+const BookingOnboarding = require('./bookingOnboarding');
 
 User.hasMany(SupportTicket, { foreignKey: "userId", as: "tickets" });
 SupportTicket.belongsTo(User, { foreignKey: "userId", as: "user" });
@@ -127,22 +128,31 @@ TicketLog.belongsTo(User, { foreignKey: "performedBy", as: "actor" });
 User.hasMany(GatePass, { foreignKey: "userId", as: "gatePasses" });
 GatePass.belongsTo(User, { foreignKey: "userId", as: "user" });
 
-module.exports = {
-  sequelize,
-  SupportTicket,
-  User,
-  Booking,
-  Rooms,
-  Event,
-  EventParticipation,
-  Property,
-  Announcement,
-  UserPermission,
-  PropertyRateCard,
-  FoodMenu,
-  Inventory,
-  ServiceHistory,
-  PaymentTransaction,
-  TicketLog,
-  GatePass,
-};
+// Booking ↔ Onboarding
+Booking.hasOne(BookingOnboarding, { foreignKey: 'bookingId', as: 'onboarding' });
+BookingOnboarding.belongsTo(Booking, { foreignKey: 'bookingId', as: 'booking' });
+
+// Admin who started onboarding
+User.hasMany(BookingOnboarding, { foreignKey: 'startedBy', as: 'startedOnboardings' });
+BookingOnboarding.belongsTo(User, { foreignKey: 'startedBy', as: 'admin' });
+
+module.exports={
+    sequelize,
+    SupportTicket,
+    User,
+    Booking,
+    Rooms,
+    Event,
+    EventParticipation,
+    Property,
+    Announcement,
+    UserPermission,
+    PropertyRateCard,
+    FoodMenu,
+    Inventory,
+    ServiceHistory,
+    PaymentTransaction,
+    TicketLog,
+    GatePass,
+    BookingOnboarding,
+}
