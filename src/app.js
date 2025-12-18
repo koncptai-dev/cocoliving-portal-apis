@@ -30,6 +30,7 @@ const AuditLogRoutes = require("./routes/AuditLog");
 const FcmRoutes = require("./routes/FcmRoutes");
 const DashboardRoutes = require("./routes/DashboardRoutes");
 const UserDashboardRoutes = require("./routes/UserDashboardRoutes");
+const GatePassRoutes = require("./routes/GatePassRoutes");
 
 app.use(
   cors({
@@ -72,9 +73,10 @@ app.use("/api/pan", panRoutes);
 app.use("/api/digilocker", digilocker);
 app.use("/api/admin/user", UserKYCRoutes);
 app.use("/api/logs", AuditLogRoutes);
-app.use('/api/fcm', FcmRoutes);
+app.use("/api/fcm", FcmRoutes);
 app.use("/api/dashboard", DashboardRoutes);
 app.use("/api/user", UserDashboardRoutes);
+app.use("/api/gate-pass", GatePassRoutes);
 
 sequelize
   .sync({ alter: true }) //   ensures new models are created
