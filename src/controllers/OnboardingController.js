@@ -8,7 +8,6 @@ const { otpEmail } = require('../utils/emailTemplates/emailTemplates');
 const { mailsender } = require('../utils/emailService');
 const assertAdmin = (role) => role === 1 || role === 3;
 
-// START / CONTINUE
 exports.startOnboarding = async (req, res) => {
   const checklist = [
     { key: 'bed', label: 'Bed', checked: false },
@@ -51,7 +50,6 @@ exports.startOnboarding = async (req, res) => {
   return res.json({ onboarding });
 };
 
-// SAVE CHECKLIST
 exports.updateChecklist = async (req, res) => {
   const { bookingId } = req.params;
   const { checklist } = req.body;
@@ -69,7 +67,6 @@ exports.updateChecklist = async (req, res) => {
   return res.json({ success: true });
 };
 
-// COMPLETE -> SEND OTP
 exports.completeOnboarding = async (req, res) => {
   const { bookingId } = req.params;
   if (!assertAdmin(req.user.role)) {
@@ -143,8 +140,6 @@ exports.completeOnboarding = async (req, res) => {
   return res.json({ success: true });
 };
 
-// VERIFY OTP
-// VERIFY OTP
 exports.verifyOnboardingOtp = async (req, res) => {
   const { bookingId } = req.params;
   const { otp } = req.body;
@@ -200,7 +195,6 @@ exports.verifyOnboardingOtp = async (req, res) => {
   return res.json({ success: true });
 };
 
-// GET ONBOARDING DETAILS
 exports.getOnboardingByBookingId = async (req, res) => {
   const { bookingId } = req.params;
 
