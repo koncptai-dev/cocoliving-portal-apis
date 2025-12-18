@@ -467,6 +467,7 @@ exports.approveOrRejectGatePass = async (req, res) => {
     }
 
     gatePass.status = status;
+    gatePass.approvedBy = parentEmail;
     await gatePass.save();
 
     await logApiCall(

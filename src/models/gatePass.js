@@ -43,6 +43,11 @@ const GatePass = sequelize.define(
       allowNull: false,
       defaultValue: "pending",
     },
+    approvedBy: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: "Email of the parent who approved or rejected the request",
+    },
   },
   {
     tableName: "gate_passes",
