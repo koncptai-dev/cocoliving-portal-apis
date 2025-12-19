@@ -20,7 +20,6 @@ router.get("/pan-status", authenticateToken, async (req, res) => {
       return res.status(200).json({
         success: true,
         panStatus: "not-verified",
-        failureReason: "PAN not submitted",
       });
     }
 
@@ -28,7 +27,6 @@ router.get("/pan-status", authenticateToken, async (req, res) => {
       success: true,
       panStatus: kycRecord.panStatus || "not-verified",
       verifiedAt: kycRecord.verifiedAtPan || null,
-      failureReason: kycRecord.failureReason || null,
     });
     
   } catch (error) {

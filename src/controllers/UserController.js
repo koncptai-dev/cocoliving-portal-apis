@@ -267,6 +267,7 @@ exports.registerUser = async (req, res) => {
     }
 };
 
+//profile edit
 exports.editUserProfile = async (req, res) => {
     try {
 
