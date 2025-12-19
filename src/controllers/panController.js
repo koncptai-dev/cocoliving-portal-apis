@@ -2,7 +2,8 @@ const { verifyPANService } = require('../utils/panService');
 const UserKYC = require('../models/userKYC');
 const User = require('../models/user');
 const { logApiCall } = require("../helpers/auditLog");
-const {nameMatchService} = require("../utils/panService");
+const { nameMatchService } = require('../helpers/nameMatchfunction');
+
 
 //pan verification and name match
 exports.verifyPAN = async (req, res) => {
