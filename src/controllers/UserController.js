@@ -9,6 +9,7 @@ const path = require('path');
 const { mailsender } = require('../utils/emailService');
 const { welcomeEmail , otpEmail } = require('../utils/emailTemplates/emailTemplates');
 const { logApiCall } = require("../helpers/auditLog");
+const { smsSender } = require("../utils/smsService");
 
 //send phone OTP
 exports.sendPhoneOTP = async (req, res) => {
@@ -50,8 +51,7 @@ exports.sendPhoneOTP = async (req, res) => {
             attempts: 0,
         });
 
-        // Send via SMS API (twilio / 2factor / msg91)
-        console.log("Phone OTP:", otp);
+        await smsSender(phone, "otp", { otp });
 
         await logApiCall(req, res, 200, "Sent phone OTP for verification", "user", userId);
         return res.status(200).json({
