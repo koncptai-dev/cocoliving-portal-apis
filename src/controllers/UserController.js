@@ -7,7 +7,7 @@ const otpGenerator = require("otp-generator");
 const fs = require('fs');
 const path = require('path');
 const { mailsender } = require('../utils/emailService');
-const { welcomeEmail, otpEmail } = require('../utils/emailTemplates/emailTemplates');
+const { welcomeEmail , otpEmail } = require('../utils/emailTemplates/emailTemplates');
 const { logApiCall } = require("../helpers/auditLog");
 const { smsSender } = require("../utils/smsService");
 
@@ -144,45 +144,45 @@ exports.sendOTP = async (req, res) => {
 
         await OTP.destroy({ where: { identifier: email, type: 'email' } });
 
-        const otp = otpGenerator.generate(6, {
-            upperCaseAlphabets: false,
-            lowerCaseAlphabets: false,
-            specialChars: false,
-        });
+    const otp = otpGenerator.generate(6, {
+      upperCaseAlphabets: false,
+      lowerCaseAlphabets: false,
+      specialChars: false,
+    });
 
-        const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
-        await OTP.create({ identifier: email, type: "email", otp, expiresAt });
+    await OTP.create({ identifier: email, type: "email", otp, expiresAt });
 
-        const mail = otpEmail({ otp });
-        await mailsender(
-            email,
-            "Your Verification OTP",
-            mail.html,
-            mail.attachments
-        );
+    const mail = otpEmail({ otp });
+    await mailsender(
+      email,
+      "Your Verification OTP",
+      mail.html,
+      mail.attachments
+    );
 
-        await logApiCall(
-            req,
-            res,
-            200,
-            `Sent email OTP for registration to ${email}`,
-            "user"
-        );
-        return res.status(200).json({
-            success: true,
-            message: "OTP sent successfully",
-        });
-    } catch (err) {
-        await logApiCall(
-            req,
-            res,
-            500,
-            "Error occurred while sending email OTP",
-            "user"
-        );
-        return res.status(500).json({ success: false, message: err.message });
-    }
+    await logApiCall(
+      req,
+      res,
+      200,
+      `Sent email OTP for registration to ${email}`,
+      "user"
+    );
+    return res.status(200).json({
+      success: true,
+      message: "OTP sent successfully",
+    });
+  } catch (err) {
+    await logApiCall(
+      req,
+      res,
+      500,
+      "Error occurred while sending email OTP",
+      "user"
+    );
+    return res.status(500).json({ success: false, message: err.message });
+  }
 };
 
 exports.registerUser = async (req, res) => {
@@ -238,9 +238,9 @@ exports.registerUser = async (req, res) => {
         }
 
         //image upload 
-        let profileImagePath = null;
-        if (req.file) {
-            profileImagePath = `/uploads/profilePicture/${req.file.filename}`;
+        let profileImagePath=null;
+        if(req.file){
+            profileImagePath=`/uploads/profilePicture/${req.file.filename}`;
         }
 
         // Create new user 
@@ -256,7 +256,7 @@ exports.registerUser = async (req, res) => {
             status: 1,
         });
         try {
-            const mail = welcomeEmail({ firstName: newUser.fullName });
+            const mail = welcomeEmail({firstName: newUser.fullName});
             await mailsender(
                 newUser.email,
                 'Welcome to Coco Living',
@@ -339,34 +339,34 @@ exports.editUserProfile = async (req, res) => {
             delete updates.parentEmail; // Prevent multi entry in loop
         }
 
-        for (const key in updates) {
-            const value = updates[key];
+    for (const key in updates) {
+      const value = updates[key];
 
-            if (value === undefined || value === null) continue;
+      if (value === undefined || value === null) continue;
 
-            //skip field for professional
-            if (
-                user.userType === "professional" &&
-                [
-                    "parentName",
-                    "parentMobile",
-                    "parentEmail",
-                    "collegeName",
-                    "course",
-                ].includes(key)
-            ) {
-                continue;
-            }
+      //skip field for professional
+      if (
+        user.userType === "professional" &&
+        [
+          "parentName",
+          "parentMobile",
+          "parentEmail",
+          "collegeName",
+          "course",
+        ].includes(key)
+      ) {
+        continue;
+      }
 
-            //skip for student
-            if (
-                user.userType === "student" &&
-                ["companyName", "position"].includes(key)
-            ) {
-                continue;
-            }
-            user[key] = typeof value === "string" ? value.trim() : value;
-        }
+      //skip for student
+      if (
+        user.userType === "student" &&
+        ["companyName", "position"].includes(key)
+      ) {
+        continue;
+      }
+      user[key] = typeof value === "string" ? value.trim() : value;
+    }
 
         //if already has profileImage, delete the old one
         if (req.file) {
