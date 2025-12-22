@@ -144,59 +144,6 @@ exports.sendOTP = async (req, res) => {
 
         await OTP.destroy({ where: { identifier: email, type: 'email' } });
 
-    const record = await OTP.findOne({
-      where: { identifier: phone, type: "phone" },
-      order: [["createdAt", "DESC"]],
-    });
-
-    if (!record) {
-      await logApiCall(
-        req,
-        res,
-        400,
-        "Failed to verify phone OTP - OTP expired or not found",
-        "user",
-        userId
-      );
-      return res.status(400).json({ message: "OTP expired or not found" });
-    }
-
-    if (record.expiresAt < new Date()) {
-      await OTP.destroy({ where: { identifier: phone, type: "phone" } });
-      await logApiCall(
-        req,
-        res,
-        400,
-        "Failed to verify phone OTP - OTP expired",
-        "user",
-        userId
-      );
-      return res.status(400).json({ message: "OTP expired" });
-    }
-
-        await OTP.create({ identifier: email, type: 'email', otp, expiresAt });
-
-        const mail = otpEmail({otp});
-        await mailsender(
-            email,
-            "Your Verification OTP",
-            mail.html,
-            mail.attachments
-        );
-
-        await logApiCall(req, res, 200, `Sent email OTP for registration to ${email}`, "user");
-        return res.status(200).json({
-            success: true,
-            message: "OTP sent successfully",
-        });
-
-    } catch (err) {
-        await logApiCall(req, res, 500, "Error occurred while sending email OTP", "user");
-        return res.status(500).json({ success: false, message: err.message });
-    }
-
-    await OTP.destroy({ where: { identifier: email, type: "email" } });
-
     const otp = otpGenerator.generate(6, {
       upperCaseAlphabets: false,
       lowerCaseAlphabets: false,
@@ -330,31 +277,6 @@ exports.registerUser = async (req, res) => {
         await logApiCall(req, res, 500, "Error occurred while registering user", "user");
         return res.status(500).json({ message: "Server error", error: error.message });
     }
-    await logApiCall(
-      req,
-      res,
-      201,
-      `Registered new user: ${fullName} (${email})`,
-      "user",
-      newUser.id
-    );
-    return res.status(201).json({
-      success: true,
-      message: "User registered & verified successfully",
-      user: newUser,
-    });
-  } catch (error) {
-    await logApiCall(
-      req,
-      res,
-      500,
-      "Error occurred while registering user",
-      "user"
-    );
-    return res
-      .status(500)
-      .json({ message: "Server error", error: error.message });
-  }
 };
 
 //profile edit
@@ -417,85 +339,6 @@ exports.editUserProfile = async (req, res) => {
             delete updates.parentEmail; // Prevent multi entry in loop
         }
 
-        for (const key in updates) {
-            const value = updates[key];
-
-    // Phone update check first
-    if (updates.phone !== undefined && updates.phone !== null) {
-      const newPhone = updates.phone;
-
-      if (user.isPhoneVerified) {
-        await logApiCall(
-          req,
-          res,
-          400,
-          `Updated user profile - phone cannot be edited after verification (ID: ${id})`,
-          "user",
-          parseInt(id)
-        );
-        return res.status(400).json({
-          message: "Phone number cannot be edited after verification",
-        });
-      }
-
-      if (newPhone !== user.phone) {
-        user.phone = newPhone.trim();
-        user.isPhoneVerified = false;
-      }
-
-      delete updates.phone; //prevent multiple entry in loop
-    }
-
-    //parent email validation
-    if (updates.parentEmail !== undefined) {
-      if (user.userType === "student") {
-        const newParentEmail = updates.parentEmail.trim();
-
-        if (!newParentEmail) {
-          user.parentEmail = null;
-        } else {
-          if (newParentEmail === user.email) {
-            await logApiCall(
-              req,
-              res,
-              400,
-              `Updated user profile - parent email cannot be same as user email (ID: ${id})`,
-              "user",
-              parseInt(id)
-            );
-            return res
-              .status(400)
-              .json({
-                message: "Parent email cannot be the same as user email",
-              });
-          }
-          const conflict = await User.findOne({
-            where: {
-              email: newParentEmail,
-              id: { [Op.ne]: user.id }, // exclude current user
-            },
-          });
-          if (conflict) {
-            await logApiCall(
-              req,
-              res,
-              400,
-              `Updated user profile - parent email conflict (ID: ${id})`,
-              "user",
-              parseInt(id)
-            );
-            return res
-              .status(400)
-              .json({
-                message: "Parent email cannot match another user's email",
-              });
-          }
-          user.parentEmail = newParentEmail;
-        }
-      }
-      delete updates.parentEmail; // Prevent multi entry in loop
-    }
-
     for (const key in updates) {
       const value = updates[key];
 
@@ -525,6 +368,18 @@ exports.editUserProfile = async (req, res) => {
       user[key] = typeof value === "string" ? value.trim() : value;
     }
 
+        //if already has profileImage, delete the old one
+        if (req.file) {
+            if (user.profileImage) {
+                const oldPath = path.join(__dirname, '..', user.profileImage.replace(/^\//, ''));
+                if (fs.existsSync(oldPath)) {
+                    fs.unlinkSync(oldPath);
+                }
+            }
+            user.profileImage = `/uploads/profilePicture/${req.file.filename}`;
+        }
+        await user.save();
+
         await logApiCall(req, res, 200, `Updated user profile: ${user.fullName} (ID: ${id})`, "user", parseInt(id));
         return res.status(200).json({
             message: 'Profile updated successfully',
@@ -534,33 +389,6 @@ exports.editUserProfile = async (req, res) => {
         await logApiCall(req, res, 500, "Error occurred while updating user profile", "user", parseInt(req.params.id) || 0);
         return res.status(500).json({ message: 'Error updating profile', error: err.message });
     }
-    await user.save();
-
-    await logApiCall(
-      req,
-      res,
-      200,
-      `Updated user profile: ${user.fullName} (ID: ${id})`,
-      "user",
-      parseInt(id)
-    );
-    return res.status(200).json({
-      message: "Profile updated successfully",
-      user,
-    });
-  } catch (err) {
-    await logApiCall(
-      req,
-      res,
-      500,
-      "Error occurred while updating user profile",
-      "user",
-      parseInt(req.params.id) || 0
-    );
-    return res
-      .status(500)
-      .json({ message: "Error updating profile", error: err.message });
-  }
 };
 
 //delete user account its soft delete only
@@ -590,35 +418,8 @@ exports.deleteAccount = async (req, res) => {
         await logApiCall(req, res, 500, "Error occurred while deleting user account", "user", parseInt(req.params.id) || 0);
         return res.status(500).json({ message: 'Error deleting user account', error: err.message });
     }
+}
 
-    //soft delete
-    await User.update({ status: 0 }, { where: { id: userId } });
-
-    await logApiCall(
-      req,
-      res,
-      200,
-      `Deleted user account: ${user.fullName} (ID: ${userId})`,
-      "user",
-      parseInt(userId)
-    );
-    return res
-      .status(200)
-      .json({ message: "User account deleted successfully" });
-  } catch (err) {
-    await logApiCall(
-      req,
-      res,
-      500,
-      "Error occurred while deleting user account",
-      "user",
-      parseInt(req.params.id) || 0
-    );
-    return res
-      .status(500)
-      .json({ message: "Error deleting user account", error: err.message });
-  }
-};
 
 //get the users by id
 exports.getUserById = async (req, res) => {
