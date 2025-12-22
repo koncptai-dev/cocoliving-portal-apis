@@ -10,11 +10,6 @@ router.post("/login", validateLogin, validate, CommonController.login);
 
 router.post("/check-email", CommonController.checkEmail);
 
-// admin password change/reset/forgot
-router.post('/forgot-password', CommonController.sendResetCode);
-router.post('/reset-password', CommonController.resetPassword);
-router.post('/change-password',authenticateToken,CommonController.changePassword)
-
 // user otp login   
 router.post('/login/request-otp', CommonController.sendLoginOtp);
 router.post('/login/verify-otp', CommonController.verifyLoginOtp);

@@ -1,7 +1,7 @@
 const axios = require("axios");
 require("dotenv").config();
 
-const IDTO_URL = process.env.IDTO_BASE_URL_PAN || "https://prod.idto.ai";
+const IDTO_URL = process.env.IDTO_BASE_URL || "https://prod.idto.ai";
 const API_KEY = process.env.IDTO_API_KEY;
 const CLIENT_ID = process.env.IDTO_CLIENT_ID;
 

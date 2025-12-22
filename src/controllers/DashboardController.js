@@ -97,7 +97,7 @@ exports.getDashboardStats = async (req, res) => {
     // 5. Total opened tickets count
     const openedTickets = await SupportTicket.count({
       where: { status: "open" },
-    });
+    }); 
 
     // 6. Total resolved tickets count
     const resolvedTickets = await SupportTicket.count({

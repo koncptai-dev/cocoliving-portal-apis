@@ -35,13 +35,17 @@ const UserKYC = sequelize.define(
       allowNull: true,
     },
 
+    panNameMatchScore: { type: DataTypes.INTEGER, allowNull: true },
+    panNameMatchResponse: { type: DataTypes.TEXT, allowNull: true },
+    panNameMatched: {type: DataTypes.BOOLEAN, allowNull: true, },
+
     // Aadhaar fields
     aadhaarLast4: {
       type: DataTypes.STRING,
       allowNull: true,
     },
     ekycStatus: {
-      type: DataTypes.ENUM("verified", "not_verified"),
+      type: DataTypes.STRING,
     },
     verifiedAtAadhaar: {
       type: DataTypes.DATE,
@@ -51,6 +55,9 @@ const UserKYC = sequelize.define(
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    adharNameMatchScore: { type: DataTypes.INTEGER, allowNull: true },
+    adharNameMatchResponse: { type: DataTypes.TEXT, allowNull: true },
+    adharNameMatched: {type: DataTypes.BOOLEAN, allowNull: true, },
 
   },
   {

@@ -5,13 +5,14 @@ const authMiddleware = require('../middleware/auth');
 const {validateEvent}=require('../middleware/validation');
 const validate=require('../middleware/validateResult');
 const { joinEvent, getEvents } = require("../controllers/participationController");
+const upload = require('../middleware/upload');
 
 
 //add event by admin
-router.post('/add',validateEvent, validate, authMiddleware, EventController.createEvent);
+router.post('/add',upload.single('eventImage'),validateEvent, validate, authMiddleware, EventController.createEvent);
 
 //edit event by admin
-router.put('/edit/:eventId', authMiddleware, EventController.updateEvents);
+router.put('/edit/:eventId',upload.single('eventImage'), authMiddleware, EventController.updateEvents);
 
 //patch request to update event status
 router.patch('/:id/toggle-status', EventController.toggleEventStatus);

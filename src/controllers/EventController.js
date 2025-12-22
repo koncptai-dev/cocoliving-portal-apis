@@ -5,6 +5,8 @@ const User = require('../models/user');
 const { Op } = require('sequelize');
 const { Property } = require('../models');
 const { logApiCall } = require("../helpers/auditLog");
+const fs = require('fs');
+const path = require('path');
 
 //create events
 exports.createEvent = async (req, res) => {
@@ -17,6 +19,7 @@ exports.createEvent = async (req, res) => {
       await logApiCall(req, res, 400, "Created event - invalid event date", "event");
       return res.status(400).json({ message: "Invalid event date" });
     }
+
     // Validate time (HH:mm:ss)
     let validEventTime = null;
     if (eventTime) {
@@ -51,6 +54,12 @@ exports.createEvent = async (req, res) => {
       return res.status(400).json({ message: "Property must be selected for this event." });
     }
 
+    //image path
+    let eventImagePath=null;
+    if(req.file){
+      eventImagePath = `/uploads/eventImages/${req.file.filename}`;;
+    }
+
     const newEvent = await Events.create({
       title,
       eventDate: eventDateObj,
@@ -58,7 +67,8 @@ exports.createEvent = async (req, res) => {
       location,
       maxParticipants,
       description,
-      propertyId
+      propertyId,
+      eventImage: eventImagePath 
     });
     await logApiCall(req, res, 201, `Created new event: ${title} (ID: ${newEvent.id})`, "event", newEvent.id);
     return res.status(201).json(newEvent);
@@ -131,6 +141,16 @@ exports.updateEvents = async (req, res) => {
       return res.status(400).json({ message: "Event already exists for this property and date." });
     }
 
+    //image upload 
+    if (req.file) {
+      //  delete old image from disk if exists
+      if (event.eventImage) {
+        const oldPath = path.join(__dirname, '..', event.eventImage);
+        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      }
+      event.eventImage = `/uploads/eventImages/${req.file.filename}`;
+    }
+
     await event.update({
       title: title ?? event.title,
       eventDate: eventDate ? eventDateObj : event.eventDate,
@@ -138,6 +158,7 @@ exports.updateEvents = async (req, res) => {
       location: location ?? event.location,
       maxParticipants: maxParticipants ?? event.maxParticipants,
       description: description ?? event.description,
+      eventImage: event.eventImage
     });
 
     await logApiCall(req, res, 200, `Updated event: ${event.title} (ID: ${eventId})`, "event", parseInt(eventId));
@@ -157,6 +178,16 @@ exports.deleteEvent = async (req, res) => {
     if (!event) {
       await logApiCall(req, res, 404, `Deleted event - event not found (ID: ${eventId})`, "event", parseInt(eventId));
       return res.status(404).json({ message: "Event not found" });
+    }
+
+    // delete event image from disk if exists
+    if (event.eventImage) {
+      const imagePath = path.join(__dirname, '..', event.eventImage);
+      try {
+        if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
+      } catch (err) {
+        console.error("Error deleting event image:", err);
+      }
     }
     await event.destroy();
     await logApiCall(req, res, 200, `Deleted event: ${event.title} (ID: ${eventId})`, "event", parseInt(eventId));
@@ -250,7 +281,8 @@ exports.getAllEvents = async (req, res) => {
         maxParticipants: event.maxParticipants,
         is_active: event.is_active,
         property: event.property ? { id: event.property.id, name: event.property.name } : "NA",
-        description: event.description || ''
+        description: event.description || '',
+        eventImage: event.eventImage || null
       };
     });
 

@@ -11,6 +11,7 @@ const jwt = require('jsonwebtoken');
 const { mailsender , sendResetEmail } = require('../utils/emailService');
 const { logApiCall } = require("../helpers/auditLog");
 
+//for admin and superadmin 
 exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -235,101 +236,6 @@ exports.verifyLoginOtp = async (req, res) => {
         return res.status(500).json({ message: "Error verifying OTP", error: err.message });
     }
 };
-
-
-exports.changePassword = async (req, res) => {
-    try {
-        const { oldPassword, newPassword, confirmPassword } = req.body;
-        const userId = req.user.id;
-
-        if (!oldPassword || !newPassword || !confirmPassword) {
-            await logApiCall(req, res, 400, "Changed password - missing required fields", "auth", userId);
-            return res.status(400).json({ message: 'All fields are required' });
-        }
-
-        if (newPassword !== confirmPassword) {
-            await logApiCall(req, res, 400, "Changed password - passwords do not match", "auth", userId);
-            return res.status(400).json({ message: 'New Password and Confirm Password do not match' });
-        }
-
-
-        const user = await User.findByPk(userId);
-        if (!user) {
-            await logApiCall(req, res, 404, `Changed password - user not found (ID: ${userId})`, "auth", userId);
-            return res.status(404).json({ message: 'User not found' });
-        }
-
-        const isMatch = await bcrypt.compare(oldPassword, user.password);
-        if (!isMatch) {
-            await logApiCall(req, res, 400, "Changed password - old password incorrect", "auth", userId);
-            return res.status(400).json({ message: 'Old Password is incorrect' });
-        }
-
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
-        await user.update({ password: hashedPassword });
-
-        await logApiCall(req, res, 200, "Changed password successfully", "auth", userId);
-        res.status(200).json({ message: 'Password changed successfully' });
-    } catch (err) {
-        await logApiCall(req, res, 500, "Error occurred while changing password", "auth", userId);
-        return res.status(500).json({ message: 'Error changing password', error: err.message });
-    }
-}
-
-
-exports.sendResetCode = async (req, res) => {
-    try {
-        const { email } = req.body;
-
-        const user = await User.findOne({ where: { email } });
-        if (!user) {
-            await logApiCall(req, res, 404, "Sent reset code - user email not found", "auth");
-            return res.status(404).json({ message: 'User Email not Found' })
-        }
-        const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
-        user.resetCode = resetCode;
-
-        await user.save();
-
-        await sendResetEmail(email, resetCode);
-        req.user = { id: user.id };
-        await logApiCall(req, res, 200, `Sent password reset code to ${email}`, "auth", user.id);
-        res.status(200).json({ message: 'Reset code sent to your email' });
-
-    } catch (err) {
-        await logApiCall(req, res, 500, "Error occurred while sending reset code", "auth");
-        res.status(500).json({ message: 'Error sending reset code', error: err.message });
-    }
-
-}
-
-//Forgot Password -reset password
-exports.resetPassword = async (req, res) => {
-    try {
-        const { email, resetCode, newPassword } = req.body;
-
-        const user = await User.findOne({
-            where: { email, resetCode }
-        })
-
-        if (!user) {
-            await logApiCall(req, res, 404, "Reset password - invalid reset code or email", "auth");
-            return res.status(404).json({ message: 'Invalid ResetCode or Email' })
-        }
-        //hash new password
-        user.password = await bcrypt.hash(newPassword, 10);
-        user.resetCode = null; //clear reset code after use
-        await user.save();
-
-        req.user = { id: user.id };
-        await logApiCall(req, res, 200, `Reset password successfully for ${email}`, "auth", user.id);
-        res.status(200).json({ message: 'Password reset successfully' });
-
-    } catch (err) {
-        await logApiCall(req, res, 500, "Error occurred while resetting password", "auth");
-        res.status(500).json({ message: 'Error resetting password', error: err.message });
-    }
-}
 
 // CHECK EMAIL BEFORE OTP FLOW
 exports.checkEmail = async (req, res) => {

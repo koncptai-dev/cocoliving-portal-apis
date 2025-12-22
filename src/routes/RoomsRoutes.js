@@ -5,6 +5,7 @@ const {validateRooms,editRoomsValidate}=require('../middleware/validation');
 const validate=require('../middleware/validateResult');
 const upload = require('../middleware/upload');
 
+//admin
 router.post('/add',validateRooms,validate, RoomController.AddRooms);
 router.put('/edit/:id',editRoomsValidate,validate, RoomController.EditRooms);
 router.delete('/delete/:id', RoomController.DeleteRooms);

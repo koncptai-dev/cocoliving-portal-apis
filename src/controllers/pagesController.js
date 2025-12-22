@@ -1,6 +1,7 @@
 const sequelize = require('../config/database');
 const { Op } = require('sequelize');
 const Page = require('../models/page');
+const { logApiCall } = require("../helpers/auditLog");
 
 exports.createPage = async (req, res) => {
     try {

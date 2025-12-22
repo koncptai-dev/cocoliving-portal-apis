@@ -222,6 +222,7 @@ exports.getAllRooms = async (req, res) => {
     }
 
 }
+
 exports.getRoomsByProperty = async (req, res) => {
   try {
     const { propertyId } = req.params;
@@ -246,6 +247,7 @@ exports.getRoomsByProperty = async (req, res) => {
     res.status(500).json({ message: "Server error fetching rooms" });
   }
 };
+
 exports.getAvailableRooms = async (req, res) => {
   try {
     const { propertyId, roomType } = req.params;
@@ -294,6 +296,7 @@ exports.getInventoryForProperty = async (req, res) => {
     return res.status(500).json({ message: "Failed to fetch inventory" });
   }
 };
+
 exports.assignInventoryManual = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -348,6 +351,7 @@ exports.assignInventoryManual = async (req, res) => {
     return res.status(500).json({ message: "Failed manual assignment" });
   }
 };
+
 // AUTO ASSIGN INVENTORY TO ROOM (BATCH SAFE)
 exports.assignInventoryAuto = async (req, res) => {
   try {
