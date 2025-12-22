@@ -93,7 +93,11 @@ const Booking = sequelize.define(
       allowNull: false,
       defaultValue: 'INITIATED',
     },
-
+    onboardingStatus: {
+      type: DataTypes.ENUM('NOT_INITIATED', 'INITIATED', 'OTP_PENDING', 'COMPLETED'),
+      allowNull: false,
+      defaultValue: 'NOT_INITIATED'
+    },
     meta: {
       type: DataTypes.JSON,
       allowNull: true,

@@ -23,7 +23,7 @@ const UserKYC = sequelize.define(
       allowNull: true,
     },
     panStatus: {
-      type: DataTypes.STRING,
+      type: DataTypes.ENUM("pending", "verified", "failed"),
       defaultValue: "pending",
     },
     verifiedAtPan: {

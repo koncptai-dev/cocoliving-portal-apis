@@ -20,12 +20,14 @@ router.get("/pan-status", authenticateToken, async (req, res) => {
       return res.status(200).json({
         success: true,
         panStatus: "not-verified",
+        panNumber: null,
       });
     }
 
     res.status(200).json({
       success: true,
       panStatus: kycRecord.panStatus || "not-verified",
+      panNumber: kycRecord.panNumber || null,
       verifiedAt: kycRecord.verifiedAtPan || null,
     });
     

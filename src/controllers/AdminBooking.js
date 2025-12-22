@@ -286,7 +286,6 @@ exports.assignRoom = async (req, res) => {
     return res.status(500).json({ message: "Failed to assign room", error: err.message });
   }
 };
-
 // NEW/REPLACE: Assign inventory to booking (atomic + property & availability checks)
 exports.assignInventory = async (req, res) => {
   const t = await sequelize.transaction();

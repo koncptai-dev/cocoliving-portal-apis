@@ -29,5 +29,3 @@ exports.verifyPANService = async (panNumber) => {
         throw error;
     }
 }
-
-
