@@ -51,6 +51,7 @@ exports.sendPhoneOTP = async (req, res) => {
             attempts: 0,
         });
 
+        //sms sending
         await smsSender(phone, "otp", { otp });
 
         await logApiCall(req, res, 200, "Sent phone OTP for verification", "user", userId);
