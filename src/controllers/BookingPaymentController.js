@@ -294,7 +294,7 @@ exports.initiateRemaining = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Unauthorized booking access' });
     }
 
-    if(booking.status !== 'APPROVED'){
+    if(booking.status !== 'approved'){
       return res.status(422).json({ success: false, message: 'Can Only pay remaining after Booking gets Approved'})
     }
     const txs = await PaymentTransaction.findAll({

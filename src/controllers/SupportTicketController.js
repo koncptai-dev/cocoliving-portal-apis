@@ -211,16 +211,24 @@ exports.updateTicketStatus = async (req, res) => {
             }
 
             // ASSIGNMENT CHANGE
-            if ( typeof assignedTo !== "undefined" && assignedTo !== ticket.assignedTo ) {
+            if (typeof assignedTo !== "undefined" && assignedTo !== ticket.assignedTo) {
+
+            const normalizedAssignedTo =
+                assignedTo === "" || assignedTo === null
+                    ? null
+                    : Number.isNaN(Number(assignedTo))
+                    ? null
+                    : Number(assignedTo);
+
             await logTicketEvent({
                 ticketId: ticket.id,
                 actionType: "ASSIGNMENT",
                 oldValue: { assignedTo: ticket.assignedTo },
-                newValue: { assignedTo },
+                newValue: { assignedTo: normalizedAssignedTo },
                 actorId: userId,
             });
 
-            ticket.assignedTo = assignedTo;
+            ticket.assignedTo = normalizedAssignedTo;
             }
         }
         // Normal Admin
