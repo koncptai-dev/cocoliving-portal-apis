@@ -23,8 +23,8 @@ const UserKYC = sequelize.define(
       allowNull: true,
     },
     panStatus: {
-      type: DataTypes.ENUM("pending", "verified", "failed"),
-      defaultValue: "pending",
+      type: DataTypes.STRING,
+
     },
     verifiedAtPan: {
       type: DataTypes.DATE,
@@ -37,7 +37,7 @@ const UserKYC = sequelize.define(
 
     panNameMatchScore: { type: DataTypes.INTEGER, allowNull: true },
     panNameMatchResponse: { type: DataTypes.TEXT, allowNull: true },
-    panNameMatched: {type: DataTypes.BOOLEAN, allowNull: true, },
+    panNameMatched: { type: DataTypes.BOOLEAN, allowNull: true, },
 
     // Aadhaar fields
     aadhaarLast4: {
@@ -57,7 +57,7 @@ const UserKYC = sequelize.define(
     },
     adharNameMatchScore: { type: DataTypes.INTEGER, allowNull: true },
     adharNameMatchResponse: { type: DataTypes.TEXT, allowNull: true },
-    adharNameMatched: {type: DataTypes.BOOLEAN, allowNull: true, },
+    adharNameMatched: { type: DataTypes.BOOLEAN, allowNull: true, },
 
   },
   {
