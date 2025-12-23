@@ -2,13 +2,13 @@ const User = require('../models/user');
 const UserPermission = require('../models/userPermissoin');
 const Pages = require('../models/page');
 const OTP = require("../models/otp");
-const {otpEmail} = require('../utils/emailTemplates/emailTemplates');
+const { otpEmail } = require('../utils/emailTemplates/emailTemplates');
 const otpGenerator = require("otp-generator");
 const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
 require('dotenv').config();
 const jwt = require('jsonwebtoken');
-const { mailsender , sendResetEmail } = require('../utils/emailService');
+const { mailsender, sendResetEmail } = require('../utils/emailService');
 const { logApiCall } = require("../helpers/auditLog");
 
 //for admin and superadmin 
@@ -149,7 +149,7 @@ exports.sendLoginOtp = async (req, res) => {
             otp,
             expiresAt: new Date(Date.now() + 5 * 60 * 1000), // expires in 5 min
         });
-        const mail = otpEmail({otp});
+        const mail = otpEmail({ otp });
         // send OTP email
         await mailsender(
             email,
@@ -205,12 +205,12 @@ exports.verifyLoginOtp = async (req, res) => {
         // delete OTP after successful login
         await OTP.destroy({ where: { identifier: email, type: 'email' } });
 
-          // mark email verified if first login
+        // mark email verified if first login
         if (!user.isEmailVerified) {
             user.isEmailVerified = true;
             await user.save();
         }
-        
+
         // determine login type
         const loginAs = (email === user.email) ? "user" : "parent";
 
@@ -270,15 +270,33 @@ exports.checkEmail = async (req, res) => {
         }
 
         // Parent login (email matches user.parentEmail)
-        user = await User.findOne({ where: { parentEmail: email } });
+        const children = await User.findAll({ where: { parentEmail: email } });
 
-        if (user) {
+        if (children.length > 0) {
+            // Multiple students case
+            if (children.length > 1) {
+                return res.json({
+                    exists: true,
+                    role: "user",
+                    loginAs: "parent",
+                    multipleChildren: true,
+                    displayName: children[0].parentName || "Parent",
+                    children: children.map(c => ({
+                        id: c.id,
+                        name: c.fullName
+                    }))
+                });
+            }
+
+            // Single student parent login
+            const child = children[0];
             return res.json({
                 exists: true,
                 role: "user",
                 loginAs: "parent",
-                displayName: user.parentName || user.fullName,
-                childName: user.fullName
+                multipleChildren: false,
+                displayName: child.parentName || child.fullName,
+                childName: child.fullName
             });
         }
 
