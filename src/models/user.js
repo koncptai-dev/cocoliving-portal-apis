@@ -85,10 +85,7 @@ const User = sequelize.define('User', {
     parentEmail: {
         type: DataTypes.STRING,
         allowNull: true,
-        unique: true,
-        validate: {
-            isEmail: true
-        }
+       
     },
     // kycDocuments: { type: DataTypes.JSON, allowNull: true }, // store multiple files
     foodPreference: { type: DataTypes.ENUM('Jain', 'Non-Jain'), allowNull: true },
