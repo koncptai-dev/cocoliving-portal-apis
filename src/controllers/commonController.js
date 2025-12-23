@@ -170,19 +170,28 @@ exports.sendLoginOtp = async (req, res) => {
 // VERIFY OTP FOR LOGIN
 exports.verifyLoginOtp = async (req, res) => {
     try {
-        const { email, otp } = req.body;
+        const { email, otp,childId } = req.body;
 
         //find user by email
         let user = await User.findOne({ where: { email } });
 
         //if user not, found check for parent email
         if (!user) {
-            user = await User.findOne({ where: { parentEmail: email } });
-        }
-
-        if (!user) {
-            await logApiCall(req, res, 404, "Verify login OTP - email not found", "auth");
-            return res.status(404).json({ message: "Email not found" });
+            if (childId) {
+                // parent selected a specific child
+                user = await User.findOne({ where: { id: childId, parentEmail: email } });
+                if (!user) {
+                    return res.status(400).json({ message: "Selected child not found" });
+                }
+            } else {
+                // fallback to first child if no childId sent
+                const children = await User.findAll({ where: { parentEmail: email } });
+                if (!children.length) {
+                    await logApiCall(req, res, 404, "Verify login OTP - email not found", "auth");
+                    return res.status(404).json({ message: "Email not found" });
+                }
+                user = children[0]; 
+            }
         }
 
         // fetch latest OTP entry
@@ -270,7 +279,7 @@ exports.checkEmail = async (req, res) => {
         }
 
         // Parent login (email matches user.parentEmail)
-        const children = await User.findAll({ where: { parentEmail: email } });
+        const children = await User.findAll({ where: { parentEmail: email }, order: [["id", "ASC"]]  });
 
         if (children.length > 0) {
             // Multiple students case

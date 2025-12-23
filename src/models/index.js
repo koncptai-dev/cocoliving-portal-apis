@@ -17,6 +17,8 @@ const PaymentTransaction = require("./paymentTransaction");
 const TicketLog = require("./ticketLog");
 const GatePass = require("./gatePass");
 const BookingOnboarding = require('./bookingOnboarding');
+const UserNotificationSetting = require("./userNotificationSetting");
+
 
 User.hasMany(SupportTicket, { foreignKey: "userId", as: "tickets" });
 SupportTicket.belongsTo(User, { foreignKey: "userId", as: "user" });
@@ -136,23 +138,34 @@ BookingOnboarding.belongsTo(Booking, { foreignKey: 'bookingId', as: 'booking' })
 User.hasMany(BookingOnboarding, { foreignKey: 'startedBy', as: 'startedOnboardings' });
 BookingOnboarding.belongsTo(User, { foreignKey: 'startedBy', as: 'admin' });
 
-module.exports={
-    sequelize,
-    SupportTicket,
-    User,
-    Booking,
-    Rooms,
-    Event,
-    EventParticipation,
-    Property,
-    Announcement,
-    UserPermission,
-    PropertyRateCard,
-    FoodMenu,
-    Inventory,
-    ServiceHistory,
-    PaymentTransaction,
-    TicketLog,
-    GatePass,
-    BookingOnboarding,
+User.hasOne(UserNotificationSetting, { foreignKey: "userId",
+  as: "notificationSettings",
+  onDelete: "CASCADE",
+});
+
+UserNotificationSetting.belongsTo(User, {
+  foreignKey: "userId",
+  as: "user",
+});
+
+module.exports = {
+  sequelize,
+  SupportTicket,
+  User,
+  Booking,
+  Rooms,
+  Event,
+  EventParticipation,
+  Property,
+  Announcement,
+  UserPermission,
+  PropertyRateCard,
+  FoodMenu,
+  Inventory,
+  ServiceHistory,
+  PaymentTransaction,
+  TicketLog,
+  GatePass,
+  BookingOnboarding,
+  UserNotificationSetting
 }
