@@ -7,11 +7,10 @@ const {
   CLIENT_VERSION,
 } = require('./phonepeConfig');
 
-/**
- * Fetch OAuth token (O-Bearer) required for PhonePe APIs
- * returns access_token string
- */
-async function getPhonePeAuthToken() {
+let cachedToken = null;
+let tokenExpiryMs = 0;
+
+async function fetchNewToken() {
   if (!CLIENT_ID || !CLIENT_SECRET) {
     throw new Error('PhonePe client credentials missing');
   }
@@ -31,12 +30,30 @@ async function getPhonePeAuthToken() {
 
   const json = await response.json().catch(() => null);
 
-  if (!response.ok || !json || !json.access_token) {
+  if (!response.ok || !json?.access_token || !json?.expires_at) {
     console.error('[PhonePe] Auth Token Error:', json);
     throw new Error('Failed to fetch PhonePe auth token');
   }
 
-  return json.access_token;
-}
+  cachedToken = json.access_token;
 
-module.exports = { getPhonePeAuthToken };
+  // expires_at is epoch seconds → convert to ms
+  // subtract 60 seconds as buffer
+  tokenExpiryMs = (json.expires_at * 1000) - (60 * 1000);
+
+  return cachedToken;
+}
+async function getPhonePeAuthToken() {
+  if (cachedToken && Date.now() < tokenExpiryMs) {
+    return cachedToken;
+  }
+  return fetchNewToken();
+}
+function clearPhonePeAuthToken() {
+  cachedToken = null;
+  tokenExpiryMs = 0;
+}
+module.exports = {
+  getPhonePeAuthToken,
+  clearPhonePeAuthToken,
+};

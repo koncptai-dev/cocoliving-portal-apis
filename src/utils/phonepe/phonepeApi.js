@@ -5,7 +5,7 @@ const {
   REFUND_URL,
   MOBILE_SDK_ORDER_URL
 } = require('./phonepeConfig');
-const { getPhonePeAuthToken } = require('./phonepeAuth');
+const { getPhonePeAuthToken, clearPhonePeAuthToken } = require('./phonepeAuth');
 
 // Create Payment Website
 async function createPayment(payload) {
@@ -19,7 +19,19 @@ async function createPayment(payload) {
     },
     body: JSON.stringify(payload),
   });
+  if (res.status === 401) {
+    clearPhonePeAuthToken();
+    token = await getPhonePeAuthToken();
 
+    res = await fetch(CREATE_PAYMENT_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `O-Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+  }
   const json = await res.json().catch(() => null);
 
   return {
