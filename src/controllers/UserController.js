@@ -240,17 +240,26 @@ exports.sendOTP = async (req, res) => {
 
 exports.registerUser = async (req, res) => {
   try {
-    const { fullName, email, phone, userType, gender, dateOfBirth, otp, parentName, parentMobile, parentEmail } = req.body;
+    const { fullName, email, phone, userType, gender, dateOfBirth, otp, parentName, parentMobile, parentEmail , type} = req.body;
 
     if (!email || !otp) {
       await logApiCall(req, res, 400, "Failed to register user - email and OTP required", "user");
       return res.status(400).json({ message: "Email & OTP are required" });
     }
 
-    const otpRecord = await OTP.findOne({
-      where: { identifier: email, type: 'email' },
-      order: [['createdAt', 'DESC']]
-    });
+    let otpRecord = "";
+    if( type === "email"){
+        otpRecord = await OTP.findOne({
+        where: { identifier: email, type: 'email' },
+        order: [['createdAt', 'DESC']]
+      });
+    }else{
+       otpRecord = await OTP.findOne({
+        where: { identifier: phone, type: 'phone' },
+        order: [['createdAt', 'DESC']]
+      });
+    }
+   
 
     if (!otpRecord) {
       await logApiCall(req, res, 400, "Failed to register user - OTP not found or expired", "user");
@@ -258,9 +267,15 @@ exports.registerUser = async (req, res) => {
     }
 
     if (otpRecord.expiresAt < new Date()) {
+      if( type === "email"){
       await OTP.destroy({
         where: { identifier: email, type: 'email' }
       });
+    }else{
+       await OTP.destroy({
+        where: { identifier: phone, type: 'phone' }
+      });
+    }
       return res.status(400).json({ message: "OTP expired. Request a new one." });
     }
 
@@ -269,7 +284,15 @@ exports.registerUser = async (req, res) => {
     }
 
     // OTP verified,nd remove record
-    await OTP.destroy({ where: { identifier: email, type: 'email' } });
+    if( type === "email"){
+      await OTP.destroy({
+        where: { identifier: email, type: 'email' }
+      });
+    }else{
+       await OTP.destroy({
+        where: { identifier: phone, type: 'phone' }
+      });
+    }
 
     // Check if user already exists
     let userExist = await User.findOne({ where: { email } });
