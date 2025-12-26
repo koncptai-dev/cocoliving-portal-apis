@@ -10,6 +10,7 @@ require('dotenv').config();
 const jwt = require('jsonwebtoken');
 const { mailsender, sendResetEmail } = require('../utils/emailService');
 const { logApiCall } = require("../helpers/auditLog");
+const { smsSender } = require('../utils/smsService');
 
 //for admin and superadmin 
 exports.login = async (req, res) => {
@@ -109,154 +110,325 @@ exports.login = async (req, res) => {
 // SEND OTP FOR LOGIN
 exports.sendLoginOtp = async (req, res) => {
     try {
-        const { email } = req.body;
+        const { identifier } = req.body;
 
+        if (!identifier) {
+            return res.status(400).json({ message: "Email or phone is required" });
+        }
+
+        // cleanup expired OTPs
         await OTP.destroy({
             where: { expiresAt: { [Op.lt]: new Date() } }
         });
 
-        // user must exist
-        let user = await User.findOne({ where: { email } });
+        const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+        const isPhone = /^\d{10}$/.test(identifier);
 
-        //if user not, found check for parent email
-        if (!user) {
-            user = await User.findOne({ where: { parentEmail: email } });
+        if (!isEmail && !isPhone) {
+            return res.status(400).json({ message: "Invalid email or phone" });
         }
 
-        // no user found
-        if (!user) {
-            await logApiCall(req, res, 404, "Send login OTP - email not found", "auth");
-            return res.status(404).json({ message: "Email not found" });
+        /* ================= FIND USER ================= */
+
+        let user = null;
+
+        if (isEmail) {
+            // student / professional
+            user = await User.findOne({ where: { email: identifier } });
+
+            // parent
+            if (!user) {
+                user = await User.findOne({ where: { parentEmail: identifier } });
+            }
+        } else {
+            // student / professional
+            user = await User.findOne({ where: { phone: identifier } });
+
+            // parent
+            if (!user) {
+                user = await User.findOne({ where: { parentMobile: identifier } });
+            }
         }
 
-        // prevent admins from OTP login
+        if (!user) {
+            await logApiCall(req, res, 404, "Send login OTP - user not found", "auth");
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        // prevent admin OTP login
         if (user.role === 1 || user.role === 3 || user.userType === "admin") {
-            await logApiCall(req, res, 403, `Send login OTP - admin cannot use OTP login (ID: ${user.id})`, "auth", user.id);
+            await logApiCall(
+                req,
+                res,
+                403,
+                `Send login OTP - admin cannot use OTP login (ID: ${user.id})`,
+                "auth",
+                user.id
+            );
             return res.status(403).json({ message: "Please use the admin login page" });
         }
 
-        await OTP.destroy({ where: { identifier: email, type: 'email' } });
+        /* ================= OTP ================= */
 
-        // generate OTP (6 digits)
-        let otp = otpGenerator.generate(6, {
+        await OTP.destroy({
+            where: {
+                identifier,
+                type: isEmail ? "email" : "phone"
+            }
+        });
+
+        const otp = otpGenerator.generate(6, {
             upperCaseAlphabets: false,
             lowerCaseAlphabets: false,
             specialChars: false,
         });
 
         await OTP.create({
-            identifier: email, type: 'email',
+            identifier,
+            type: isEmail ? "email" : "phone",
             otp,
-            expiresAt: new Date(Date.now() + 5 * 60 * 1000), // expires in 5 min
+            expiresAt: new Date(Date.now() + 5 * 60 * 1000),
         });
-        const mail = otpEmail({ otp });
-        // send OTP email
-        await mailsender(
-            email,
-            "Your Login OTP",
-            mail.html,
-            mail.attachments
-        );
+
+        /* ================= SEND OTP ================= */
+
+        if (isEmail) {
+            const mail = otpEmail({ otp });
+            await mailsender(
+                identifier,
+                "Your Login OTP",
+                mail.html,
+                mail.attachments
+            );
+        } else {
+            await smsSender(identifier, "otp", { otp });
+        }
 
         req.user = { id: user.id };
-        await logApiCall(req, res, 200, `Sent login OTP to ${email}`, "auth", user.id);
-        return res.status(200).json({ success: true, message: "OTP sent to your email" });
+
+        await logApiCall(
+            req,
+            res,
+            200,
+            `Sent login OTP to ${identifier}`,
+            "auth",
+            user.id
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: isEmail
+                ? "OTP sent to your email"
+                : "OTP sent to your mobile"
+        });
+
     } catch (err) {
         await logApiCall(req, res, 500, "Error occurred while sending login OTP", "auth");
-        return res.status(500).json({ message: "Error sending OTP", error: err.message });
+        return res.status(500).json({
+            message: "Error sending OTP",
+            error: err.message
+        });
     }
 };
+
 
 // VERIFY OTP FOR LOGIN
 exports.verifyLoginOtp = async (req, res) => {
     try {
-        const { email, otp,childId } = req.body;
+        const { identifier, otp, childId } = req.body;
 
-        //find user by email
-        let user = await User.findOne({ where: { email } });
+        if (!identifier || !otp) {
+            return res.status(400).json({ message: "Email/Phone and OTP are required" });
+        }
+
+        const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+        const isPhone = /^\d{10}$/.test(identifier);
+
+        if (!isEmail && !isPhone) {
+            return res.status(400).json({ message: "Invalid email or phone" });
+        }
+
+        /* ================= FIND USER ================= */
+
+        let user = null;
+
+        if (isEmail) {
+            // student / professional
+            user = await User.findOne({ where: { email: identifier } });
+
+            // // parent
+            // if (!user) {
+            //     user = await User.findOne({ where: { parentEmail: identifier } });
+            // }
+        } else {
+            // student / professional
+            user = await User.findOne({ where: { phone: identifier } });
+
+            // // parent
+            // if (!user) {
+            //     user = await User.findOne({ where: { parentMobile: identifier } });
+            // }
+        }
 
         //if user not, found check for parent email
-        if (!user) {
+        if(!user) {
             if (childId) {
                 // parent selected a specific child
-                user = await User.findOne({ where: { id: childId, parentEmail: email } });
+                user = await User.findOne({
+                    where: isEmail
+                        ? { id: childId, parentEmail: identifier }
+                        : { id: childId, parentMobile: identifier }
+                });
                 if (!user) {
                     return res.status(400).json({ message: "Selected child not found" });
                 }
             } else {
                 // fallback to first child if no childId sent
-                const children = await User.findAll({ where: { parentEmail: email } });
-                if (!children.length) {
-                    await logApiCall(req, res, 404, "Verify login OTP - email not found", "auth");
-                    return res.status(404).json({ message: "Email not found" });
-                }
-                user = children[0]; 
+                const children = await User.findAll({
+                    where: isEmail
+                        ? {parentEmail: identifier }
+                        : {parentMobile: identifier }
+                });
+            if (!children.length) {
+                await logApiCall(req, res, 404, "Verify login OTP - email not found", "auth");
+                return res.status(404).json({ message: "Email not found" });
             }
+            user = children[0];
         }
+        }
+    
 
-        // fetch latest OTP entry
+
+        /* ================= VERIFY OTP ================= */
+
         const otpRecord = await OTP.findOne({
-            where: { identifier: email, type: 'email' },
-            order: [["createdAt", "DESC"]],
-        });
+        where: {
+            identifier,
+            type: isEmail ? "email" : "phone"
+        },
+        order: [["createdAt", "DESC"]],
+    });
 
-        if (!otpRecord || otpRecord.otp !== otp) {
-            await logApiCall(req, res, 400, `Verify login OTP - invalid OTP (ID: ${user.id})`, "auth", user.id);
-            return res.status(400).json({ message: "Invalid OTP" });
-        }
-
-        if (otpRecord.expiresAt < new Date()) {
-            await OTP.destroy({ where: { email } }); // delete expired otp
-            await logApiCall(req, res, 400, `Verify login OTP - OTP expired (ID: ${user.id})`, "auth", user.id);
-            return res.status(400).json({ message: "OTP expired, please request a new one" });
-        }
-
-        // delete OTP after successful login
-        await OTP.destroy({ where: { identifier: email, type: 'email' } });
-
-        // mark email verified if first login
-        if (!user.isEmailVerified) {
-            user.isEmailVerified = true;
-            await user.save();
-        }
-
-        // determine login type
-        const loginAs = (email === user.email) ? "user" : "parent";
-
-        // generate JWT (same as existing login)
-        const token = jwt.sign(
-            { id: user.id, email: email, role: user.role, userType: user.userType, loginAs },
-            process.env.JWT_SECRET,
-            { expiresIn: "1d" }
+    if (!otpRecord || otpRecord.otp !== otp) {
+        await logApiCall(
+            req,
+            res,
+            400,
+            `Verify login OTP - invalid OTP (ID: ${user.id})`,
+            "auth",
+            user.id
         );
-
-        // return same response as password login
-        req.user = { id: user.id, role: user.role };
-        await logApiCall(req, res, 200, `OTP login successful: ${email} (${loginAs})`, "auth", user.id);
-        return res.status(200).json({
-            success: true,
-            message: "Login successful",
-            token,
-            account: user, loginAs
-        });
-
-    } catch (err) {
-        await logApiCall(req, res, 500, "Error occurred while verifying login OTP", "auth");
-        return res.status(500).json({ message: "Error verifying OTP", error: err.message });
+        return res.status(400).json({ message: "Invalid OTP" });
     }
+
+    if (otpRecord.expiresAt < new Date()) {
+        await OTP.destroy({
+            where: { identifier, type: isEmail ? "email" : "phone" }
+        });
+        await logApiCall(
+            req,
+            res,
+            400,
+            `Verify login OTP - OTP expired (ID: ${user.id})`,
+            "auth",
+            user.id
+        );
+        return res.status(400).json({ message: "OTP expired, please request a new one" });
+    }
+
+    // delete OTP after successful verification
+    await OTP.destroy({
+        where: { identifier, type: isEmail ? "email" : "phone" }
+    });
+
+    /* ================= MARK VERIFIED ================= */
+
+    if (isEmail && !user.isEmailVerified) {
+        user.isEmailVerified = true;
+        await user.save();
+    }
+
+    /* ================= LOGIN TYPE ================= */
+
+    let loginAs = "user";
+
+    if (isEmail) {
+        loginAs = identifier === user.email ? "user" : "parent";
+    } else {
+        loginAs = identifier === user.phone ? "user" : "parent";
+    }
+
+    /* ================= JWT ================= */
+
+    const token = jwt.sign(
+        {
+            id: user.id,
+            identifier,
+            role: user.role,
+            userType: user.userType,
+            loginAs
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: "1d" }
+    );
+
+    req.user = { id: user.id, role: user.role };
+
+    await logApiCall(
+        req,
+        res,
+        200,
+        `OTP login successful: ${identifier} (${loginAs})`,
+        "auth",
+        user.id
+    );
+
+    return res.status(200).json({
+        success: true,
+        message: "Login successful",
+        token,
+        account: user,
+        loginAs
+    });
+
+} catch (err) {
+    await logApiCall(req, res, 500, "Error occurred while verifying login OTP", "auth");
+    return res.status(500).json({
+        message: "Error verifying OTP",
+        error: err.message
+    });
+}
 };
+
 
 // CHECK EMAIL BEFORE OTP FLOW
 exports.checkEmail = async (req, res) => {
     try {
-        const { email } = req.body;
+        const { email } = req.body; // frontend still sends `email`
 
         if (!email) {
             await logApiCall(req, res, 400, "Checked email - email required", "auth");
             return res.status(400).json({ message: "Email is required" });
         }
 
-        let user = await User.findOne({ where: { email } });
+        const identifier = email.trim();
+
+        const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+        const isPhone = /^\d{10}$/.test(identifier);
+
+        if (!isEmail && !isPhone) {
+            return res.status(400).json({ message: "Invalid email or phone" });
+        }
+
+        /* ================= USER LOGIN (STUDENT) ================= */
+
+        let user = null;
+
+        if (isEmail) {
+            user = await User.findOne({ where: { email: identifier } });
+        } else {
+            user = await User.findOne({ where: { phone: identifier } });
+        }
 
         // Admin detection
         if (user && (user.role === 1 || user.role === 3 || user.userType === "admin")) {
@@ -267,27 +439,34 @@ exports.checkEmail = async (req, res) => {
             });
         }
 
-        // Normal user login (email matches user.email)
+        // Student / normal user login
         if (user) {
             return res.json({
                 exists: true,
                 role: "user",
-                loginAs: "user",
+                loginAs: "user",   // ✅ student
                 displayName: user.fullName,
                 childName: null
             });
         }
 
-        // Parent login (email matches user.parentEmail)
-        const children = await User.findAll({ where: { parentEmail: email }, order: [["id", "ASC"]]  });
+        /* ================= PARENT LOGIN ================= */
+
+        let children = [];
+
+        if (isEmail) {
+            children = await User.findAll({ where: { parentEmail: identifier } });
+        } else {
+            children = await User.findAll({ where: { parentMobile: identifier } });
+        }
 
         if (children.length > 0) {
-            // Multiple students case
+            // Multiple students
             if (children.length > 1) {
                 return res.json({
                     exists: true,
                     role: "user",
-                    loginAs: "parent",
+                    loginAs: "parent",   // ✅ parent
                     multipleChildren: true,
                     displayName: children[0].parentName || "Parent",
                     children: children.map(c => ({
@@ -297,20 +476,28 @@ exports.checkEmail = async (req, res) => {
                 });
             }
 
-            // Single student parent login
+            // Single student
             const child = children[0];
             return res.json({
                 exists: true,
                 role: "user",
-                loginAs: "parent",
+                loginAs: "parent",   // ✅ parent
                 multipleChildren: false,
                 displayName: child.parentName || child.fullName,
                 childName: child.fullName
             });
         }
 
-        // New user
-        await logApiCall(req, res, 200, `Checked email - new user (${email})`, "auth");
+        /* ================= NEW USER ================= */
+
+        await logApiCall(
+            req,
+            res,
+            200,
+            `Checked email - new user (${identifier})`,
+            "auth"
+        );
+
         return res.json({
             exists: false,
             role: null
@@ -322,3 +509,4 @@ exports.checkEmail = async (req, res) => {
         return res.status(500).json({ message: "Internal server error" });
     }
 };
+

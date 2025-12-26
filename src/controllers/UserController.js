@@ -120,30 +120,64 @@ exports.verifyPhoneOTP = async (req, res) => {
 
 exports.sendOTP = async (req, res) => {
   try {
-    const { email } = req.body;
+    const { identifier } = req.body;
 
+    // 1️⃣ Validate identifier
+    if (!identifier) {
+      await logApiCall(req, res, 400, "OTP send failed - identifier required", "user");
+      return res.status(400).json({
+        success: false,
+        message: "Email or phone number is required",
+      });
+    }
+
+    const isEmail = /^\S+@\S+\.\S+$/.test(identifier);
+    const isPhone = /^\d{10}$/.test(identifier);
+
+    if (!isEmail && !isPhone) {
+      await logApiCall(req, res, 400, "OTP send failed - invalid identifier", "user");
+      return res.status(400).json({
+        success: false,
+        message: "Invalid email or phone number",
+      });
+    }
+
+    // 2️⃣ Remove expired OTPs
     await OTP.destroy({
-      where: { expiresAt: { [Op.lt]: new Date() } }
+      where: { expiresAt: { [Op.lt]: new Date() } },
     });
 
-    if (!email) {
-      await logApiCall(req, res, 400, "Failed to send email OTP - email required", "user");
-      return res.status(400).json({ success: false, message: "Email is required" });
-    }
-    if (!/^\S+@\S+\.\S+$/.test(email)) {
-      await logApiCall(req, res, 400, "Failed to send email OTP - invalid email format", "user");
-      return res.status(400).json({ success: false, message: "Invalid email format" });
-    }
+    // 3️⃣ Check if user already registered
+    const whereCondition = isEmail
+      ? { email: identifier }
+      : { phone: identifier };
 
-    const existingUser = await User.findOne({ where: { email } });
+    const existingUser = await User.findOne({ where: whereCondition });
 
     if (existingUser && !existingUser.registrationToken) {
-      await logApiCall(req, res, 401, "Failed to send email OTP - user already registered", "user");
-      return res.status(401).json({ success: false, message: 'User is already registered' });
+      await logApiCall(
+        req,
+        res,
+        409,
+        "OTP send failed - user already registered",
+        "user",
+        existingUser.id
+      );
+      return res.status(409).json({
+        success: false,
+        message: "User is already registered",
+      });
     }
 
-    await OTP.destroy({ where: { identifier: email, type: 'email' } });
+    // 4️⃣ Remove previous OTP for this identifier
+    await OTP.destroy({
+      where: {
+        identifier,
+        type: isEmail ? "email" : "phone",
+      },
+    });
 
+    // 5️⃣ Generate OTP
     const otp = otpGenerator.generate(6, {
       upperCaseAlphabets: false,
       lowerCaseAlphabets: false,
@@ -152,23 +186,39 @@ exports.sendOTP = async (req, res) => {
 
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
-    await OTP.create({ identifier: email, type: "email", otp, expiresAt });
+    await OTP.create({
+      identifier,
+      type: isEmail ? "email" : "phone",
+      otp,
+      expiresAt,
+    });
 
-    const mail = otpEmail({ otp });
-    await mailsender(
-      email,
-      "Your Verification OTP",
-      mail.html,
-      mail.attachments
-    );
+    // 6️⃣ Send OTP (email only for now)
+    if (isEmail) {
+      const mail = otpEmail({ otp });
+      await mailsender(
+        identifier,
+        "Your Verification OTP",
+        mail.html,
+        mail.attachments
+      );
+    }
 
+    // (Optional future)
+    if (isPhone) {
+      await smsSender(identifier, "otp", { otp });
+
+    }
+
+    // 7️⃣ Log success
     await logApiCall(
       req,
       res,
       200,
-      `Sent email OTP for registration to ${email}`,
+      `OTP sent to ${isEmail ? "email" : "phone"}: ${identifier}`,
       "user"
     );
+
     return res.status(200).json({
       success: true,
       message: "OTP sent successfully",
@@ -178,26 +228,37 @@ exports.sendOTP = async (req, res) => {
       req,
       res,
       500,
-      "Error occurred while sending email OTP",
+      "Error occurred while sending OTP",
       "user"
     );
-    return res.status(500).json({ success: false, message: err.message });
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 };
 
 exports.registerUser = async (req, res) => {
   try {
-    const { fullName, email, phone, userType, gender, dateOfBirth, otp, parentName, parentMobile, parentEmail } = req.body;
+    const { fullName, email, phone, userType, gender, dateOfBirth, otp, parentName, parentMobile, parentEmail , type} = req.body;
 
     if (!email || !otp) {
       await logApiCall(req, res, 400, "Failed to register user - email and OTP required", "user");
       return res.status(400).json({ message: "Email & OTP are required" });
     }
 
-    const otpRecord = await OTP.findOne({
-      where: { identifier: email, type: 'email' },
-      order: [['createdAt', 'DESC']]
-    });
+    let otpRecord = "";
+    if( type === "email"){
+        otpRecord = await OTP.findOne({
+        where: { identifier: email, type: 'email' },
+        order: [['createdAt', 'DESC']]
+      });
+    }else{
+       otpRecord = await OTP.findOne({
+        where: { identifier: phone, type: 'phone' },
+        order: [['createdAt', 'DESC']]
+      });
+    }
 
     if (!otpRecord) {
       await logApiCall(req, res, 400, "Failed to register user - OTP not found or expired", "user");
@@ -205,9 +266,15 @@ exports.registerUser = async (req, res) => {
     }
 
     if (otpRecord.expiresAt < new Date()) {
+      if( type === "email"){
       await OTP.destroy({
         where: { identifier: email, type: 'email' }
       });
+    }else{
+       await OTP.destroy({
+        where: { identifier: phone, type: 'phone' }
+      });
+    }
       return res.status(400).json({ message: "OTP expired. Request a new one." });
     }
 
@@ -216,7 +283,15 @@ exports.registerUser = async (req, res) => {
     }
 
     // OTP verified,nd remove record
-    await OTP.destroy({ where: { identifier: email, type: 'email' } });
+    if( type === "email"){
+      await OTP.destroy({
+        where: { identifier: email, type: 'email' }
+      });
+    }else{
+       await OTP.destroy({
+        where: { identifier: phone, type: 'phone' }
+      });
+    }
 
     // Check if user already exists
     let userExist = await User.findOne({ where: { email } });
