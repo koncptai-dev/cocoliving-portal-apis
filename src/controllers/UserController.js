@@ -259,7 +259,6 @@ exports.registerUser = async (req, res) => {
         order: [['createdAt', 'DESC']]
       });
     }
-   
 
     if (!otpRecord) {
       await logApiCall(req, res, 400, "Failed to register user - OTP not found or expired", "user");
@@ -329,7 +328,6 @@ exports.registerUser = async (req, res) => {
       }
 
     }
-
 
     //image upload 
     let profileImagePath = null;
