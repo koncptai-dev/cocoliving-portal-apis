@@ -36,7 +36,7 @@ exports.storeFcmToken = async (req, res) => {
 //store notification setting first
 exports.saveNotificationSettings = async (req, res) => {
     try {
-        const { pushEnabled, newsletters, email } = req.body;
+        const { pushEnabled, notificationPreferences } = req.body;
         const userId = req.user.id;
 
         let settings = await UserNotificationSettings.findOne({ where: { userId } });
@@ -44,17 +44,16 @@ exports.saveNotificationSettings = async (req, res) => {
         if (!settings) {
             settings = await UserNotificationSettings.create({
                 userId,
-                pushEnabled,
-                newsletters,
-                email
+                pushEnabled: pushEnabled ?? true,
+                notificationPreferences: notificationPreferences ?? {}
             });
         } else {
-            await settings.update({ pushEnabled, newsletters, email });
+            await settings.update({
+                ...(pushEnabled !== undefined && { pushEnabled }),
+                ...(notificationPreferences !== undefined && { notificationPreferences })
+            });
         }
-        return res.status(200).json({
-            success: true,
-            message: "Notification settings updated successfully"
-        });
+        return res.status(200).json({ success: true, message: "Notification settings updated successfully" });
     } catch (error) {
         return res.status(500).json({ success: false, message: error.message });
     }
@@ -67,16 +66,35 @@ exports.sendPushNotification = async (req, res) => {
         const userId = req.user.id;
 
         const user = await User.findByPk(userId);
-        if (!user || !user.fcmToken) {
-            return res.status(404).json({ success: false, message: "User not found or FCM token missing" });
+        if (!user) {
+            await logApiCall(req, res, 404, "User not found", "notification", userId);
+            return res.status(404).json({ success: false, message: "User not found" });
         }
 
-        const settings = await UserNotificationSettings.findOne({ where: { userId } });
-        if (!settings || !settings.pushEnabled) {
-            return res.status(200).json({ success: true, message: "Push notifications disabled by user" });
+        if (!user.fcmToken) {
+            await logApiCall(req, res, 200, "FCM token missing", "notification", userId);
+            return res.status(200).json({ success: true, sent: false, message: "FCM token missing" });
         }
-        if (type === "newsletter" && !settings.newsletters) {
-            return res.status(200).json({ success: true, message: "Newsletter notifications disabled" });
+
+        // Fetch or create notification settings
+        let settings = await UserNotificationSettings.findOne({ where: { userId } });
+        if (!settings) {
+            settings = await UserNotificationSettings.create({
+                userId,
+                pushEnabled: true,
+                notificationPreferences: {}
+            });
+        }
+
+        //check for global push disable
+        if (!settings.pushEnabled) {
+            await logApiCall(req, res, 200, `Notification skipped: push disabled`, "notification", userId);
+            return res.status(200).json({ success: true, sent: false });
+        }
+        // Type-specific check from JSON
+        if (type && settings.notificationPreferences?.[type] === false) {
+            await logApiCall(req, res, 200, `${type} notification skipped - user disabled`, "notification", userId);
+            return res.status(200).json({ success: true, sent: false });
         }
         const message = {
             token: user.fcmToken,
@@ -92,7 +110,15 @@ exports.sendPushNotification = async (req, res) => {
         });
 
     } catch (error) {
-        await logApiCall(req, res, 500, "Error occurred while storing FCM token", "fcm", req.user?.id || 0);
+        const firebaseError = error?.errorInfo?.code;
+        if (firebaseError) {
+            const cleanMsg = firebaseError.replace('messaging/', '').replace(/-/g, ' ');
+            return res.status(500).json({ success: false, message: `Firebase Error: ${cleanMsg}`, error: firebaseError });
+        }
+        await logApiCall(req, res, 500, "Error occurred while sending push notification", "notification", req.user?.id || 0);
+        console.log(error.message);
         return res.status(500).json({ success: false, message: "server error", error: error.message })
+
     }
 }
+

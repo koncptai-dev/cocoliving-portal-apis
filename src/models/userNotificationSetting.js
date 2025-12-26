@@ -1,5 +1,6 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
+const User = require("./user");
 
 const UserNotificationSetting = sequelize.define(
   "UserNotificationSetting",
@@ -13,7 +14,7 @@ const UserNotificationSetting = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: false,
       references: {
-        model: "users",
+        model: User,
         key: "id"
       },
       onDelete: "CASCADE",
@@ -23,13 +24,9 @@ const UserNotificationSetting = sequelize.define(
       type: DataTypes.BOOLEAN,
       defaultValue: true
     },
-    newsletters: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: true
-    },
-    email: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: true
+    notificationPreferences: {
+      type: DataTypes.JSON,
+      defaultValue: {} // initially empty
     }
   },
   {

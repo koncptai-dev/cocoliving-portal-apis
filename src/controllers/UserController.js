@@ -254,7 +254,6 @@ exports.registerUser = async (req, res) => {
 
     }
 
-
     //image upload 
     let profileImagePath = null;
     if (req.file) {
