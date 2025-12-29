@@ -279,6 +279,7 @@ exports.editProperties = async (req, res) => {
   }
 };
 
+//for admin
 exports.getProperties = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -300,6 +301,79 @@ exports.getProperties = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch properties" });
   }
 };
+
+//for user
+exports.getPropertiesForUser = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    // Fetch all properties with rate cards
+    const { rows: properties, count } = await Property.findAndCountAll({
+      order: [["createdAt", "DESC"]],
+      include: [{ model: PropertyRateCard, as: "rateCard" }],
+      limit,
+      offset
+    });
+
+    // Filter and update properties to include availability info
+    const updatedProperties = await Promise.all(properties.map(async (p) => {
+      const updatedRateCards = await Promise.all(p.rateCard.map(async (rc) => {
+        // Fetch rooms for this property + roomType
+        const rooms = await Rooms.findAll({
+          where: { propertyId: p.id, roomType: rc.roomType },
+          include: [{
+            model: Booking,
+            as: "bookings",
+            where: { status: { [Op.in]: ["pending", "approved", "active"] } },
+            required: false
+          }]
+        });
+
+        // Filter available rooms
+        const availableRooms = rooms.filter(r => r.status === "available" && (r.capacity - (r.bookings?.length || 0) > 0));
+
+        return {
+          ...rc.dataValues,
+          totalRooms: rooms.length,
+          availableRooms: availableRooms.length,
+          isAvailable: rooms.length > 0 && availableRooms.length > 0
+        };
+      }));
+
+      // Only keep rate cards that have available rooms
+      const filteredRateCards = updatedRateCards.filter(rc => rc.isAvailable);
+
+      // Skip property if no rate cards are available
+      if (filteredRateCards.length === 0) return null;
+
+      return {
+        ...p.dataValues,
+        rateCard: filteredRateCards
+      };
+    }));
+
+    // Remove null properties (no available rooms)
+    const propertiesForUser = updatedProperties.filter(p => p !== null);
+
+    const totalPages = Math.ceil(count / limit);
+
+    // Log API call
+    await logApiCall(req, res, 200, "Viewed properties for user", "property");
+
+    res.json({
+      properties: propertiesForUser,
+      currentPage: page,
+      totalPages
+    });
+  } catch (error) {
+    console.error(error);
+    await logApiCall(req, res, 500, "Error fetching properties for user", "property");
+    res.status(500).json({ message: "Failed to fetch properties for user" });
+  }
+};
+
 
 exports.deleteProperty = async (req, res) => {
   try {

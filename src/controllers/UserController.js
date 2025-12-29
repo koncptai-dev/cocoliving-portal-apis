@@ -10,119 +10,236 @@ const { mailsender } = require('../utils/emailService');
 const { welcomeEmail, otpEmail } = require('../utils/emailTemplates/emailTemplates');
 const { logApiCall } = require("../helpers/auditLog");
 const { smsSender } = require("../utils/smsService");
+const jwt = require('jsonwebtoken');
 
-//send phone OTP
-exports.sendPhoneOTP = async (req, res) => {
+
+// //send phone OTP
+// exports.sendPhoneOTP = async (req, res) => {
+//   try {
+//     const { phone } = req.body;
+//     const userId = req.user.id;
+
+//     if (!phone) {
+//       await logApiCall(req, res, 400, "Failed to send phone OTP - phone number required", "user", userId);
+//       return res.status(400).json({ message: "Phone is required" });
+//     }
+//     if (!/^\d{10}$/.test(phone)) {
+//       await logApiCall(req, res, 400, "Failed to send phone OTP - invalid phone format", "user", userId);
+//       return res.status(400).json({ message: "Invalid phone format" });
+//     }
+//     const user = await User.findByPk(userId);
+//     if (!user) {
+//       await logApiCall(req, res, 404, "Failed to send phone OTP - user not found", "user", userId);
+//       return res.status(404).json({ message: "User not found" });
+//     }
+
+//     await OTP.destroy({
+//       where: { type: "phone", identifier: phone }
+//     });
+
+//     const otp = otpGenerator.generate(6, {
+//       upperCaseAlphabets: false,
+//       lowerCaseAlphabets: false,
+//       specialChars: false,
+//     })
+
+//     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+//     await OTP.create({
+//       identifier: phone,
+//       type: "phone",
+//       otp,
+//       expiresAt,
+//       attempts: 0,
+//     });
+
+//     //sms sending
+//     await smsSender(phone, "otp", { otp });
+
+//     await logApiCall(req, res, 200, "Sent phone OTP for verification", "user", userId);
+//     return res.status(200).json({
+//       success: true,
+//       message: "OTP sent to phone successfully"
+//     });
+
+//   } catch (error) {
+//     await logApiCall(req, res, 500, "Error occurred while sending phone OTP", "user", req.user?.id || 0);
+//     return res.status(500).json({ message: error.message });
+//   }
+// }
+
+// exports.verifyPhoneOTP = async (req, res) => {
+//   try {
+//     const { phone, otp } = req.body;
+//     const userId = req.user.id;
+
+//     if (!phone || !otp) {
+//       await logApiCall(req, res, 400, "Failed to verify phone OTP - phone and OTP required", "user", userId);
+//       return res.status(400).json({ message: "Phone & OTP are required" });
+//     }
+
+//     const record = await OTP.findOne({
+//       where: { identifier: phone, type: "phone" },
+//       order: [["createdAt", "DESC"]]
+//     });
+
+//     if (!record) {
+//       await logApiCall(req, res, 400, "Failed to verify phone OTP - OTP expired or not found", "user", userId);
+//       return res.status(400).json({ message: "OTP expired or not found" });
+//     }
+
+//     if (record.expiresAt < new Date()) {
+//       await OTP.destroy({ where: { identifier: phone, type: 'phone' } });
+//       await logApiCall(req, res, 400, "Failed to verify phone OTP - OTP expired", "user", userId);
+//       return res.status(400).json({ message: "OTP expired" });
+//     }
+
+//     if (record.otp !== otp) {
+//       await record.save();
+//       await logApiCall(req, res, 400, "Failed to verify phone OTP - incorrect OTP", "user", userId);
+//       return res.status(400).json({ message: "Incorrect OTP" });
+//     }
+
+//     // VERIFIED SUCCESSFULLY
+//     await OTP.destroy({ where: { identifier: phone, type: 'phone' } });
+
+//     await User.update(
+//       { phone, isPhoneVerified: true },
+//       { where: { id: userId } }
+//     );
+
+//     await logApiCall(req, res, 200, "Verified phone number successfully", "user", userId);
+//     res.status(200).json({
+//       success: true,
+//       message: "Phone number verified successfully",
+//     });
+
+//   } catch (err) {
+//     await logApiCall(req, res, 500, "Error occurred while verifying phone OTP", "user", userId);
+//     return res.status(500).json({ message: err.message });
+//   }
+// }
+
+//send otp to phone / email foe verification from profile 
+exports.sendProfileOTP = async (req, res) => {
   try {
-    const { phone } = req.body;
+    const { identifier, type } = req.body; // type = "phone" | "email"
     const userId = req.user.id;
 
-    if (!phone) {
-      await logApiCall(req, res, 400, "Failed to send phone OTP - phone number required", "user", userId);
-      return res.status(400).json({ message: "Phone is required" });
+    if (!identifier || !type) {
+      return res.status(400).json({ message: "Identifier and type are required" });
     }
-    if (!/^\d{10}$/.test(phone)) {
-      await logApiCall(req, res, 400, "Failed to send phone OTP - invalid phone format", "user", userId);
+
+    if (type === "phone" && !/^\d{10}$/.test(identifier)) {
       return res.status(400).json({ message: "Invalid phone format" });
     }
-    const user = await User.findByPk(userId);
-    if (!user) {
-      await logApiCall(req, res, 404, "Failed to send phone OTP - user not found", "user", userId);
-      return res.status(404).json({ message: "User not found" });
+
+    if (type === "email" && !/^\S+@\S+\.\S+$/.test(identifier)) {
+      return res.status(400).json({ message: "Invalid email format" });
     }
 
-    await OTP.destroy({
-      where: { type: "phone", identifier: phone }
-    });
+    await OTP.destroy({ where: { identifier, type } });
 
-    const otp = otpGenerator.generate(6, {
-      upperCaseAlphabets: false,
-      lowerCaseAlphabets: false,
-      specialChars: false,
-    })
-
+    const otp = otpGenerator.generate(6, { upperCaseAlphabets: false, lowerCaseAlphabets: false, specialChars: false });
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
-    await OTP.create({
-      identifier: phone,
-      type: "phone",
-      otp,
-      expiresAt,
-      attempts: 0,
-    });
+    await OTP.create({ identifier, type, otp, expiresAt, attempts: 0 });
 
-    //sms sending
-    await smsSender(phone, "otp", { otp });
+    if (type === "phone") {
+      await smsSender(identifier, "otp", { otp });
+    } else if (type === "email") {
+      const mail = otpEmail({ otp });
+      await mailsender(identifier, "Your Verification OTP", mail.html, mail.attachments);
+    }
 
-    await logApiCall(req, res, 200, "Sent phone OTP for verification", "user", userId);
-    return res.status(200).json({
-      success: true,
-      message: "OTP sent to phone successfully"
-    });
+    return res.status(200).json({ success: true, message: `OTP sent to ${type} successfully` });
 
-  } catch (error) {
-    await logApiCall(req, res, 500, "Error occurred while sending phone OTP", "user", req.user?.id || 0);
-    return res.status(500).json({ message: error.message });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
   }
-}
+};
 
-exports.verifyPhoneOTP = async (req, res) => {
+exports.verifyProfileOTP = async (req, res) => {
   try {
-    const { phone, otp } = req.body;
+    const { identifier, otp, type } = req.body;
     const userId = req.user.id;
 
-    if (!phone || !otp) {
-      await logApiCall(req, res, 400, "Failed to verify phone OTP - phone and OTP required", "user", userId);
-      return res.status(400).json({ message: "Phone & OTP are required" });
+    if (!identifier || !otp || !type) {
+      return res.status(400).json({
+        success: false,
+        message: "Identifier, OTP & type are required"
+      });
     }
 
     const record = await OTP.findOne({
-      where: { identifier: phone, type: "phone" },
+      where: { identifier, type },
       order: [["createdAt", "DESC"]]
     });
 
     if (!record) {
-      await logApiCall(req, res, 400, "Failed to verify phone OTP - OTP expired or not found", "user", userId);
-      return res.status(400).json({ message: "OTP expired or not found" });
+      return res.status(400).json({
+        success: false,
+        message: "OTP expired or not found"
+      });
     }
 
     if (record.expiresAt < new Date()) {
-      await OTP.destroy({ where: { identifier: phone, type: 'phone' } });
-      await logApiCall(req, res, 400, "Failed to verify phone OTP - OTP expired", "user", userId);
-      return res.status(400).json({ message: "OTP expired" });
+      await OTP.destroy({ where: { identifier, type } });
+      return res.status(400).json({
+        success: false,
+        message: "OTP expired"
+      });
     }
 
     if (record.otp !== otp) {
-      await record.save();
-      await logApiCall(req, res, 400, "Failed to verify phone OTP - incorrect OTP", "user", userId);
-      return res.status(400).json({ message: "Incorrect OTP" });
+      return res.status(400).json({
+        success: false,
+        message: "Incorrect OTP"
+      });
     }
 
-    // VERIFIED SUCCESSFULLY
-    await OTP.destroy({ where: { identifier: phone, type: 'phone' } });
+    // SUCCESS – Delete OTP
+    await OTP.destroy({ where: { identifier, type } });
 
-    await User.update(
-      { phone, isPhoneVerified: true },
-      { where: { id: userId } }
-    );
+    if (type === "phone") {
+      await User.update(
+        { phone: identifier, isPhoneVerified: true },
+        { where: { id: userId } }
+      );
+    }
 
-    await logApiCall(req, res, 200, "Verified phone number successfully", "user", userId);
-    res.status(200).json({
+    if (type === "email") {
+      await User.update(
+        { email: identifier, isEmailVerified: true },
+        { where: { id: userId } }
+      );
+    }
+
+   const user = await User.findByPk(userId);
+
+    return res.status(200).json({
       success: true,
-      message: "Phone number verified successfully",
+      message: `${type} verified successfully`,
+      isEmailVerified: user.isEmailVerified,
+      isPhoneVerified: user.isPhoneVerified
     });
 
   } catch (err) {
-    await logApiCall(req, res, 500, "Error occurred while verifying phone OTP", "user", userId);
-    return res.status(500).json({ message: err.message });
+    return res.status(500).json({
+      success: false,
+      message: err.message
+    });
   }
-}
+};
 
+
+
+//register time (send otp)
 exports.sendOTP = async (req, res) => {
   try {
     const { identifier } = req.body;
 
-    // 1️⃣ Validate identifier
+    //  Validate identifier
     if (!identifier) {
       await logApiCall(req, res, 400, "OTP send failed - identifier required", "user");
       return res.status(400).json({
@@ -142,12 +259,12 @@ exports.sendOTP = async (req, res) => {
       });
     }
 
-    // 2️⃣ Remove expired OTPs
+    //  Remove expired OTPs
     await OTP.destroy({
       where: { expiresAt: { [Op.lt]: new Date() } },
     });
 
-    // 3️⃣ Check if user already registered
+    //  Check if user already registered
     const whereCondition = isEmail
       ? { email: identifier }
       : { phone: identifier };
@@ -169,7 +286,7 @@ exports.sendOTP = async (req, res) => {
       });
     }
 
-    // 4️⃣ Remove previous OTP for this identifier
+    //  Remove previous OTP for this identifier
     await OTP.destroy({
       where: {
         identifier,
@@ -177,7 +294,7 @@ exports.sendOTP = async (req, res) => {
       },
     });
 
-    // 5️⃣ Generate OTP
+    //  Generate OTP
     const otp = otpGenerator.generate(6, {
       upperCaseAlphabets: false,
       lowerCaseAlphabets: false,
@@ -193,7 +310,7 @@ exports.sendOTP = async (req, res) => {
       expiresAt,
     });
 
-    // 6️⃣ Send OTP (email only for now)
+    //  Send OTP (email only for now)
     if (isEmail) {
       const mail = otpEmail({ otp });
       await mailsender(
@@ -210,7 +327,7 @@ exports.sendOTP = async (req, res) => {
 
     }
 
-    // 7️⃣ Log success
+    //  Log success
     await logApiCall(
       req,
       res,
@@ -238,9 +355,10 @@ exports.sendOTP = async (req, res) => {
   }
 };
 
+//register (with otp verification)
 exports.registerUser = async (req, res) => {
   try {
-    const { fullName, email, phone, userType, gender, dateOfBirth, otp, parentName, parentMobile, parentEmail , type} = req.body;
+    const { fullName, email, phone, userType, gender, dateOfBirth, otp, parentName, parentMobile, parentEmail, type } = req.body;
 
     if (!email || !otp) {
       await logApiCall(req, res, 400, "Failed to register user - email and OTP required", "user");
@@ -248,13 +366,13 @@ exports.registerUser = async (req, res) => {
     }
 
     let otpRecord = "";
-    if( type === "email"){
-        otpRecord = await OTP.findOne({
+    if (type === "email") {
+      otpRecord = await OTP.findOne({
         where: { identifier: email, type: 'email' },
         order: [['createdAt', 'DESC']]
       });
-    }else{
-       otpRecord = await OTP.findOne({
+    } else {
+      otpRecord = await OTP.findOne({
         where: { identifier: phone, type: 'phone' },
         order: [['createdAt', 'DESC']]
       });
@@ -266,15 +384,15 @@ exports.registerUser = async (req, res) => {
     }
 
     if (otpRecord.expiresAt < new Date()) {
-      if( type === "email"){
-      await OTP.destroy({
-        where: { identifier: email, type: 'email' }
-      });
-    }else{
-       await OTP.destroy({
-        where: { identifier: phone, type: 'phone' }
-      });
-    }
+      if (type === "email") {
+        await OTP.destroy({
+          where: { identifier: email, type: 'email' }
+        });
+      } else {
+        await OTP.destroy({
+          where: { identifier: phone, type: 'phone' }
+        });
+      }
       return res.status(400).json({ message: "OTP expired. Request a new one." });
     }
 
@@ -283,12 +401,12 @@ exports.registerUser = async (req, res) => {
     }
 
     // OTP verified,nd remove record
-    if( type === "email"){
+    if (type === "email") {
       await OTP.destroy({
         where: { identifier: email, type: 'email' }
       });
-    }else{
-       await OTP.destroy({
+    } else {
+      await OTP.destroy({
         where: { identifier: phone, type: 'phone' }
       });
     }
@@ -319,7 +437,7 @@ exports.registerUser = async (req, res) => {
 
       const parentConflict = await User.findOne({
         where: {
-            email: parentEmail 
+          email: parentEmail
         }
       })
       if (parentConflict) {
@@ -363,11 +481,26 @@ exports.registerUser = async (req, res) => {
     } catch (err) {
       console.error('Welcome email failed:', err.message);
     }
+
+    // ================= JWT HERE =================
+    const token = jwt.sign(
+      {
+        id: newUser.id,
+        identifier: newUser.email || newUser.phone,
+        role: newUser.role,
+        userType: newUser.userType,
+        loginAs: "user"
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "1d" }
+    );
+
     await logApiCall(req, res, 201, `Registered new user: ${fullName} (${email})`, "user", newUser.id);
     return res.status(201).json({
       success: true,
       message: "User registered & verified successfully",
-      user: newUser
+      user: newUser,
+      token
     });
 
   } catch (error) {
@@ -409,6 +542,24 @@ exports.editUserProfile = async (req, res) => {
       delete updates.phone; //prevent multiple entry in loop 
     }
 
+    // Email update check
+    if (updates.email !== undefined && updates.email !== null) {
+      const newEmail = updates.email.trim();
+
+      // if already verified → block update 
+      if (user.isEmailVerified) {
+        return res.status(400).json({
+          message: "Email cannot be edited after verification"
+        });
+      }
+
+      if (newEmail !== user.email) {
+        user.email = newEmail;
+        user.isEmailVerified = false;
+      }
+
+      delete updates.email;
+    }
     //parent email validation
     if (updates.parentEmail !== undefined) {
       if (user.userType === "student") {
@@ -516,7 +667,6 @@ exports.deleteAccount = async (req, res) => {
     return res.status(500).json({ message: 'Error deleting user account', error: err.message });
   }
 }
-
 
 //get the users by id
 exports.getUserById = async (req, res) => {
