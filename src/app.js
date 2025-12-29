@@ -46,7 +46,7 @@ app.use(
 app.post(
   "/api/payments-webhook",
   require("./middleware/rawBody"),
-  require("./controllers/PaymentController").phonePeWebhook
+  require("./controllers/PhonePeWebhookController").phonePeWebhook
 );
 
 app.use(bodyParser.json());
