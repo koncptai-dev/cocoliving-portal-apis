@@ -231,7 +231,6 @@ exports.sendLoginOtp = async (req, res) => {
     }
 };
 
-
 // VERIFY OTP FOR LOGIN
 exports.verifyLoginOtp = async (req, res) => {
     try {
@@ -255,23 +254,13 @@ exports.verifyLoginOtp = async (req, res) => {
         if (isEmail) {
             // student / professional
             user = await User.findOne({ where: { email: identifier } });
-
-            // // parent
-            // if (!user) {
-            //     user = await User.findOne({ where: { parentEmail: identifier } });
-            // }
         } else {
             // student / professional
             user = await User.findOne({ where: { phone: identifier } });
-
-            // // parent
-            // if (!user) {
-            //     user = await User.findOne({ where: { parentMobile: identifier } });
-            // }
         }
 
         //if user not, found check for parent email
-        if(!user) {
+        if (!user) {
             if (childId) {
                 // parent selected a specific child
                 user = await User.findOne({
@@ -286,120 +275,126 @@ exports.verifyLoginOtp = async (req, res) => {
                 // fallback to first child if no childId sent
                 const children = await User.findAll({
                     where: isEmail
-                        ? {parentEmail: identifier }
-                        : {parentMobile: identifier }
+                        ? { parentEmail: identifier }
+                        : { parentMobile: identifier }
                 });
-            if (!children.length) {
-                await logApiCall(req, res, 404, "Verify login OTP - email not found", "auth");
-                return res.status(404).json({ message: "Email not found" });
+                if (!children.length) {
+                    await logApiCall(req, res, 404, "Verify login OTP - email not found", "auth");
+                    return res.status(404).json({ message: "Email not found" });
+                }
+                user = children[0];
             }
-            user = children[0];
         }
-        }
-    
-
 
         /* ================= VERIFY OTP ================= */
 
         const otpRecord = await OTP.findOne({
-        where: {
-            identifier,
-            type: isEmail ? "email" : "phone"
-        },
-        order: [["createdAt", "DESC"]],
-    });
+            where: {
+                identifier,
+                type: isEmail ? "email" : "phone"
+            },
+            order: [["createdAt", "DESC"]],
+        });
 
-    if (!otpRecord || otpRecord.otp !== otp) {
-        await logApiCall(
-            req,
-            res,
-            400,
-            `Verify login OTP - invalid OTP (ID: ${user.id})`,
-            "auth",
-            user.id
-        );
-        return res.status(400).json({ message: "Invalid OTP" });
-    }
+        if (!otpRecord || otpRecord.otp !== otp) {
+            await logApiCall(
+                req,
+                res,
+                400,
+                `Verify login OTP - invalid OTP (ID: ${user.id})`,
+                "auth",
+                user.id
+            );
+            return res.status(400).json({ message: "Invalid OTP" });
+        }
 
-    if (otpRecord.expiresAt < new Date()) {
+        if (otpRecord.expiresAt < new Date()) {
+            await OTP.destroy({
+                where: { identifier, type: isEmail ? "email" : "phone" }
+            });
+            await logApiCall(
+                req,
+                res,
+                400,
+                `Verify login OTP - OTP expired (ID: ${user.id})`,
+                "auth",
+                user.id
+            );
+            return res.status(400).json({ message: "OTP expired, please request a new one" });
+        }
+
+        // delete OTP after successful verification
         await OTP.destroy({
             where: { identifier, type: isEmail ? "email" : "phone" }
         });
+
+        
+        /* ================= LOGIN TYPE ================= */
+
+        let loginAs = "user";
+
+        if (isEmail) {
+            loginAs = identifier === user.email ? "user" : "parent";
+        } else {
+            loginAs = identifier === user.phone ? "user" : "parent";
+        }
+
+        /* ================= MARK VERIFIED ================= */
+
+        //email verified
+        if (loginAs === "user") {
+            if (isEmail && !user.isEmailVerified) {
+                user.isEmailVerified = true;
+            }
+
+            if (isPhone && !user.isPhoneVerified) {
+                user.isPhoneVerified = true;
+            }
+
+            await user.save();
+        }
+
+        /* ================= JWT ================= */
+
+        const token = jwt.sign(
+            {
+                id: user.id,
+                identifier,
+                role: user.role,
+                userType: user.userType,
+                loginAs
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: "1d" }
+        );
+
+        req.user = { id: user.id, role: user.role };
+
         await logApiCall(
             req,
             res,
-            400,
-            `Verify login OTP - OTP expired (ID: ${user.id})`,
+            200,
+            `OTP login successful: ${identifier} (${loginAs})`,
             "auth",
             user.id
         );
-        return res.status(400).json({ message: "OTP expired, please request a new one" });
-    }
 
-    // delete OTP after successful verification
-    await OTP.destroy({
-        where: { identifier, type: isEmail ? "email" : "phone" }
-    });
-
-    /* ================= MARK VERIFIED ================= */
-
-    if (isEmail && !user.isEmailVerified) {
-        user.isEmailVerified = true;
-        await user.save();
-    }
-
-    /* ================= LOGIN TYPE ================= */
-
-    let loginAs = "user";
-
-    if (isEmail) {
-        loginAs = identifier === user.email ? "user" : "parent";
-    } else {
-        loginAs = identifier === user.phone ? "user" : "parent";
-    }
-
-    /* ================= JWT ================= */
-
-    const token = jwt.sign(
-        {
-            id: user.id,
-            identifier,
-            role: user.role,
-            userType: user.userType,
+        return res.status(200).json({
+            success: true,
+            message: "Login successful",
+            token,
+            account: user,
             loginAs
-        },
-        process.env.JWT_SECRET,
-        { expiresIn: "1d" }
-    );
+        });
 
-    req.user = { id: user.id, role: user.role };
-
-    await logApiCall(
-        req,
-        res,
-        200,
-        `OTP login successful: ${identifier} (${loginAs})`,
-        "auth",
-        user.id
-    );
-
-    return res.status(200).json({
-        success: true,
-        message: "Login successful",
-        token,
-        account: user,
-        loginAs
-    });
-
-} catch (err) {
-    await logApiCall(req, res, 500, "Error occurred while verifying login OTP", "auth");
-    return res.status(500).json({
-        message: "Error verifying OTP",
-        error: err.message
-    });
-}
+    } catch (err) {
+        await logApiCall(req, res, 500, "Error occurred while verifying login OTP", "auth");
+        return res.status(500).json({
+            message: "Error verifying OTP",
+            error: err.message
+        });
+    }
 };
-
 
 // CHECK EMAIL BEFORE OTP FLOW
 exports.checkEmail = async (req, res) => {
@@ -444,7 +439,7 @@ exports.checkEmail = async (req, res) => {
             return res.json({
                 exists: true,
                 role: "user",
-                loginAs: "user",   // ✅ student
+                loginAs: "user",   // student
                 displayName: user.fullName,
                 childName: null
             });
@@ -466,7 +461,7 @@ exports.checkEmail = async (req, res) => {
                 return res.json({
                     exists: true,
                     role: "user",
-                    loginAs: "parent",   // ✅ parent
+                    loginAs: "parent",   //  parent
                     multipleChildren: true,
                     displayName: children[0].parentName || "Parent",
                     children: children.map(c => ({
@@ -481,14 +476,14 @@ exports.checkEmail = async (req, res) => {
             return res.json({
                 exists: true,
                 role: "user",
-                loginAs: "parent",   // ✅ parent
+                loginAs: "parent",   // parent
                 multipleChildren: false,
                 displayName: child.parentName || child.fullName,
                 childName: child.fullName
             });
         }
 
-        /* ================= NEW USER ================= */
+        /* ================= NEW USER =  ================ */
 
         await logApiCall(
             req,

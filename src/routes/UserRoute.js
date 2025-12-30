@@ -13,9 +13,9 @@ router.get('/getUser/:id', authenticateToken, UserController.getUserById);
 router.post('/send-otp',UserController.sendOTP);
 
 // Send OTP to phone
-router.post('/send-phone-otp', authenticateToken, UserController.sendPhoneOTP);
+router.post('/profile/verify/send-otp', authenticateToken, UserController.sendProfileOTP);
 
 // Verify OTP from phone
-router.post('/verify-phone-otp', authenticateToken, UserController.verifyPhoneOTP);
+router.post('/profile/verify/verify-otp', authenticateToken, UserController.verifyProfileOTP);
 
 module.exports = router;

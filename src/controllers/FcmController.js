@@ -47,6 +47,12 @@ exports.saveNotificationSettings = async (req, res) => {
                 pushEnabled: pushEnabled ?? true,
                 notificationPreferences: notificationPreferences ?? {}
             });
+            return res.status(201).json({
+                success: true,
+                created: true,
+                message: "Notification settings created successfully",
+                data: createdSettings
+            });
         } else {
             await settings.update({
                 ...(pushEnabled !== undefined && { pushEnabled }),
