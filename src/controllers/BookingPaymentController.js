@@ -7,6 +7,9 @@ const phonepeConfig = require('../utils/phonepe/phonepeConfig');
 const Booking = require('../models/bookRoom');
 const PaymentTransaction = require('../models/paymentTransaction');
 const PropertyRateCard = require('../models/propertyRateCard');
+const BookingExtension = require('../models/bookingExtension');
+const UserKYC = require('../models/userKYC');
+
 const { logApiCall } = require("../helpers/auditLog");
 
 function canonicalizeMetadata(metadata) {
@@ -37,6 +40,27 @@ function createMerchantOrderId(type, txId) {
   return `${type}-${txId}`;
 }
 
+async function assertUserKycVerified(userId) {
+  const kyc = await UserKYC.findOne({ where: { userId } });
+
+  if (!kyc) {
+    const err = new Error('KYC not started');
+    err.code = 'KYC_REQUIRED';
+    throw err;
+  }
+
+  if (
+    kyc.panStatus !== 'verified' ||
+    kyc.ekycStatus !== 'verified'
+  ) {
+    const err = new Error('PAN and Aadhaar verification required');
+    err.code = 'KYC_INCOMPLETE';
+    throw err;
+  }
+
+  return true;
+}
+
 async function checkOverlappingBooking(userId, checkInDate, checkOutDate) {
   const checkIn = moment(checkInDate, ['YYYY-MM-DD', 'DD-MM-YYYY']).format('YYYY-MM-DD');
   const checkOut = moment(checkOutDate, ['YYYY-MM-DD', 'DD-MM-YYYY']).format('YYYY-MM-DD');
@@ -64,6 +88,7 @@ async function checkOverlappingBooking(userId, checkInDate, checkOutDate) {
 exports.initiate = async (req, res) => {
   try {
     const userId = req.user?.id;
+    await assertUserKycVerified(userId);
     const isMobile = req.headers['x-client'] === 'mobile';
     if (!userId) {
       await logApiCall(req, res, 400, "Initiated booking payment - unauthorized access", "payment");
@@ -266,6 +291,13 @@ exports.initiate = async (req, res) => {
       });
     }
   } catch (err) {
+    if (err.code === 'KYC_REQUIRED' || err.code === 'KYC_INCOMPLETE') {
+      return res.status(403).json({
+        success: false,
+        code: err.code,
+        message: err.message
+      });
+    }
     console.error('[BookingPaymentController] initiate error', err);
     await logApiCall(req, res, 500, "Error occurred while initiating booking payment", "payment", req.user?.id || 0);
     return res.status(500).json({ success: false, message: `Failed to initiate payment: ${err.message || err}` });
@@ -410,6 +442,120 @@ exports.initiateRemaining = async (req, res) => {
   } catch (err) {
     console.error('[initiateRemaining] error', err);
     await logApiCall(req, res, 500, "Error occurred while initiating remaining payment", "payment", req.user?.id || 0);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.initiateExtension = async (req, res) => {
+  try {
+    const { bookingId, months } = req.body;
+    const userId = req.user?.id;
+    if (!bookingId || !months || months < 1) {
+      return res.status(400).json({ success: false, message: 'bookingId and valid months required' });
+    }
+
+    const booking = await Booking.findByPk(bookingId);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    if (booking.userId !== userId) {
+      return res.status(403).json({ success: false, message: 'Unauthorized' });
+    }
+
+    if (!['approved', 'active'].includes(booking.status)) {
+      return res.status(422).json({ success: false, message: 'Booking not extendable' });
+    }
+
+    if (moment().isAfter(moment(booking.checkOutDate))) {
+      return res.status(422).json({ success: false, message: 'Cannot extend after checkout date' });
+    }
+
+    const existingPendingExtension = await BookingExtension.findOne({
+      where: {
+        bookingId: booking.id,
+        status: 'pending'
+      }
+    });
+
+    if (existingPendingExtension) {
+      return res.status(400).json({
+        success: false,
+        message: 'You already have a pending extension request for this booking'
+      });
+    }
+    const newCheckOutDate = moment(booking.checkOutDate)
+      .add(months, 'months')
+      .format('YYYY-MM-DD');
+
+    if (booking.roomId) {
+      const conflict = await Booking.findOne({
+        where: {
+          roomId: booking.roomId,
+          id: { [Op.ne]: booking.id },
+          checkInDate: { [Op.lt]: newCheckOutDate },
+          checkOutDate: { [Op.gt]: booking.checkOutDate },
+        },
+      });
+
+      if (conflict) {
+        return res.status(409).json({ success: false, message: 'Room already booked for this period' });
+      }
+    }
+
+    const amountRupees = booking.monthlyRent * months;
+    const amountPaise = Math.round(amountRupees * 100);
+
+    const tx = await PaymentTransaction.create({
+      userId,
+      bookingId,
+      amount: amountPaise,
+      type: 'EXTENSION',
+      status: 'PENDING',
+      merchantOrderId: `tmp-ext-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      pendingBookingData: {
+        extension: {
+          bookingId: booking.id,
+          requestedMonths: months,
+          oldCheckOutDate: booking.checkOutDate,
+          newCheckOutDate,
+          amountRupees
+        }
+      },
+      rawResponse: { note: 'extension payment initiated' },
+    });
+
+    const finalOrderId = `EXTENSION-${tx.id}`;
+    tx.merchantOrderId = finalOrderId;
+    await tx.save();
+
+    const phonepeResp = await createPayment({
+      merchantOrderId: finalOrderId,
+      amount: amountPaise,
+      paymentFlow: {
+        type: 'PG_CHECKOUT',
+        message: 'Coco Living - Booking Extension',
+        merchantUrls: {
+          redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${finalOrderId}`,
+        },
+      },
+    });
+
+    tx.rawResponse = { ...tx.rawResponse, phonepeCreateResponse: phonepeResp };
+
+    if (!phonepeResp?.success) {
+      tx.status = 'FAILED';
+    }
+
+    await tx.save();
+
+    return res.json({
+      success: true,
+      redirectUrl: tx.redirectUrl || phonepeResp?.body?.redirectUrl,
+    });
+
+  } catch (err) {
+    console.error('[initiateExtension]', err);
     return res.status(500).json({ success: false, message: err.message });
   }
 };

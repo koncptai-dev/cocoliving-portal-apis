@@ -41,7 +41,7 @@ const PaymentTransaction = sequelize.define(
       comment: 'Amount in paise (integer)',
     },
     type: {
-      type: DataTypes.ENUM('PREBOOK', 'FULL', 'REMAINING', 'REFUND'),
+      type: DataTypes.ENUM('PREBOOK', 'FULL', 'REMAINING', 'REFUND', 'EXTENSION'),
       allowNull: false,
     },
     status: {
