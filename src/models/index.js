@@ -3,6 +3,8 @@ const sequelize = require("../config/database");
 const SupportTicket = require("./supportTicket");
 const User = require("./user");
 const Booking = require("./bookRoom");
+const BookingOnboarding = require('./bookingOnboarding');
+const BookingExtension = require("./bookingExtension");
 const Rooms = require("./rooms");
 const Event = require("./events");
 const EventParticipation = require("./eventParticipation");
@@ -16,7 +18,6 @@ const ServiceHistory = require("./serviceHistory");
 const PaymentTransaction = require("./paymentTransaction");
 const TicketLog = require("./ticketLog");
 const GatePass = require("./gatePass");
-const BookingOnboarding = require('./bookingOnboarding');
 const UserNotificationSetting = require("./userNotificationSetting");
 
 
@@ -147,8 +148,19 @@ UserNotificationSetting.belongsTo(User, {
   foreignKey: "userId",
   as: "user",
 });
+// Bookings <-> Booking Extension
+Booking.hasMany(BookingExtension, { foreignKey: 'bookingId', as: 'extensions' });
+BookingExtension.belongsTo(Booking, { foreignKey: 'bookingId', as: 'booking' });
 
-module.exports = {
+// User <-> Booking Extension
+User.hasMany(BookingExtension, { foreignKey: 'userId', as: 'bookingExtensions' });
+BookingExtension.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+// PaymentTransaction <-> Booking Extension
+PaymentTransaction.hasOne(BookingExtension, { foreignKey: 'paymentTransactionId', as: 'extension' });
+BookingExtension.belongsTo(PaymentTransaction, { foreignKey: 'paymentTransactionId', as: 'paymentTransaction' });
+
+module.exports={
   sequelize,
   SupportTicket,
   User,
@@ -167,5 +179,6 @@ module.exports = {
   TicketLog,
   GatePass,
   BookingOnboarding,
+  BookingExtension,
   UserNotificationSetting
 }

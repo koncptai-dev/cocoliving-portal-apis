@@ -10,5 +10,8 @@ router.patch('/rejectBooking/:bookingId', AdminBooking.rejectBooking);
 router.patch('/cancelBooking/:bookingId', AdminBooking.cancelBooking);
 router.patch('/:bookingId/assign-room', AdminBooking.assignRoom);
 router.post("/:bookingId/assign-inventory", AdminBooking.assignInventory);
+router.get('/getExtension/:bookingId',AdminBooking.getPendingBookingExtension);
+router.patch('/approveExtension/:extensionId', AdminBooking.approveExtension);
+router.patch('/rejectExtension/:extensionId', AdminBooking.rejectExtension);
 
 module.exports=router

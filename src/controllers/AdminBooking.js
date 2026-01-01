@@ -1,16 +1,16 @@
 const sequelize = require('../config/database');
+const { Op } = require('sequelize');
+const { logApiCall } = require("../helpers/auditLog");
+
 const Booking=require('../models/bookRoom');
 const Rooms=require('../models/rooms');
 const Property=require('../models/property');
 const User=require('../models/user');
 const PropertyRateCard = require("../models/propertyRateCard");
-const { Op } = require('sequelize');
+const BookingExtension = require('../models/bookingExtension');
 const Inventory = require("../models/inventory");
-const moment = require('moment');
-const { logApiCall } = require("../helpers/auditLog");
 
 
-//get all booking for admin
 exports.getAllBookings=async(req,res)=>{
   try{
     const booking=await Booking.findAll({
@@ -35,7 +35,6 @@ exports.getAllBookings=async(req,res)=>{
 
 } 
 
-//approve booking request
 exports.approveBooking = async (req, res) => {
   try {
     const { bookingId } = req.params;
@@ -49,7 +48,6 @@ exports.approveBooking = async (req, res) => {
       return res.status(404).json({ message: "Booking not found" });
     }
 
-    // 🚨 BLOCK APPROVAL IF NO ROOM ASSIGNED
     if (!booking.roomId) {
       await logApiCall(req, res, 400, `Approved booking - no room assigned (ID: ${bookingId})`, "booking", parseInt(bookingId));
       return res.status(400).json({
@@ -57,11 +55,9 @@ exports.approveBooking = async (req, res) => {
       });
     }
 
-    // Update status
     booking.status = "approved";
     await booking.save();
 
-    // Update room status based on capacity
     const room = await Rooms.findByPk(booking.roomId);
 
     const activeBookings = await Booking.count({
@@ -100,11 +96,9 @@ exports.rejectBooking = async (req, res) => {
       return res.status(404).json({ message: "Booking not found" });
     }
 
-    // 1️⃣ Update booking status
     booking.status = "rejected";
     await booking.save();
 
-    // 2️⃣ Only update room if roomId exists
     if (booking.roomId) {
       const room = await Rooms.findByPk(booking.roomId);
 
@@ -286,7 +280,7 @@ exports.assignRoom = async (req, res) => {
     return res.status(500).json({ message: "Failed to assign room", error: err.message });
   }
 };
-// NEW/REPLACE: Assign inventory to booking (atomic + property & availability checks)
+
 exports.assignInventory = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -379,5 +373,81 @@ exports.assignInventory = async (req, res) => {
       message: "Internal server error",
       error: err.message
     });
+  }
+};
+
+exports.getPendingBookingExtension = async(req,res) => {
+  try {
+    const { bookingId } = req.params;
+    const extension = await BookingExtension.findOne({
+      where: { status: 'pending' , bookingId : bookingId},
+      include: [
+        { model: Booking, as: 'booking' },
+        { model: User, as: 'user' }
+      ],
+      order: [['createdAt', 'ASC']]
+    });
+
+    return res.json({ success: true, extension });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+exports.approveExtension = async (req, res) => {
+  const { extensionId } = req.params;
+  const id = extensionId;
+  try {
+    await sequelize.transaction(async (t) => {
+      const extension = await BookingExtension.findByPk(id, {
+        transaction: t,
+        lock: t.LOCK.UPDATE
+      });
+      if (!extension || extension.status !== 'pending') {
+        throw new Error('Invalid extension state');
+      }
+      const booking = await Booking.findByPk(extension.bookingId, {
+        transaction: t,
+        lock: t.LOCK.UPDATE
+      });
+
+      if (!booking) {
+        throw new Error('Booking not found for extension');
+      }
+      booking.checkOutDate = extension.newCheckOutDate;
+      booking.duration += extension.requestedMonths;
+      booking.totalAmount += extension.amountRupees;
+      await booking.save({ transaction: t });
+      extension.status = 'approved';
+
+      await extension.save({ transaction: t });
+    });
+    return res.json({ success: true, message: 'Extension approved' });
+
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      message: err.message
+    });
+  }
+};
+
+exports.rejectExtension = async (req, res) => {
+  const { extensionId } = req.params;
+  const id = extensionId;
+
+  try {
+    const extension = await BookingExtension.findByPk(id);
+
+    if (!extension || extension.status !== 'pending') {
+      return res.status(400).json({ success: false, message: 'Invalid extension state' });
+    }
+
+    extension.status = 'rejected';
+    await extension.save();
+
+    return res.json({ success: true, message: 'Extension rejected' });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
   }
 };

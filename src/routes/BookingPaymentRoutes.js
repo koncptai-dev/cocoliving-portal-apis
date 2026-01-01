@@ -13,4 +13,6 @@ router.get('/refund/:merchantRefundId/status', authenticateToken, BookingPayment
 
 router.get('/:bookingId/summary', BookingPaymentController.getBookingPaymentSummary);
 
+router.post('/initiate-extension',authenticateToken,BookingPaymentController.initiateExtension);
+
 module.exports = router;
