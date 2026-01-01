@@ -1,5 +1,6 @@
 const sequelize = require('../config/database');
 const Events = require('../models/events');
+const Booking = require('../models/bookRoom');
 const EventParticipation = require('../models/eventParticipation');
 const User = require('../models/user');
 const { Op } = require('sequelize');
@@ -7,6 +8,45 @@ const { Property } = require('../models');
 const { logApiCall } = require("../helpers/auditLog");
 const fs = require('fs');
 const path = require('path');
+const { sendPushNotification } = require("../helpers/notificationHelper");
+
+// Helper to send notifications for an event
+async function notifyEventUsers(event,action = 'created') {
+  let users;
+
+  if (event.propertyId === 'all') {
+    // All users with at least one booking
+    users = await User.findAll({
+      include: [{
+        model: Booking,
+        as: 'bookings',
+        required: true
+      }]
+    });
+  } else {
+    // Users who have a booking for the specific property
+    users = await User.findAll({
+      include: [{
+        model: Booking,
+        as: 'bookings',
+        where: { propertyId: event.propertyId },
+        required: true
+      }]
+    });
+  }
+const title = action === 'created' ? "New Event Created" : "Event Updated";
+
+  for (const user of users) {
+    if (!user.fcmToken) continue;
+    await sendPushNotification(
+      user.id,
+      title,
+      `Event "${event.title}" scheduled on ${new Date(event.eventDate).toDateString()} at ${event.location}`,
+      { eventId: event.id.toString(), type: "event" },
+      "event"
+    );
+  }
+}
 
 //create events
 exports.createEvent = async (req, res) => {
@@ -55,26 +95,30 @@ exports.createEvent = async (req, res) => {
     }
 
     //image path
-    let eventImagePath=null;
-    if(req.file){
+    let eventImagePath = null;
+    if (req.file) {
       eventImagePath = `/uploads/eventImages/${req.file.filename}`;;
     }
 
     const newEvent = await Events.create({
       title,
       eventDate: eventDateObj,
-      eventTime:  validEventTime,
+      eventTime: validEventTime,
       location,
       maxParticipants,
       description,
       propertyId,
-      eventImage: eventImagePath 
+      eventImage: eventImagePath
     });
     await logApiCall(req, res, 201, `Created new event: ${title} (ID: ${newEvent.id})`, "event", newEvent.id);
+
+    //send notification
+    await notifyEventUsers(newEvent,'created');
+
     return res.status(201).json(newEvent);
   } catch (err) {
     await logApiCall(req, res, 500, "Error occurred while creating event", "event");
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({ message: "Internal server error" ,error: err.message});
   }
 }
 
@@ -162,6 +206,9 @@ exports.updateEvents = async (req, res) => {
     });
 
     await logApiCall(req, res, 200, `Updated event: ${event.title} (ID: ${eventId})`, "event", parseInt(eventId));
+    //send notification
+    await notifyEventUsers(event,'updated');
+    
     return res.status(200).json({ message: "Event updated successfully", event });
   } catch (err) {
     console.error(err);
@@ -257,6 +304,7 @@ exports.deleteEvent = async (req, res) => {
 
 exports.getAllEvents = async (req, res) => {
   try {
+    
     const events = await Events.findAll({
       include: [{
         model: EventParticipation,

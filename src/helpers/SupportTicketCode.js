@@ -10,7 +10,7 @@ exports.generateSupportTicketCode = async (propertyId, roomNumber) => {
         order: [["createdAt", "DESC"]],
         attributes: ["supportCode"],
         transaction: t,
-        lock: t.LOCK.UPDATE, // ✅ Prevents concurrent duplicates
+        lock: t.LOCK.UPDATE, //  Prevents concurrent duplicates
       });
 
       // Extract sequence number from last ticket code

@@ -125,8 +125,6 @@ exports.verifyProfileOTP = async (req, res) => {
   }
 };
 
-
-
 //register time (send otp)
 exports.sendOTP = async (req, res) => {
   try {
@@ -409,6 +407,10 @@ exports.editUserProfile = async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
 
+     // Prevent accidental overwrite of verified flags
+    delete updates.isEmailVerified;
+    delete updates.isPhoneVerified;
+
     const user = await User.findByPk(id);
     if (!user) {
       await logApiCall(req, res, 404, `Updated user profile - user not found (ID: ${id})`, "user", parseInt(id));
@@ -418,9 +420,9 @@ exports.editUserProfile = async (req, res) => {
     // Phone update check first
     if (updates.phone !== undefined && updates.phone !== null) {
 
-      const newPhone = updates.phone;
+      const newPhone = updates.phone.trim();
 
-      if (user.isPhoneVerified) {
+      if (user.isPhoneVerified && newPhone !== user.phone) {
         await logApiCall(req, res, 400, `Updated user profile - phone cannot be edited after verification (ID: ${id})`, "user", parseInt(id));
         return res.status(400).json({
           message: "Phone number cannot be edited after verification"
