@@ -45,7 +45,7 @@ exports.joinEvent = async (req, res) => {
   }
 };
 
-// All Events
+// All Events for user
 
 exports.getEvents = async (req, res) => {
   try {
@@ -55,7 +55,10 @@ exports.getEvents = async (req, res) => {
     const offset = (page - 1) * limit;
 
     const user = await User.findByPk(userId, {
-      include: [{ model: Booking, as: 'bookings', include: [{ model: Rooms, as: "room", include: [{ model: Property, as: "property" }] }] }]
+      include: [{ model: Booking,
+         as: 'bookings',
+          include: [{ model: Rooms, as: "room", 
+            include: [{ model: Property, as: "property" }] }] }]
     })
 
     if (!user) {

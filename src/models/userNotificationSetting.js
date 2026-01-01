@@ -20,14 +20,10 @@ const UserNotificationSetting = sequelize.define(
       onDelete: "CASCADE",
       onUpdate: "CASCADE"
     },
-    pushEnabled: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: true
-    },
-    notificationPreferences: {
-      type: DataTypes.JSON,
-      defaultValue: {} // initially empty
-    }
+    pushNotifications: { type: DataTypes.BOOLEAN, defaultValue: true },
+    enableAll: { type: DataTypes.BOOLEAN, defaultValue: true },
+    newsletters: { type: DataTypes.BOOLEAN, defaultValue: true },
+    email: { type: DataTypes.BOOLEAN, defaultValue: true },
   },
   {
     tableName: "user_notification_settings",

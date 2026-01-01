@@ -3,7 +3,9 @@ const UserNotificationSettings = require('../models/userNotificationSetting');
 const sequelize = require('../config/database');
 const admin = require('../Auth/firebase');
 const { logApiCall } = require("../helpers/auditLog");
+const Notification = require('../models/notifications');
 
+//store fcm token
 exports.storeFcmToken = async (req, res) => {
     try {
         const { fcmToken } = req.body;
@@ -36,7 +38,7 @@ exports.storeFcmToken = async (req, res) => {
 //store notification setting first
 exports.saveNotificationSettings = async (req, res) => {
     try {
-        const { pushEnabled, notificationPreferences } = req.body;
+        const {pushNotifications, enableAll, newsletters, email } = req.body;
         const userId = req.user.id;
 
         let settings = await UserNotificationSettings.findOne({ where: { userId } });
@@ -44,19 +46,23 @@ exports.saveNotificationSettings = async (req, res) => {
         if (!settings) {
             settings = await UserNotificationSettings.create({
                 userId,
-                pushEnabled: pushEnabled ?? true,
-                notificationPreferences: notificationPreferences ?? {}
+                pushNotifications: pushNotifications ?? true,
+                enableAll: enableAll ?? true,
+                newsletters: newsletters ?? true,
+                email: email ?? true
             });
             return res.status(201).json({
                 success: true,
                 created: true,
                 message: "Notification settings created successfully",
-                data: createdSettings
+                data: settings
             });
         } else {
             await settings.update({
-                ...(pushEnabled !== undefined && { pushEnabled }),
-                ...(notificationPreferences !== undefined && { notificationPreferences })
+                ...(pushNotifications !== undefined && { pushNotifications }),
+                ...(enableAll !== undefined && { enableAll }),
+                ...(newsletters !== undefined && { newsletters }),
+                ...(email !== undefined && { email })
             });
         }
         return res.status(200).json({ success: true, message: "Notification settings updated successfully" });
@@ -65,66 +71,30 @@ exports.saveNotificationSettings = async (req, res) => {
     }
 }
 
-//push notification 
-exports.sendPushNotification = async (req, res) => {
+//fetch notification api for user
+
+exports.getNotifications = async (req, res) => {
     try {
-        const { title, body, data, type } = req.body;
-        const userId = req.user.id;
+        const userId = req.user.id; 
 
-        const user = await User.findByPk(userId);
-        if (!user) {
-            await logApiCall(req, res, 404, "User not found", "notification", userId);
-            return res.status(404).json({ success: false, message: "User not found" });
-        }
-
-        if (!user.fcmToken) {
-            await logApiCall(req, res, 200, "FCM token missing", "notification", userId);
-            return res.status(200).json({ success: true, sent: false, message: "FCM token missing" });
-        }
-
-        // Fetch or create notification settings
-        let settings = await UserNotificationSettings.findOne({ where: { userId } });
-        if (!settings) {
-            settings = await UserNotificationSettings.create({
-                userId,
-                pushEnabled: true,
-                notificationPreferences: {}
-            });
-        }
-
-        //check for global push disable
-        if (!settings.pushEnabled) {
-            await logApiCall(req, res, 200, `Notification skipped: push disabled`, "notification", userId);
-            return res.status(200).json({ success: true, sent: false });
-        }
-        // Type-specific check from JSON
-        if (type && settings.notificationPreferences?.[type] === false) {
-            await logApiCall(req, res, 200, `${type} notification skipped - user disabled`, "notification", userId);
-            return res.status(200).json({ success: true, sent: false });
-        }
-        const message = {
-            token: user.fcmToken,
-            notification: { title, body },
-            data: data || {}, // optional key value data
-        };
-        const response = await admin.messaging().send(message);
+        // Fetch only user's own notifications
+        const notifications = await Notification.findAll({
+            where: { userId: userId },  
+            order: [['createdAt', 'DESC']],
+            attributes: ['id', 'title', 'message', 'notificationKey', 'createdAt']
+        });
 
         return res.status(200).json({
             success: true,
-            message: "Notification sent successfully",
-            response
+            data: notifications
         });
-
     } catch (error) {
-        const firebaseError = error?.errorInfo?.code;
-        if (firebaseError) {
-            const cleanMsg = firebaseError.replace('messaging/', '').replace(/-/g, ' ');
-            return res.status(500).json({ success: false, message: `Firebase Error: ${cleanMsg}`, error: firebaseError });
-        }
-        await logApiCall(req, res, 500, "Error occurred while sending push notification", "notification", req.user?.id || 0);
-        console.log(error.message);
-        return res.status(500).json({ success: false, message: "server error", error: error.message })
-
+        console.error('Error fetching notifications:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Server error',
+            error: error.message
+        });
     }
-}
+};
 
