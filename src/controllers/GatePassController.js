@@ -236,11 +236,11 @@ exports.getUserGatePasses = async (req, res) => {
 // Get children's gate passes (for parent)
 exports.getAllGatePasses = async (req, res) => {
   try {
-    const parentEmail = req.user.email;
-
+    const identifier = req.user.identifier;
+    const studentSearchCriteria = identifier.includes('@') ? { parentEmail: identifier } : { parentMobile: identifier };
     // Check if user is a parent (loginAs === "parent" or has children)
     const children = await User.findAll({
-      where: { parentEmail: parentEmail },
+      where: studentSearchCriteria,
       attributes: ["id"],
     });
 
@@ -371,13 +371,14 @@ exports.getAdminGatePasses = async (req, res) => {
 // Approve or reject gate pass (parent only)
 exports.approveOrRejectGatePass = async (req, res) => {
   try {
-    const parentEmail = req.user.email;
+    const identifier = req.user.identifier;
+    const studentSearchCriteria = identifier.includes('@') ? { parentEmail: identifier } : { parentMobile: identifier };
     const gatePassId = req.params.id;
     const { status } = req.body;
 
     // Check if user is a parent
     const children = await User.findAll({
-      where: { parentEmail: parentEmail },
+      where: studentSearchCriteria,
       attributes: ["id"],
     });
 
@@ -467,7 +468,7 @@ exports.approveOrRejectGatePass = async (req, res) => {
     }
 
     gatePass.status = status;
-    gatePass.approvedBy = parentEmail;
+    gatePass.approvedBy = identifier;
     await gatePass.save();
 
     await logApiCall(

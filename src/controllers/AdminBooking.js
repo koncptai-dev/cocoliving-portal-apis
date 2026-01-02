@@ -147,9 +147,28 @@ exports.cancelBooking = async (req, res) => {
     }
 
     booking.status = "cancelled";
-    booking.cancelReason = reason || null;
+    booking.adminCancelReason = reason || null;
     await booking.save();
-
+    const updatedBooking = await Booking.findByPk(booking.id, {
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'fullName', 'email', 'phone', 'gender']
+        },
+        {
+          model: Rooms,
+          as: 'room',
+          attributes: ['id', 'roomNumber'],
+          include: [{ model: Property, as: 'property' }]
+        },
+        {
+          model: PropertyRateCard,
+          as: 'rateCard',
+          include: [{ model: Property, as: 'property' }]
+        }
+      ]
+    });
     if (booking.roomId) {
       const room = await Rooms.findByPk(booking.roomId);
       if (room) {
@@ -168,13 +187,149 @@ exports.cancelBooking = async (req, res) => {
     await logApiCall(req, res, 200, `Cancelled booking (ID: ${bookingId})`, "booking", parseInt(bookingId));
     return res.status(200).json({
       message: "Booking cancelled successfully",
-      booking
+      booking: updatedBooking
     });
 
   } catch (err) {
     console.error("cancelBooking error:", err);
     await logApiCall(req, res, 500, "Error occurred while cancelling booking", "booking", parseInt(req.params.bookingId) || 0);
     return res.status(500).json({ message: "Internal server error", error: err.message });
+  }
+};
+
+exports.approveCancellation = async (req, res) => {
+  try {
+    const bookingId = req.params.bookingId;
+    const { adminReason } = req.body || {};
+
+    const booking = await Booking.findByPk(bookingId);
+
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+
+    if (booking.cancelRequestStatus !== 'PENDING') {
+      return res.status(400).json({
+        message: "No pending cancellation request",
+      });
+    }
+
+    booking.status = 'cancelled';
+    booking.cancelRequestStatus = 'APPROVED';
+    booking.adminCancelReason = adminReason || null;
+    booking.checkOutDate = booking.cancelEffectiveCheckOutDate;
+    await booking.save();
+    const updatedBooking = await Booking.findByPk(booking.id, {
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'fullName', 'email', 'phone', 'gender']
+        },
+        {
+          model: Rooms,
+          as: 'room',
+          attributes: ['id', 'roomNumber'],
+          include: [{ model: Property, as: 'property' }]
+        },
+        {
+          model: PropertyRateCard,
+          as: 'rateCard',
+          include: [{ model: Property, as: 'property' }]
+        }
+      ]
+    });
+    if (booking.roomId) {
+      const room = await Rooms.findByPk(booking.roomId);
+
+      if (room) {
+        const activeCount = await Booking.count({
+          where: {
+            roomId: room.id,
+            status: { [Op.in]: ['approved', 'active'] },
+          },
+        });
+
+        room.status =
+          activeCount >= room.capacity ? 'booked' : 'available';
+
+        await room.save();
+      }
+    }
+    await logApiCall(
+      req,
+      res,
+      200,
+      `Admin approved cancellation for booking ${booking.id}`,
+      "booking",
+      booking.id
+    );
+
+    return res.json({
+      message: "Cancellation approved",
+      booking: updatedBooking,
+    });
+
+  } catch (err) {
+    console.error("approveCancellation error:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+exports.rejectCancellation = async (req, res) => {
+  try {
+    const bookingId = req.params.bookingId;
+    const booking = await Booking.findByPk(bookingId);
+
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+
+    if (booking.cancelRequestStatus !== 'PENDING') {
+      return res.status(400).json({
+        message: "No pending cancellation request",
+      });
+    }
+
+    booking.cancelRequestStatus = 'REJECTED';
+    await booking.save();
+    const updatedBooking = await Booking.findByPk(booking.id, {
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'fullName', 'email', 'phone', 'gender']
+        },
+        {
+          model: Rooms,
+          as: 'room',
+          attributes: ['id', 'roomNumber'],
+          include: [{ model: Property, as: 'property' }]
+        },
+        {
+          model: PropertyRateCard,
+          as: 'rateCard',
+          include: [{ model: Property, as: 'property' }]
+        }
+      ]
+    });
+    await logApiCall(
+      req,
+      res,
+      200,
+      `Admin rejected cancellation for booking ${booking.id}`,
+      "booking",
+      booking.id
+    );
+
+    return res.json({
+      message: "Cancellation request rejected",
+      booking: updatedBooking,
+    });
+
+  } catch (err) {
+    console.error("rejectCancellation error:", err);
+    return res.status(500).json({ message: "Internal server error" });
   }
 };
 
