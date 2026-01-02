@@ -200,7 +200,151 @@ padding:16px;font-size:11px;">
   };
 }
 
+function refundInitiatedEmail({ userName, bookingId, propertyName, refundAmount, reason }) {
+  return {
+    attachments: baseAttachments,
+    html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8" /></head>
+<body style="margin:0;background:#f3efe9;font-family:'Rethink Sans','Inter','Segoe UI',Arial,sans-serif;">
+<table width="100%" align="center"><tr><td align="center">
+<table width="600" style="max-width:600px;">
+ 
+<tr>
+<td align="center" style="background-color:#4F3421;background-image:url(cid:bg);background-repeat:repeat;background-size:400px 400px;padding:28px 28px 90px;">
+<img src="cid:logo" width="140" />
+</td>
+</tr>
+ 
+<tr>
+<td align="center" style="background:#f3efe9;padding:0 24px 40px;">
+<div style="background:#f3efe9;border-radius:80px 80px 0 0;padding:40px 24px 0;max-width:520px;margin:-60px auto 0;">
+<h1 style="margin:0 0 16px;font-size:34px;font-weight:700;color:#28a745;">
+      Refund Initiated 💸
+</h1>
+<p style="max-width:420px;margin:0 auto 28px;font-size:15px;line-height:1.6;">
+      Hi ${userName},<br/><br/>
+      Your refund has been initiated for the cancelled booking.
+      The amount will be credited back to your original payment method soon.
+</p>
+ 
+    <div style="background:#ffffff;padding:24px;border-radius:12px;margin:24px 0;text-align:left;font-size:15px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+<strong>Booking ID:</strong> #${bookingId}<br/>
+<strong>Property:</strong> ${propertyName}<br/>
+<strong>Refund Amount:</strong> ₹${refundAmount.toLocaleString('en-IN')}<br/>
+      ${reason ? `<strong>Reason:</strong> ${reason}<br/>` : ''}
+<br/>
+<em>The amount will be credited within 5-7 business days depending on your bank/payment method.</em>
+</div>
+ 
+    <p style="font-size:15px;margin:20px 0;">
+      Thank you for choosing Coco Living. We hope to welcome you soon!
+</p>
+ 
+    <a href="https://staging.cocoliving.in/" style="display:inline-block;padding:14px 32px;background:#D36517;color:#fff;text-decoration:none;border-radius:24px;font-weight:600;">
+      Explore Rooms Again
+</a>
+</div>
+</td>
+</tr>
+ 
+<!-- Footer -->
+<tr>
+<td align="center" style="background:#4a2f1b;color:#fff;padding:28px 20px;font-size:12px;line-height:1.6;">
+<div>© 2025 COCO LIVING</div>
+<div>The Spark Tower S.G. Highway, Ahmedabad</div>
+<div>
+<img src="cid:phone" width="9"/> +91-7041454455
+&nbsp;
+<img src="cid:mail" width="10"/> info@cocoliving.in
+</div>
+<div style="margin:10px 0;">
+<a href="https://cocoliving.in/privacy-policy" style="color:#fff;">Privacy Policy</a>
+&nbsp;&nbsp;
+<a href="https://cocoliving.in/terms-and-conditions" style="color:#fff;">Terms & Conditions</a>
+</div>
+<div>
+<img src="cid:instagram" width="18"/>
+<img src="cid:facebook" width="18"/>
+<img src="cid:linkedin" width="18"/>
+</div>
+</td>
+</tr>
+ 
+</table>
+</td></tr></table>
+</body>
+</html>
+    `,
+  };
+}
+
+function refundCompletedEmail({ userName, bookingId, propertyName, refundAmount }) {
+  return {
+    attachments: baseAttachments,
+    html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8" /></head>
+<body style="margin:0;background:#f3efe9;font-family:'Rethink Sans','Inter','Segoe UI',Arial,sans-serif;">
+<table width="100%" align="center"><tr><td align="center">
+<table width="600" style="max-width:600px;">
+ 
+<tr>
+<td align="center" style="background-color:#4F3421;background-image:url(cid:bg);padding:28px 28px 90px;">
+<img src="cid:logo" width="140" />
+</td>
+</tr>
+ 
+<tr>
+<td align="center" style="background:#f3efe9;padding:0 24px 40px;">
+<div style="background:#f3efe9;border-radius:80px 80px 0 0;padding:40px 24px 0;max-width:520px;margin:-60px auto 0;">
+<h1 style="margin:0 0 16px;font-size:34px;font-weight:700;color:#28a745;">
+      Refund Completed ✅
+</h1>
+<p style="max-width:420px;margin:0 auto 28px;font-size:15px;line-height:1.6;">
+      Hi ${userName},<br/><br/>
+      Great news! Your refund has been successfully processed and credited to your account.
+</p>
+ 
+    <div style="background:#ffffff;padding:24px;border-radius:12px;margin:24px 0;text-align:left;font-size:15px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+<strong>Booking ID:</strong> #${bookingId}<br/>
+<strong>Property:</strong> ${propertyName}<br/>
+<strong>Refunded Amount:</strong> ₹${refundAmount.toLocaleString('en-IN')}<br/><br/>
+      The amount should now reflect in your bank account or original payment method.
+</div>
+ 
+    <p style="font-size:15px;margin:20px 0;">
+      We hope to see you again soon at Coco Living!
+</p>
+ 
+    <a href="https://staging.cocoliving.in/" style="display:inline-block;padding:14px 32px;background:#D36517;color:#fff;text-decoration:none;border-radius:24px;font-weight:600;">
+      Book Your Next Stay
+</a>
+</div>
+</td>
+</tr>
+ 
+<!-- Same footer -->
+<tr>
+<td align="center" style="background:#4a2f1b;color:#fff;padding:28px 20px;font-size:12px;line-height:1.6;">
+<div>© 2025 COCO LIVING</div>
+<!-- ... same as above ... -->
+</td>
+</tr>
+ 
+</table>
+</td></tr></table>
+</body>
+</html>
+    `,
+  };
+}
+
 module.exports = {
   welcomeEmail,
   otpEmail,
+  refundInitiatedEmail,
+  refundCompletedEmail
 };

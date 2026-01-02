@@ -7,7 +7,7 @@ router.post('/initiate', authenticateToken, BookingPaymentController.initiate);
 
 router.post('/initiate-remaining', authenticateToken, BookingPaymentController.initiateRemaining);
 
-router.post('/refund', authenticateToken, BookingPaymentController.refund);
+router.post('/refund', authenticateToken, BookingPaymentController.initiateRefund);
 
 router.get('/refund/:merchantRefundId/status', authenticateToken, BookingPaymentController.getRefundStatus);
 

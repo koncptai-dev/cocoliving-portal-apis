@@ -3,9 +3,13 @@ const moment = require('moment');
 
 const { createPayment , initiateRefund , refundStatus , createMobileOrder } = require('../utils/phonepe/phonepeApi');
 const phonepeConfig = require('../utils/phonepe/phonepeConfig');
+const { refundInitiatedEmail } = require('../utils/emailTemplates/emailTemplates');
+const { mailsender } = require('../utils/emailService');
 
+const User = require('../models/user');
 const Booking = require('../models/bookRoom');
 const PaymentTransaction = require('../models/paymentTransaction');
+const Property = require('../models/property');
 const PropertyRateCard = require('../models/propertyRateCard');
 const BookingExtension = require('../models/bookingExtension');
 const UserKYC = require('../models/userKYC');
@@ -560,7 +564,7 @@ exports.initiateExtension = async (req, res) => {
   }
 };
 
-exports.refund = async (req, res) => {
+exports.initiateRefund = async (req, res) => {
   try {
     const actorId = req.user?.id;
     const { transactionId, amountRupees } = req.body;
@@ -644,17 +648,34 @@ exports.refund = async (req, res) => {
 
     draftRefund.rawResponse = Object.assign({}, draftRefund.rawResponse || {}, { phonepeRefundResponse: phonepeResp, merchantRefundId: finalMerchantRefundId });
 
-    const returnedState = (phonepeResp && phonepeResp.body && (phonepeResp.body.state || '')).toString().toUpperCase();
-
-    if (phonepeResp && phonepeResp.success && phonepeResp.body && (returnedState === 'COMPLETED' || returnedState === 'CONFIRMED')) {
-      draftRefund.status = 'SUCCESS';
-    } else if (phonepeResp && phonepeResp.success && phonepeResp.body && returnedState === 'PENDING') {
-      draftRefund.status = 'PENDING';
-    } else {
-      draftRefund.status = 'FAILED';
-    }
+    draftRefund.status = 'PENDING';
 
     await draftRefund.save();
+
+    const user = await User.findByPk(originalTx.userId);
+    let propertyName = '-';
+
+    if (originalTx.bookingId) {
+      const booking = await Booking.findByPk(originalTx.bookingId, {
+        include: [{ model: Property, as: 'property' }]
+      });
+      propertyName = booking?.property?.name || '-';
+    }
+
+    const email = refundInitiatedEmail({
+      userName: user.fullName || 'Guest',
+      bookingId: originalTx.bookingId,
+      propertyName,
+      refundAmount: amountRupees,
+      reason: 'Booking cancelled'
+    });
+
+    await mailsender(
+      user.email,
+      'Refund Initiated - Coco Living',
+      email.html,
+      email.attachments
+    );
 
     await logApiCall(req, res, 200, `Initiated refund (Refund ID: ${draftRefund.id}, Transaction ID: ${transactionId}, Amount: ₹${amountRupees})`, "payment", actorId);
     return res.json({ success: true, message: 'Refund initiated', refundTransaction: draftRefund });
