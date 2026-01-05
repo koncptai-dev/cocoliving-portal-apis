@@ -6,8 +6,14 @@ const moment = require('moment');
 const PaymentTransaction = require('../models/paymentTransaction');
 const Booking = require('../models/bookRoom');
 const BookingExtension = require('../models/bookingExtension');
+const User = require('../models/user');
+const Property = require('../models/property');
+const RateCard = require('../models/propertyRateCard');
 
 const phonepeConfig = require('../utils/phonepe/phonepeConfig');
+const { logActivity } = require('../helpers/activityLogger');
+const { refundCompletedEmail } = require('../utils/emailTemplates/emailTemplates');
+const { mailsender } = require('../utils/emailService');
 
 function computeExpectedWebhookHex() {
   const u = (phonepeConfig.WEBHOOK_USERNAME || '').trim();
@@ -26,6 +32,7 @@ function extractAndVerifyAuth(req) {
   const expected = computeExpectedWebhookHex();
   return String(received).toLowerCase() === String(expected).toLowerCase();
 }
+
 
 function parseRoot(req) {
   if (req.rawBodyString) {
@@ -62,6 +69,42 @@ function isRefundEvent(ctx) {
     ctx.merchantRefundId ||
     ctx.eventType.startsWith('pg.refund')
   );
+}
+
+async function sendRefundCompletedEmailIfNeeded(refundTx) {
+  if (!refundTx) return;
+  if (refundTx.status !== 'SUCCESS') return;
+  if (refundTx.rawResponse?.refundSuccessEmailSent) return;
+
+  const user = await User.findByPk(refundTx.userId);
+  if (!user || !user.email) return;
+
+  let propertyName = '-';
+
+  if (refundTx.bookingId) {
+    const booking = await Booking.findByPk(refundTx.bookingId, {
+      include: [{ model: Property, as: 'property' }]
+    });
+    propertyName = booking?.property?.name || '-';
+  }
+  const email = refundCompletedEmail({
+    userName: user.fullName || 'Guest',
+    bookingId: refundTx.bookingId,
+    propertyName,
+    refundAmount: refundTx.amount / 100
+  });
+
+  await mailsender(
+    user.email,
+    'Refund Completed - Coco Living',
+    email.html,
+    email.attachments
+  );
+  refundTx.rawResponse = {
+    ...(refundTx.rawResponse || {}),
+    refundSuccessEmailSent: true
+  };
+  await refundTx.save();
 }
 
 async function recomputeBookingTotals(booking, t = null) {
@@ -135,6 +178,10 @@ async function handleRefund(ctx) {
 
   await refundTx.save();
 
+  if (refundTx.status === 'SUCCESS' ) {
+    try{await sendRefundCompletedEmailIfNeeded(refundTx);}
+    catch(err){ console.error('[REFUND EMAIL] Failed to send refund email',err)};
+  }
   if (originalOrderId) {
     const origTx = await PaymentTransaction.findOne({
       where: { merchantOrderId: originalOrderId }
@@ -206,6 +253,20 @@ async function createBookingFromPending(tx, t) {
   tx.bookingId = booking.id;
   await tx.save({ transaction: t });
 
+  const user = await User.findByPk(tx.userId , {transaction: t});
+  if(booking){
+    await logActivity({
+      userId: tx.userId,
+      name: user?.fullName || 'System/Webhook',
+      role: user.role,
+      action: "New Booking",
+      entityType: "Booking",
+      entityId: booking.id,
+      details: { property: pb.propertyId,
+        roomType: pb.roomType,
+        duration: pb.duration },
+    });
+  }
   await recomputeBookingTotals(booking, t);
   return booking;
 }

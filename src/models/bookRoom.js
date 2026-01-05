@@ -98,6 +98,23 @@ const Booking = sequelize.define(
       allowNull: false,
       defaultValue: 'NOT_INITIATED'
     },
+    cancelRequestStatus: {
+      type: DataTypes.ENUM('NONE','PENDING','APPROVED','REJECTED'),
+      allowNull: false,
+      defaultValue:'NONE',
+    },
+    userCancelReason: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    adminCancelReason: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    cancelEffectiveCheckOutDate: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+    },
     meta: {
       type: DataTypes.JSON,
       allowNull: true,

@@ -8,6 +8,7 @@ const admin = require("./routes/AdminRoutes");
 const User = require("./routes/UserRoute");
 const Rooms = require("./routes/RoomsRoutes");
 const Tickets = require("./routes/SupportTicketRoutes");
+const TicketLogs = require("./routes/TicketLogsRoutes");
 const Events = require("./routes/EventRoutes");
 const Common = require("./routes/CommonRoutes");
 const UserByAdminRoutes = require("./routes/UserByAdminRoutes");
@@ -56,6 +57,7 @@ app.use("/api/admin", admin);
 app.use("/api/user", User);
 app.use("/api/rooms", Rooms);
 app.use("/api/tickets", Tickets);
+app.use("/api/ticket-logs", TicketLogs)
 app.use("/api/events", Events);
 app.use("/api/common", Common);
 app.use("/api/user-by-superadmin", UserByAdminRoutes);
