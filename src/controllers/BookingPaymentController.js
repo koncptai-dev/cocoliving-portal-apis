@@ -92,7 +92,7 @@ async function checkOverlappingBooking(userId, checkInDate, checkOutDate) {
 exports.initiate = async (req, res) => {
   try {
     const userId = req.user?.id;
-    // await assertUserKycVerified(userId);
+    await assertUserKycVerified(userId);
     const isMobile = req.headers['x-client'] === 'mobile';
     if (!userId) {
       await logApiCall(req, res, 400, "Initiated booking payment - unauthorized access", "payment");
