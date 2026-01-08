@@ -11,7 +11,7 @@ const path = require('path');
 const { sendPushNotification } = require("../helpers/notificationHelper");
 
 // Helper to send notifications for an event
-async function notifyEventUsers(event,action = 'created') {
+async function notifyEventUsers(event, action = 'created') {
   let users;
 
   if (event.propertyId === 'all') {
@@ -34,7 +34,7 @@ async function notifyEventUsers(event,action = 'created') {
       }]
     });
   }
-const title = action === 'created' ? "New Event Created" : "Event Updated";
+  const title = action === 'created' ? "New Event Created" : "Event Updated";
 
   for (const user of users) {
     if (!user.fcmToken) continue;
@@ -113,12 +113,12 @@ exports.createEvent = async (req, res) => {
     await logApiCall(req, res, 201, `Created new event: ${title} (ID: ${newEvent.id})`, "event", newEvent.id);
 
     //send notification
-    await notifyEventUsers(newEvent,'created');
+    await notifyEventUsers(newEvent, 'created');
 
     return res.status(201).json(newEvent);
   } catch (err) {
     await logApiCall(req, res, 500, "Error occurred while creating event", "event");
-    return res.status(500).json({ message: "Internal server error" ,error: err.message});
+    return res.status(500).json({ message: "Internal server error", error: err.message });
   }
 }
 
@@ -207,8 +207,8 @@ exports.updateEvents = async (req, res) => {
 
     await logApiCall(req, res, 200, `Updated event: ${event.title} (ID: ${eventId})`, "event", parseInt(eventId));
     //send notification
-    await notifyEventUsers(event,'updated');
-    
+    await notifyEventUsers(event, 'updated');
+
     return res.status(200).json({ message: "Event updated successfully", event });
   } catch (err) {
     console.error(err);
@@ -304,8 +304,11 @@ exports.deleteEvent = async (req, res) => {
 
 exports.getAllEvents = async (req, res) => {
   try {
-    
-    const events = await Events.findAll({
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const { rows: events, count } = await Events.findAndCountAll({
       include: [{
         model: EventParticipation,
         include: [{
@@ -317,7 +320,9 @@ exports.getAllEvents = async (req, res) => {
         as: "property",
         attributes: ["id", "name"]
       }
-      ]
+      ],
+      order: [['createdAt', 'DESC']],
+      limit, offset
     });
     const formatted = events.map(event => {
       return {
@@ -334,8 +339,10 @@ exports.getAllEvents = async (req, res) => {
       };
     });
 
+    const totalPages = Math.ceil(count / limit);
+
     await logApiCall(req, res, 200, "Viewed all events list", "event");
-    res.json(formatted);
+    res.json({events: formatted,totalRecords: count,totalPages,currentPage: page,limit});
 
   } catch (err) {
     await logApiCall(req, res, 500, "Error occurred while fetching all events", "event");

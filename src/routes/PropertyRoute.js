@@ -8,7 +8,7 @@ const upload = require('../middleware/upload');
 
 
 router.post("/add", upload.any(),validateProperty, validate, authMiddleware, propertyController.createProperty);
-router.get("/getAll", propertyController.getProperties);
+router.get("/getAll",authMiddleware, propertyController.getProperties);
 router.put("/edit/:id",upload.any(),editPropertyValidate, validate, authMiddleware, propertyController.editProperties);
 router.delete("/delete/:id", authMiddleware, propertyController.deleteProperty);
 router.delete("/deleteRateCard", authMiddleware, propertyController.deleteRateCard);

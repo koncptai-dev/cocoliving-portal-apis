@@ -22,7 +22,8 @@ exports.getAllBookings=async(req,res)=>{
       as: "rateCard",     
       include: [{ model: Property, as: "property" }] 
     }
-    ]
+    ],
+    order: [["createdAt", "DESC"]],
     })
 
     await logApiCall(req, res, 200, "Viewed all bookings list", "booking");
