@@ -108,7 +108,7 @@ exports.verifyProfileOTP = async (req, res) => {
       );
     }
 
-   const user = await User.findByPk(userId);
+    const user = await User.findByPk(userId);
 
     return res.status(200).json({
       success: true,
@@ -302,12 +302,30 @@ exports.registerUser = async (req, res) => {
       });
     }
 
-    // Check if user already exists
-    let userExist = await User.findOne({ where: { email } });
+    // Check if user already exists with same email or phone
+    let userExist = await User.findOne({
+      where: {
+        [Op.or]: [{ email },
+        { phone }]
+      }
+    });
 
     if (userExist) {
-      await logApiCall(req, res, 400, "Failed to register user - email already registered", "user");
-      return res.status(400).json({ message: "Email already registered. Please login." });
+      if (userExist.phone === phone) {
+        await logApiCall(req, res, 400, "Failed to register user - phone already registered", "user");
+        return res.status(400).json({
+          success: false,
+          message: "Mobile number already registered. Please login."
+        });
+      }
+
+      if (userExist.email === email) {
+        await logApiCall(req, res, 400, "Failed to register user - email already registered", "user");
+        return res.status(400).json({
+          success: false,
+          message: "Email already registered. Please login."
+        });
+      }
     }
 
     //if usertype=student add parent details
@@ -407,7 +425,7 @@ exports.editUserProfile = async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
 
-     // Prevent accidental overwrite of verified flags
+    // Prevent accidental overwrite of verified flags
     delete updates.isEmailVerified;
     delete updates.isPhoneVerified;
 
@@ -430,6 +448,20 @@ exports.editUserProfile = async (req, res) => {
       }
 
       if (newPhone !== user.phone) {
+        const phoneExists = await User.findOne({
+          where: {
+            phone: newPhone,
+            id: { [Op.ne]: user.id }
+          }
+        });
+
+        if (phoneExists) {
+          await logApiCall(req, res, 400, `Duplicate phone update attempt (ID: ${id})`, "user", parseInt(id));
+          return res.status(400).json({
+            message: "Mobile number already registered with another account"
+          });
+        }
+        
         user.phone = newPhone.trim();
         user.isPhoneVerified = false;
       }
