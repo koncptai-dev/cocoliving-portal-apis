@@ -9,6 +9,7 @@ const path = require('path');
 const PropertyRateCard = require('../models/propertyRateCard');
 const { log } = require('console');
 const { logApiCall } = require("../helpers/auditLog");
+const UserPermission = require('../models/userPermissoin');
 
 //helper for preventing adding image into property and room Image
 const deleteFiles = (files) => {
@@ -88,6 +89,33 @@ exports.createProperty = async (req, res) => {
         }
         await PropertyRateCard.bulkCreate(rateCardsToCreate, { transaction: t });
       }
+    }
+
+    //admin created property added to permission
+    const permission = await UserPermission.findOne({
+      where: { userId: req.user.id },
+      transaction: t
+    });
+
+    if (permission) {
+      let updatedProps = permission.properties ? [...permission.properties] : [];
+
+      // push as NUMBER not string
+      updatedProps.push(Number(property.id));
+
+      // remove duplicates
+      updatedProps = [...new Set(updatedProps)];
+
+      console.log("BEFORE UPDATE =>", permission.properties);
+      console.log("UPDATED PROPERTIES ====>", updatedProps);
+
+
+      //update permission
+      await permission.update({ properties: updatedProps }, { transaction: t });
+      console.log("UPDATED PROPERTIES ====> ", updatedProps);
+      const refreshed = await UserPermission.findOne({ where: { userId: req.user.id }, transaction: t });
+      console.log("REFRESHED ROW =>", refreshed.properties);
+
     }
 
     await t.commit();
@@ -279,24 +307,45 @@ exports.editProperties = async (req, res) => {
   }
 };
 
-//for admin
+//for admin and superadmin viewing properties
 exports.getProperties = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
-    const { rows: properties, count } = await Property.findAndCountAll({
+    const queryOptions = {
       order: [["createdAt", "DESC"]],
       include: [{ model: PropertyRateCard, as: "rateCard" }],
+      distinct: true,
+      col: 'id',
       limit,
       offset
-    });
+    };
+
+    if (req.user.role === 3) { // admin
+      const userPermissions = await UserPermission.findOne({
+        where: { userId: req.user.id }
+      });
+      const accessibleProperties = userPermissions?.properties || [];
+
+      // If admin has no properties, return empty
+      if (accessibleProperties.length === 0) {
+        return res.json({ properties: [], currentPage: page, totalPages: 0 });
+      }
+      queryOptions.where = { id: { [Op.in]: accessibleProperties } }; // only show allowed properties 
+    }
+    const { rows: properties, count } = await Property.findAndCountAll(queryOptions);
     const totalPages = Math.ceil(count / limit);
-    //for frontend
+
+    // Log API call
     await logApiCall(req, res, 200, "Viewed properties list", "property");
+
     res.json({ properties, currentPage: page, totalPages });
+
   } catch (error) {
+    console.log(error);
+
     await logApiCall(req, res, 500, "Error occurred while fetching properties", "property");
     res.status(500).json({ message: "Failed to fetch properties" });
   }
@@ -403,7 +452,7 @@ exports.deleteProperty = async (req, res) => {
 
     // --- Delete property and room images from server ---
     const propertyImages = property.images || []; // if Property has images column
-    const roomImages = property.rooms.flatMap(room => room.images || []);
+    const roomImages = (property.rooms || []).flatMap(room => room.images || []);
     const allImages = [...propertyImages, ...roomImages];
 
     allImages.forEach(imgPath => {

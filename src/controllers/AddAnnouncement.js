@@ -89,20 +89,29 @@ exports.editAnnouncement = async (req, res) => {
     return res.status(500).json({ message: "Error updating announcement", error: err.message });
   }
 }
-
+//admin
 exports.getAllAnnouncement = async (req, res) => {
   try {
 
-    const announcements = await Announcement.findAll({
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const { rows: announcements, count } = await Announcement.findAndCountAll({
       include: [{
         model: Property, as: "property", attributes: ['id', 'name']
-      }]
+      }],
+      order: [['createdAt', 'DESC']],
+      limit,
+      offset
     });
+
     await logApiCall(req, res, 200, "Viewed all announcements list", "announcement");
     return res.status(200).json({
       message: "Announcements retrieved successfully",
-      announcements,
+      announcements, currentPage: page, totalPages: Math.ceil(count / limit), totalAnnouncements: count
     });
+    
   } catch (err) {
     await logApiCall(req, res, 500, "Error occurred while retrieving announcements", "announcement");
     return res.status(500).json({ message: "Error retrieving announcements", error: err.message });

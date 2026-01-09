@@ -322,8 +322,8 @@ exports.validateProperty = [
     .optional({ checkFalsy: true })
     .isString()
     .withMessage("Amenities must be a string")
-    .matches(/^[A-Za-z\s,]+$/)
-    .withMessage("Amenities must contain only letters and spaces"),
+    .matches(/^[A-Za-z0-9\s,]+$/)
+    .withMessage("Amenities can only contain letters, numbers, commas, and spaces"),
   check("status").optional().isString().withMessage("Status must be a string"),
 ];
 
@@ -360,8 +360,8 @@ exports.editPropertyValidate = [
     .optional({ checkFalsy: true })
     .isString()
     .withMessage("Amenities must be a string")
-    .matches(/^[A-Za-z\s,]+$/)
-    .withMessage("Amenities must contain only letters, spaces, and commas"),
+    .matches(/^[A-Za-z0-9\s,]+$/)
+    .withMessage("Amenities can only contain letters, numbers, commas, and spaces"),
   check("status").optional().isString().withMessage("Status must be a string"),
 ];
 
