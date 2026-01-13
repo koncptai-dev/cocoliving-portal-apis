@@ -107,6 +107,16 @@ exports.login = async (req, res) => {
     }
 };
 
+//for default user 
+const TEST_USERS = {
+    [process.env.TEST_STUDENT_EMAIL]: "student",
+    [process.env.TEST_PRO_EMAIL]: "professional",
+    [process.env.TEST_PARENT_EMAIL]: "parent",
+};
+
+const TEST_OTP = process.env.TEST_OTP;
+
+
 // SEND OTP FOR LOGIN
 exports.sendLoginOtp = async (req, res) => {
     try {
@@ -115,7 +125,13 @@ exports.sendLoginOtp = async (req, res) => {
         if (!identifier) {
             return res.status(400).json({ message: "Email or phone is required" });
         }
-
+        /* ===== FOR TEST USER  ===== */
+        if (TEST_USERS[identifier]) {
+            return res.status(200).json({
+                success: true,
+                message: "Test user detected. Use default OTP."
+            });
+        }
         // cleanup expired OTPs
         await OTP.destroy({
             where: { expiresAt: { [Op.lt]: new Date() } }
@@ -247,6 +263,78 @@ exports.verifyLoginOtp = async (req, res) => {
             return res.status(400).json({ message: "Invalid email or phone" });
         }
 
+        /* ================= TEST LOGIN CHECK ================= */
+        const isTestLogin =
+            TEST_USERS[identifier] &&
+            otp === TEST_OTP;
+
+        /* ========================TEST LOGIN BYPASS (NO OTP TABLE / NO EMAIL)=============================*/
+
+        if (isTestLogin) {
+            let user;
+            let loginAs = TEST_USERS[identifier] === "parent" ? "parent" : "user";
+
+            if (otp !== TEST_OTP) {
+                return res.status(400).json({ message: "Invalid OTP for test login" });
+            }
+
+            if (TEST_USERS[identifier] === "parent") {
+                // For parent, pick first child
+                const children = await User.findOne({ where: { parentEmail: identifier } });
+                if (!children) {
+                    return res.status(404).json({ success: false, message: "No child found for test parent" });
+                }
+                user = children;
+                loginAs = "parent";
+
+            } else {
+                user = await User.findOne({ where: { email: identifier } });
+
+                if (!user) {
+                    user = await User.create({
+                        fullName:
+                            TEST_USERS[identifier] === "student"
+                                ? "Test Student"
+                                : "Test Professional",
+                        email: identifier,
+                        userType: TEST_USERS[identifier],
+                        role: 2,
+                        status: 1,
+                    });
+                }
+            }
+            const token = jwt.sign(
+                {
+                    id: user.id,
+                    identifier,
+                    role: user.role,
+                    userType: user.userType,
+                    loginAs
+                },
+                process.env.JWT_SECRET,
+                { expiresIn: "1d" }
+            );
+
+            req.user = { id: user.id, role: user.role };
+
+            await logApiCall(
+                req,
+                res,
+                200,
+                `TEST login successful: ${identifier}`,
+                "auth",
+                user.id
+            );
+
+            return res.status(200).json({
+                success: true,
+                message: "Test login successful",
+                token,
+                account: user,
+                loginAs
+            });
+        }
+
         /* ================= FIND USER ================= */
 
         let user = null;
@@ -328,7 +416,7 @@ exports.verifyLoginOtp = async (req, res) => {
             where: { identifier, type: isEmail ? "email" : "phone" }
         });
 
-        
+
         /* ================= LOGIN TYPE ================= */
 
         let loginAs = "user";
@@ -404,6 +492,37 @@ exports.checkEmail = async (req, res) => {
         if (!email) {
             await logApiCall(req, res, 400, "Checked email - email required", "auth");
             return res.status(400).json({ message: "Email is required" });
+        }
+
+        /* ================= TEST USER CHECK ================= */
+        if (TEST_USERS[email]) {
+            // TEST PARENT
+            if (TEST_USERS[email] === "parent") {
+                const child = await User.findOne({ where: { parentEmail: email }});
+
+                if (!child) {
+                    return res.status(404).json({ exists: false,  message: "Test parent child not found"});
+                }
+                return res.json({
+                    exists: true,
+                    role: "user",
+                    loginAs: "parent",
+                    displayName: child.parentName || "Parent",
+                    childName: child.fullName
+                });
+            }
+
+            // test student and professional
+            return res.json({
+                exists: true,
+                role: "user",
+                loginAs: "user",
+                displayName:
+                    TEST_USERS[email] === "student"
+                        ? "Test Student"
+                        : "Test Professional",
+                childName: null
+            });
         }
 
         const identifier = email.trim();
