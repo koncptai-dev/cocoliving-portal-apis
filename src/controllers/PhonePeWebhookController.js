@@ -247,7 +247,7 @@ async function createBookingFromPending(tx, t) {
     bookingType: pb.bookingType,
     paymentStatus: 'INITIATED',
     status: 'pending',
-    meta: pb
+    meta: pb?.meta || null,
   }, { transaction: t });
 
   tx.bookingId = booking.id;

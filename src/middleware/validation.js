@@ -3,8 +3,8 @@ const { check, body } = require("express-validator");
 exports.validateSignup = [
   check("fullName")
     .trim()
-    .isLength({ min: 2 })
-    .withMessage("Full name must be at least 2 characters")
+    .isLength({ min: 2, max: 50 })
+    .withMessage("Full name must be at least 2 characters and atmost 50 characters")
     .notEmpty()
     .withMessage("Full name is required")
     .matches(/^[A-Za-z\s]+$/)

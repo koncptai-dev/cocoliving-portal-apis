@@ -100,6 +100,11 @@ exports.initiate = async (req, res) => {
     }
 
     const { bookingType, metadata = {} } = req.body;
+    const {
+      preferredFloor = null,
+      preferredRoomNumber = null,
+      preferredBed = null,
+    } = metadata;
     if (!metadata.duration || Number(metadata.duration)<1) {
       await logApiCall(req, res, 400, "Initiated booking payment - invalid duration", "payment", userId);
       return res.status(400).json({ success: false, message: 'duration must be atleast 1 month' });
@@ -200,6 +205,13 @@ exports.initiate = async (req, res) => {
         payableAmount: payableAmountRupees,
         propertyId: rebuiltMeta.propertyId,
         roomType: rebuiltMeta.roomType,
+        meta: {
+          bookingPreferences: {
+            preferredFloor,
+            preferredRoomNumber,
+            preferredBed,
+          }
+        }
       },
       rawResponse: { note: 'pending transaction created' }
     });
