@@ -93,6 +93,12 @@ exports.verifyPAN = async (req, res) => {
                 panNameMatched: matched
             });
         }
+        if (req.file) {
+            await UserKYC.update(
+                { panFrontImage: `/uploads/kycDocuments/${req.file.filename}` },
+                { where: { userId } }
+            );
+        }
         await logApiCall(req, res, 200, `Verified PAN - ${storeResult ? "success" : "failed"} (User ID: ${userId})`, "userKYC", userId);
         return res.status(200).json({
             success: true, message: storeResult ? "PAN verified successfully" : "PAN verification failed",

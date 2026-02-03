@@ -59,6 +59,9 @@ const UserKYC = sequelize.define(
     adharNameMatchResponse: { type: DataTypes.TEXT, allowNull: true },
     adharNameMatched: { type: DataTypes.BOOLEAN, allowNull: true, },
 
+    panFrontImage: { type: DataTypes.STRING, allowNull: true, },
+    aadhaarFrontImage: { type: DataTypes.STRING, allowNull: true, },
+    aadhaarBackImage: { type: DataTypes.STRING, allowNull: true, },
   },
   {
     tableName: "userKYC",

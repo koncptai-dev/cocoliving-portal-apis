@@ -224,7 +224,7 @@ exports.getUserMenus = async (req, res) => {
 
     if (!menus.length) {
       await logApiCall(req, res, 404, "Viewed user menus - no menus found for properties", "foodMenu", userId);
-      return res.status(404).json({ message: "No menus found for properties" });
+      return res.status(200).json({ menus: [], });
     }
 
     const finalMenus = menus.map(menu => ({
