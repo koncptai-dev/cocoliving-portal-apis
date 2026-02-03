@@ -29,6 +29,7 @@ src/uploads/roomImages
 src/uploads/ticketImages
 src/uploads/ticketVideos
 src/uploads/eventImages
+src/uploads/dailyCleaning
 
 # Firebase service account
 src/Auth/serviceAccountKey.json

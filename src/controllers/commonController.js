@@ -30,7 +30,7 @@ exports.login = async (req, res) => {
         req.user = { id: account.id, role: account.role };
 
         // normal user can't login with password
-        if (account.role !== 1 && account.role !== 3) {
+        if (![1, 3, 4].includes(account.role)) {
             await logApiCall(req, res, 403, `Login attempt - password login not allowed for user (ID: ${account.id})`, "auth", account.id);
             return res.status(403).json({
                 message: "Password login is allowed only for admins. Please use OTP login."
@@ -87,6 +87,7 @@ exports.login = async (req, res) => {
         let roleLabel = 'User';
         if (account.role === 1) roleLabel = 'Superadmin';
         else if (account.role === 3) roleLabel = 'Admin';
+        else if (account.role === 4) roleLabel = 'Service Member';   
 
         // Create a mock req.user for logging since login doesn't have it yet
         req.user = { id: account.id, role: account.role };
@@ -498,10 +499,10 @@ exports.checkEmail = async (req, res) => {
         if (TEST_USERS[email]) {
             // TEST PARENT
             if (TEST_USERS[email] === "parent") {
-                const child = await User.findOne({ where: { parentEmail: email }});
+                const child = await User.findOne({ where: { parentEmail: email } });
 
                 if (!child) {
-                    return res.status(404).json({ exists: false,  message: "Test parent child not found"});
+                    return res.status(404).json({ exists: false, message: "Test parent child not found" });
                 }
                 return res.json({
                     exists: true,

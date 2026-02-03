@@ -514,6 +514,8 @@ exports.editUserProfile = async (req, res) => {
       delete updates.parentEmail; // Prevent multi entry in loop
     }
 
+    //role wise field updates
+
     for (const key in updates) {
       const value = updates[key];
 
@@ -539,6 +541,12 @@ exports.editUserProfile = async (req, res) => {
         ["companyName", "position"].includes(key)
       ) {
         continue;
+      }
+
+      //fields for admin
+      if(user.userType==="admin"){
+        const allowAdminFields=["email", "fullName", "phone", "roleName",]
+        if(!allowAdminFields.includes(key)){continue;}
       }
       user[key] = typeof value === "string" ? value.trim() : value;
     }

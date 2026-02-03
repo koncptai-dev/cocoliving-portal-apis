@@ -132,7 +132,7 @@ function otpEmail({ otp }) {
     attachments: [
       { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
       { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' }]
-,
+    ,
     html: `
 <!DOCTYPE html>
 <html>
@@ -342,9 +342,106 @@ function refundCompletedEmail({ userName, bookingId, propertyName, refundAmount 
   };
 }
 
+// ----------ADMIN CREDENTIALS ----------
+function adminCredentialsEmail({ fullName, email, password }) {
+  return {
+    attachments: [
+      {
+        filename: "logo.png",
+        path: path.join(__dirname, "assets/logo.png"),
+        cid: "logo",
+      },
+      {
+        filename: "bg-pattern.png",
+        path: path.join(__dirname, "assets/bg-pattern.png"),
+        cid: "bg",
+      },
+    ],
+    html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8" /></head>
+
+<body style="margin:0;background:#f3efe9;
+font-family:'Rethink Sans','Inter','Segoe UI',Arial,sans-serif;">
+<table width="100%" align="center">
+<tr><td align="center">
+
+<table width="420" style="max-width:420px;">
+
+<tr>
+<td align="center"
+style="background-color:#4F3421;
+background-image:url(cid:bg);
+background-repeat:repeat;
+background-size:400px 400px;
+padding:28px;">
+  <img src="cid:logo" width="120" />
+</td>
+</tr>
+
+<tr>
+<td align="center" style="background:#f3efe9;padding:32px 24px;">
+  <h2 style="margin:0 0 12px;font-size:22px;font-weight:700;">
+    Admin Account Created
+  </h2>
+
+  <p style="margin:0 0 20px;font-size:14px;line-height:1.6;">
+    Hello <strong>${fullName}</strong>,<br/>
+    Your admin account has been successfully created.
+  </p>
+
+  <div style="
+    background:#ffffff;
+    padding:16px;
+    border-radius:12px;
+    width:100%;
+    font-size:14px;
+    line-height:1.8;
+    text-align:left;
+  ">
+    <strong>Login Credentials</strong><br/><br/>
+    Email: <strong>${email}</strong><br/>
+    Password: <strong>${password}</strong>
+  </div>
+
+  <a href="${process.env.ADMIN_LOGIN_URL}"
+     style="
+      display:inline-block;
+      margin-top:20px;
+      padding:12px 20px;
+      background:#4F3421;
+      color:#ffffff;
+      text-decoration:none;
+      border-radius:8px;
+      font-size:14px;
+      font-weight:600;
+     ">
+     Login to Admin Panel
+  </a>
+</td>
+</tr>
+
+<tr>
+<td align="center" style="background:#4a2f1b;color:#fff;
+padding:16px;font-size:11px;">
+  © 2025 COCO LIVING
+</td>
+</tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>
+`,
+  };
+}
+
 module.exports = {
   welcomeEmail,
   otpEmail,
   refundInitiatedEmail,
-  refundCompletedEmail
+  refundCompletedEmail,
+  adminCredentialsEmail
 };

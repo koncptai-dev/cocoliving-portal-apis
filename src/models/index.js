@@ -19,7 +19,11 @@ const PaymentTransaction = require("./paymentTransaction");
 const TicketLog = require("./ticketLog");
 const GatePass = require("./gatePass");
 const UserNotificationSetting = require("./userNotificationSetting");
-
+const ServiceTeam = require("./serviceTeam");
+const ServiceTeamProperty = require("./serviceTeamProperty");
+const ServiceTeamRoom = require("./serviceTeamRoom");
+const DailyCleaning = require("./dailyCleaning");
+const DailyCleaningTask = require("./dailyCleaningTask");
 
 User.hasMany(SupportTicket, { foreignKey: "userId", as: "tickets" });
 SupportTicket.belongsTo(User, { foreignKey: "userId", as: "user" });
@@ -58,24 +62,15 @@ Rooms.hasMany(SupportTicket, { foreignKey: "roomId", as: "tickets" });
 SupportTicket.belongsTo(Rooms, { foreignKey: "roomId", as: "room" });
 
 //propertyCard
-PropertyRateCard.belongsTo(Property, {
-  foreignKey: "propertyId",
-  as: "property",
-});
-Property.hasMany(PropertyRateCard, {
-  foreignKey: "propertyId",
-  as: "rateCard",
-});
+PropertyRateCard.belongsTo(Property, { foreignKey: "propertyId", as: "property", });
+Property.hasMany(PropertyRateCard, { foreignKey: "propertyId", as: "rateCard", });
 
 //property to food menu
 Property.hasMany(FoodMenu, { foreignKey: "propertyId", as: "foodMenus" });
 FoodMenu.belongsTo(Property, { foreignKey: "propertyId", as: "property" });
 
 PropertyRateCard.hasMany(Booking, { foreignKey: "rateCardId", as: "bookings" });
-Booking.belongsTo(PropertyRateCard, {
-  foreignKey: "rateCardId",
-  as: "rateCard",
-});
+Booking.belongsTo(PropertyRateCard, { foreignKey: "rateCardId", as: "rateCard", });
 
 // Inventory and Service History
 Inventory.belongsTo(Property, { foreignKey: "propertyId", as: "property" });
@@ -139,7 +134,8 @@ BookingOnboarding.belongsTo(Booking, { foreignKey: 'bookingId', as: 'booking' })
 User.hasMany(BookingOnboarding, { foreignKey: 'startedBy', as: 'startedOnboardings' });
 BookingOnboarding.belongsTo(User, { foreignKey: 'startedBy', as: 'admin' });
 
-User.hasOne(UserNotificationSetting, { foreignKey: "userId",
+User.hasOne(UserNotificationSetting, {
+  foreignKey: "userId",
   as: "notificationSettings",
   onDelete: "CASCADE",
 });
@@ -160,7 +156,39 @@ BookingExtension.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 PaymentTransaction.hasOne(BookingExtension, { foreignKey: 'paymentTransactionId', as: 'extension' });
 BookingExtension.belongsTo(PaymentTransaction, { foreignKey: 'paymentTransactionId', as: 'paymentTransaction' });
 
-module.exports={
+// User <-> Service Team
+User.hasMany(ServiceTeam, { foreignKey: "userId", as: "serviceAssignments" });
+ServiceTeam.belongsTo(User, { foreignKey: "userId", as: "user" });
+
+// Property <-> Service Team
+ServiceTeam.hasMany(ServiceTeamProperty, { foreignKey: "serviceTeamId", as: "assignedProperties" });
+ServiceTeamProperty.belongsTo(ServiceTeam, { foreignKey: "serviceTeamId", as: "serviceTeam" });
+
+Property.hasMany(ServiceTeamProperty, { foreignKey: "propertyId", as: "serviceTeamAssignments" });
+ServiceTeamProperty.belongsTo(Property, { foreignKey: "propertyId", as: "teamproperty" });
+
+ServiceTeam.hasMany(ServiceTeamRoom, { foreignKey: "serviceTeamId", as: "assignedRooms" });
+ServiceTeamRoom.belongsTo(ServiceTeam, { foreignKey: "serviceTeamId", as: "serviceTeam" });
+
+Property.hasMany(ServiceTeamRoom, { foreignKey: "propertyId", as: "serviceTeamRooms" });
+ServiceTeamRoom.belongsTo(Property, { foreignKey: "propertyId", as: "roomproperty" });
+
+Rooms.hasMany(ServiceTeamRoom, { foreignKey: "roomId", as: "serviceTeamRoomAssignments" });
+ServiceTeamRoom.belongsTo(Rooms, { foreignKey: "roomId", as: "teamroom" });
+
+// DailyCleaning → Tasks
+DailyCleaning.hasMany(DailyCleaningTask, { foreignKey: "dailyCleaningId", as: "tasks" });
+DailyCleaningTask.belongsTo(DailyCleaning, {foreignKey: "dailyCleaningId",as: "dailyCleaning"});
+
+//  DailyCleaning → Room
+Rooms.hasMany(DailyCleaning, { foreignKey: "roomId", as: "dailyCleanings" });
+DailyCleaning.belongsTo(Rooms, { foreignKey: "roomId", as: "room" });
+
+// DailyCleaning → Cleaner(User)
+User.hasMany(DailyCleaning, { foreignKey: "cleanerId", as: "dailyCleanings" });
+DailyCleaning.belongsTo(User, { foreignKey: "cleanerId", as: "cleaner" });
+
+module.exports = {
   sequelize,
   SupportTicket,
   User,
@@ -180,5 +208,10 @@ module.exports={
   GatePass,
   BookingOnboarding,
   BookingExtension,
-  UserNotificationSetting
+  UserNotificationSetting,
+  ServiceTeam,
+  ServiceTeamProperty,
+  ServiceTeamRoom,
+  DailyCleaning,
+  DailyCleaningTask,
 }

@@ -4,6 +4,12 @@ const User = require('../models/user');
 const { logApiCall } = require("../helpers/auditLog");
 const { nameMatchService } = require('../helpers/nameMatchfunction');
 
+function normalizeName(name) {
+    return name.toUpperCase()            // convert to uppercase
+               .replace(/[^A-Z\s]/g, "") // remove dots, special characters
+               .replace(/\s+/g, " ")    // remove extra spaces
+               .trim();                 // trim leading/trailing spaces
+}
 
 //pan verification and name match
 exports.verifyPAN = async (req, res) => {
@@ -11,10 +17,20 @@ exports.verifyPAN = async (req, res) => {
         const { panNumber } = req.body;
         const userId = req.user.id;
 
+        const role = req.user.role;
+        if (![2, 3].includes(role)) {
+            return res.status(403).json({
+                success: false,
+                message: "Unauthorized role for KYC"
+            });
+        }
+
         //fetch users fullname
         const user = await User.findByPk(userId);
         const fullName = user?.fullName;
         
+        const normalizedProfileName = normalizeName(fullName);
+
         if (!panNumber) {
             await logApiCall(req, res, 400, "Verified PAN - PAN number required", "userKYC", userId);
             return res.status(400).json({ message: "PAN number is required" });
@@ -27,7 +43,7 @@ exports.verifyPAN = async (req, res) => {
 
         //check if db has the pan verified for the userId
         let userPanRecord = await UserKYC.findOne({
-            where: { userId, panNumber }
+            where: { userId,role, panNumber }
         });
 
         if (userPanRecord && userPanRecord.panStatus === "verified") {
@@ -52,8 +68,7 @@ exports.verifyPAN = async (req, res) => {
         const panHolderName = response?.full_name || "";
         
         //call name match service
-        const nameMatchResult = await nameMatchService(fullName, panHolderName)      
-        
+        const nameMatchResult = await nameMatchService(normalizedProfileName, panHolderName)      
         const { matchScore, matched } = nameMatchResult;
 
         //determinde decision based on match score
@@ -65,7 +80,7 @@ exports.verifyPAN = async (req, res) => {
             failureReason = "Profile FullName does not match PAN records";
         }
         //  Save/update DB
-        let userKycRecord = await UserKYC.findOne({ where: { userId } });
+        let userKycRecord = await UserKYC.findOne({ where: { userId,role } });
 
         if (userKycRecord) {
             // Update existing row (may already have Aadhaar info)
@@ -84,6 +99,7 @@ exports.verifyPAN = async (req, res) => {
             // Create new row if no record exists
             await UserKYC.create({
                 userId,
+                role,
                 panNumber,
                 panStatus: storeResult ? "verified" : "not-verified",
                 verifiedAtPan: storeResult ? new Date() : null,
@@ -95,7 +111,7 @@ exports.verifyPAN = async (req, res) => {
         }
         await logApiCall(req, res, 200, `Verified PAN - ${storeResult ? "success" : "failed"} (User ID: ${userId})`, "userKYC", userId);
         return res.status(200).json({
-            success: true, message: storeResult ? "PAN verified successfully" : "PAN verification failed",
+            success: storeResult, message: storeResult ? "PAN verified successfully" : "PAN verification failed",
             panStatus: storeResult ? "verified" : "not-verified",
             panNameMatchScore: matchScore,
             failureReason

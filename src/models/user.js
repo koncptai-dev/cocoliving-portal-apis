@@ -11,10 +11,7 @@ const User = sequelize.define('User', {
         type: DataTypes.STRING,
         allowNull: false
     },
-    registrationToken: {
-        type: DataTypes.STRING,
-        allowNull: true
-    },
+
     email: {
         type: DataTypes.STRING,
         allowNull: false,
