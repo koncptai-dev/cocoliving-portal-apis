@@ -30,8 +30,6 @@ const makeIdtoRequest = async (
   acceptHeader
 ) => {
   try {
-    console.log("hi");
-
     const response = await axios({
       method: "POST",
       url: `${API_BASE_URL}${endpoint}`,
@@ -47,7 +45,6 @@ const makeIdtoRequest = async (
     return response.data;
   } catch (error) {
     if (error.response) {
-      console.log("hello");
 
       throw {
         status: error.response.status,
@@ -135,13 +132,22 @@ router.post("/initiate-session", authMiddleware, upload.fields([ { name: "aadhaa
         message: "redirect_to_signup is required",
       });
     }
-
+    let parsedDocuments = documents_for_consent;
+    if (typeof documents_for_consent === "string") {
+      try {
+        parsedDocuments = JSON.parse(documents_for_consent);
+      } catch {
+        parsedDocuments = [];
+      }
+    }
+    const normalizedConsent = consent === true || consent === "true";
+    const normalizedRedirect = redirect_to_signup === true || redirect_to_signup === "true";
     const result = await makeIdtoRequest("/initiate_session", {
-      consent: consent,
+      consent: normalizedConsent,
       consent_purpose: consent_purpose,
       redirect_url: redirect_url,
-      redirect_to_signup: redirect_to_signup,
-      documents_for_consent: documents_for_consent || [],
+      redirect_to_signup: normalizedRedirect,
+      documents_for_consent: parsedDocuments,
     });
 
     res.json({
