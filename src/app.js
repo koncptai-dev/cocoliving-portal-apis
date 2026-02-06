@@ -34,6 +34,7 @@ const DashboardRoutes = require("./routes/DashboardRoutes");
 const UserDashboardRoutes = require("./routes/UserDashboardRoutes");
 const GatePassRoutes = require("./routes/GatePassRoutes");
 const OnboardingRoutes = require("./routes/OnboardingRoutes");
+const GuestVisitRoutes = require("./routes/GuestVisitRoutes");
 
 app.use(
   cors({
@@ -82,6 +83,7 @@ app.use("/api/dashboard", DashboardRoutes);
 app.use("/api/user", UserDashboardRoutes);
 app.use("/api/gate-pass", GatePassRoutes);
 app.use('/api/onboarding', OnboardingRoutes);
+app.use("/api/guest-visits", GuestVisitRoutes);
 
 sequelize
   .sync({ alter: true }) //   ensures new models are created
