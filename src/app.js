@@ -41,6 +41,7 @@ const DailyCleaningRoutes = require('./routes/DailyCleaningRoutes');
 const ServiceUserDashboardRoutes = require('./routes/ServiceUserDashboard');
 const contactRoute = require('./routes/contact');
 const jobsRoute = require('./routes/jobs');
+const ScheduledVisitRoutes = require("./routes/ScheduledVisitRoutes");
 
 app.use(
   cors({
@@ -96,6 +97,7 @@ app.use('/api/daily-cleaning', DailyCleaningRoutes);
 app.use('/api/service', ServiceUserDashboardRoutes);
 app.use('/api/contact', contactRoute);
 app.use('/api/jobs', jobsRoute);
+app.use("/api/scheduled-visits",ScheduledVisitRoutes);
 
 sequelize
   .sync({ alter: true }) //   ensures new models are created
