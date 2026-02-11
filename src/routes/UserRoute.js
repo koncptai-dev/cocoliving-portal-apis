@@ -8,7 +8,6 @@ const upload = require('../middleware/upload');
 
 router.post('/register',upload.single('profileImage'), validateSignup,validate,UserController.registerUser);
 router.put('/update-profile/:id',authenticateToken, upload.single('profileImage'),editUserProfileValidator,validate,UserController.editUserProfile);
-router.delete('/delete-account/:id', authenticateToken, UserController.deleteAccount);
 router.get('/getUser/:id', authenticateToken, UserController.getUserById);
 router.post('/send-otp',UserController.sendOTP);
 
@@ -17,5 +16,7 @@ router.post('/profile/verify/send-otp', authenticateToken, UserController.sendPr
 
 // Verify OTP from phone
 router.post('/profile/verify/verify-otp', authenticateToken, UserController.verifyProfileOTP);
+
+router.delete('/delete-account/:id', authenticateToken, UserController.deleteAccount);
 
 module.exports = router;

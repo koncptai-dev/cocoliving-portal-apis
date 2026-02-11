@@ -5,7 +5,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { mailsender } = require('../utils/emailService');
 const { Op } = require('sequelize');
-const { welcomeEmail } = require('../utils/emailTemplates/emailTemplates');
+const { welcomeEmail, adminCredentialsEmail } = require('../utils/emailTemplates/emailTemplates');
 const { logApiCall } = require("../helpers/auditLog");
 
 exports.AddUser = async (req, res) => {
@@ -31,7 +31,7 @@ exports.AddUser = async (req, res) => {
             status: 1,
         });
         try {
-            const mail = welcomeEmail({firstName:newUser.fullName});
+            const mail = welcomeEmail({ firstName: newUser.fullName });
             await mailsender(
                 newUser.email,
                 'Welcome to Coco Living',
@@ -76,9 +76,7 @@ exports.getAllUser = async (req, res) => {
     }
 }
 
-
 //create admin user
-
 exports.createAdminUser = async (req, res) => {
     const t = await sequelize.transaction(); //  Start transaction
     try {
@@ -118,9 +116,14 @@ exports.createAdminUser = async (req, res) => {
         // Commit if all OK
         await t.commit();
 
-        await logApiCall(req, res, 201, `Created new admin user: ${fullName} (${email}, ID: ${newAdminUser.id})`, "user", newAdminUser.id);
+        //send email with credentials
+        const emailTemplate = adminCredentialsEmail({ fullName, email, password });
+
+        await mailsender(email, "Admin Account Created", emailTemplate.html, emailTemplate.attachments);
+
+        await logApiCall(req, res, 201, `Created admin user & email sent (${email})`, "user", newAdminUser.id);
         res.status(201).json({
-            message: "Admin created successfully",
+            message: "Admin created successfully  & email sent",
             admin: newAdminUser,
             permission: userPermission
         });
@@ -268,40 +271,37 @@ exports.getAdminById = async (req, res) => {
     }
 };
 
-//toggle for active/inactive admin user
+//toggle status active/inactive for admin and service-member 
 exports.toggleAdminStatus = async (req, res) => {
-    const t = await sequelize.transaction();
 
     try {
         const { id } = req.params;
 
         //find admin user
-        const adminUser = await User.findOne({
-            where: {
-                id, [Op.or]: [{ userType: "admin" }, { role: 3 }]
-            }, transaction: t
-        })
+        const user = await User.findByPk(id);
 
-        if (!adminUser) {
-            await t.rollback();
-            await logApiCall(req, res, 404, `Toggled admin status - admin not found (ID: ${id})`, "user", parseInt(id));
-            return res.status(404).json({ message: "Admin not found" });
+        if (!user) {
+            await logApiCall(req, res, 404, `Toggled admin status - user not found (ID: ${id})`, "user", parseInt(id));
+            return res.status(404).json({ message: "user not found" });
         }
 
-        const newStatus = adminUser.status === 1 ? 0 : 1;
+        const allowedRoles = [3, 4];
+        if (!allowedRoles.includes(user.role)) {
+            return res.status(403).json({
+                message: "You are not allowed to change this user status"
+            });
+        }
+        const newStatus = user.status === 1 ? 0 : 1;
 
-        await adminUser.update({ status: newStatus }, { transaction: t });
-        await t.commit();
-        await logApiCall(req, res, 200, `Toggled admin status to ${newStatus === 1 ? 'active' : 'inactive'} (ID: ${id})`, "user", parseInt(id));
+        await user.update({ status: newStatus });
+        await logApiCall(req, res, 200, `user status to ${newStatus === 1 ? 'active' : 'inactive'} (ID: ${id})`, "user", parseInt(id));
         res.status(200).json({
-            message: `Admin user has been ${newStatus === 1 ? 'Activated' : 'Deactivated'} successfully.`,
+            message: `User has been ${newStatus === 1 ? 'Activated' : 'Deactivated'} successfully.`,
             status: newStatus
         });
-    } catch (error) { 
+    } catch (error) {
         console.error("Error toggling admin:", error);
-        await t.rollback();
-        await logApiCall(req, res, 500, "Error occurred while toggling admin status", "user", parseInt(req.params.id) || 0);
+        await logApiCall(req, res, 500, "Error occurred while toggling user status", "user", parseInt(req.params.id) || 0);
         res.status(500).json({ message: "Error toggling admin", error: error.message });
     }
 }
-

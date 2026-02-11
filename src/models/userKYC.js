@@ -17,6 +17,10 @@ const UserKYC = sequelize.define(
       references: { model: User, key: "id" },
     },
 
+    role: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    },
     // PAN fields
     panNumber: {
       type: DataTypes.STRING,

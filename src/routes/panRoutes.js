@@ -12,9 +12,10 @@ router.post('/verify-pan', authenticateToken, panLimiter,upload.single("pan_imag
 router.get("/pan-status", authenticateToken, async (req, res) => {
   try {
      const userId = req.user.id;
+       const role = req.user.role;
 
     // Fetch the KYC record for this user
-    const kycRecord = await UserKYC.findOne({ where: { userId } });
+    const kycRecord = await UserKYC.findOne({ where: { userId,role } });
 
     if (!kycRecord) {
       return res.status(200).json({
