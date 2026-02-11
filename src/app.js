@@ -38,7 +38,8 @@ const ScheduleVisitRoute = require("./routes/ScheduleVisitRoute");
 const ServiceTeamRoutes = require("./routes/ServiceTeamRoutes");
 const DailyCleaningRoutes = require('./routes/DailyCleaningRoutes');
 const ServiceUserDashboardRoutes = require('./routes/ServiceUserDashboard');
-
+const contactRoute = require('./routes/contact');
+const jobsRoute = require('./routes/jobs');
 app.use(
   cors({
     origin: "*", // Allow only your frontend's IP
@@ -90,7 +91,8 @@ app.use('/api/schedule-visit', ScheduleVisitRoute);
 app.use('/api/service-team', ServiceTeamRoutes);
 app.use('/api/daily-cleaning', DailyCleaningRoutes);
 app.use('/api/service', ServiceUserDashboardRoutes);
-
+app.use('/api/contact', contactRoute);
+app.use('/api/jobs', jobsRoute);
 sequelize
   .sync({ alter: true }) //   ensures new models are created
   .then(() => console.log("✅ Database Synced"))

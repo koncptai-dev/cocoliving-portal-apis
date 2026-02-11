@@ -24,21 +24,45 @@ const ServiceTeamProperty = require("./serviceTeamProperty");
 const ServiceTeamRoom = require("./serviceTeamRoom");
 const DailyCleaning = require("./dailyCleaning");
 const DailyCleaningTask = require("./dailyCleaningTask");
+const AuditLog = require("./auditLog");
+const UserKYC = require("./userKYC");
 
-User.hasMany(SupportTicket, { foreignKey: "userId", as: "tickets" });
+User.hasOne(UserKYC, {
+  foreignKey: "userId",
+  as: "kyc",
+  onDelete: "CASCADE",
+});
+
+UserKYC.belongsTo(User, {
+  foreignKey: "userId",
+  as: "user",
+});
+
+User.hasMany(SupportTicket, { foreignKey: "userId", as: "tickets" , onDelete: "CASCADE" });
 SupportTicket.belongsTo(User, { foreignKey: "userId", as: "user" });
+
+User.hasMany(AuditLog, {
+  foreignKey: "userId",
+  as: "auditLogs",
+  onDelete: "CASCADE",
+});
+
+AuditLog.belongsTo(User, {
+  foreignKey: "userId",
+  as: "user",
+});
 
 // Associations
 Rooms.hasMany(Booking, { foreignKey: "roomId", as: "bookings" });
 Booking.belongsTo(Rooms, { foreignKey: "roomId", as: "room" });
 
-User.hasMany(Booking, { foreignKey: "userId", as: "bookings" });
+User.hasMany(Booking, { foreignKey: "userId", as: "bookings", onDelete: "CASCADE" });
 Booking.belongsTo(User, { foreignKey: "userId", as: "user" });
 
 Event.hasMany(EventParticipation, { foreignKey: "eventId" });
 EventParticipation.belongsTo(Event, { foreignKey: "eventId" });
 
-User.hasMany(EventParticipation, { foreignKey: "userId" });
+User.hasMany(EventParticipation, { foreignKey: "userId",onDelete: "CASCADE" });
 EventParticipation.belongsTo(User, { foreignKey: "userId" });
 
 Property.hasMany(Rooms, { foreignKey: "propertyId", as: "rooms" });
@@ -54,7 +78,7 @@ Property.hasMany(Announcement, {
 });
 Announcement.belongsTo(Property, { foreignKey: "propertyId", as: "property" });
 
-User.hasOne(UserPermission, { foreignKey: "userId", as: "permission" });
+User.hasOne(UserPermission, { foreignKey: "userId", as: "permission", onDelete: "CASCADE" });
 UserPermission.belongsTo(User, { foreignKey: "userId", as: "user" });
 
 // Link SupportTicket to Room
@@ -95,8 +119,7 @@ ServiceHistory.belongsTo(SupportTicket, {
 // ServiceHistory → Assigned Admin
 User.hasMany(ServiceHistory, {
   foreignKey: "assignedTo",
-  as: "assignedServiceHistory",
-});
+  as: "assignedServiceHistory",onDelete: "CASCADE" });
 ServiceHistory.belongsTo(User, {
   foreignKey: "assignedTo",
   as: "assignedAdmin",
@@ -105,7 +128,7 @@ ServiceHistory.belongsTo(User, {
 // Payment ↔ Booking
 Booking.hasMany(PaymentTransaction, {
   foreignKey: "bookingId",
-  as: "transactions",
+  as: "transactions",onDelete: "CASCADE"
 });
 PaymentTransaction.belongsTo(Booking, {
   foreignKey: "bookingId",
@@ -113,25 +136,25 @@ PaymentTransaction.belongsTo(Booking, {
 });
 
 // Payment ↔ User
-User.hasMany(PaymentTransaction, { foreignKey: "userId", as: "transactions" });
+User.hasMany(PaymentTransaction, { foreignKey: "userId", as: "transactions",onDelete: "CASCADE" });
 PaymentTransaction.belongsTo(User, { foreignKey: "userId", as: "user" });
 
 SupportTicket.hasMany(TicketLog, { foreignKey: "ticketId", as: "logs" });
 TicketLog.belongsTo(SupportTicket, { foreignKey: "ticketId", as: "ticket" });
 
-User.hasMany(TicketLog, { foreignKey: "performedBy", as: "performedLogs" });
+User.hasMany(TicketLog, { foreignKey: "performedBy", as: "performedLogs",onDelete: "CASCADE" });
 TicketLog.belongsTo(User, { foreignKey: "performedBy", as: "actor" });
 
 // Gate Pass associations
-User.hasMany(GatePass, { foreignKey: "userId", as: "gatePasses" });
+User.hasMany(GatePass, { foreignKey: "userId", as: "gatePasses",onDelete: "CASCADE" });
 GatePass.belongsTo(User, { foreignKey: "userId", as: "user" });
 
 // Booking ↔ Onboarding
-Booking.hasOne(BookingOnboarding, { foreignKey: 'bookingId', as: 'onboarding' });
+Booking.hasOne(BookingOnboarding, { foreignKey: 'bookingId', as: 'onboarding',onDelete: "CASCADE" });
 BookingOnboarding.belongsTo(Booking, { foreignKey: 'bookingId', as: 'booking' });
 
 // Admin who started onboarding
-User.hasMany(BookingOnboarding, { foreignKey: 'startedBy', as: 'startedOnboardings' });
+User.hasMany(BookingOnboarding, { foreignKey: 'startedBy', as: 'startedOnboardings',onDelete: "CASCADE" });
 BookingOnboarding.belongsTo(User, { foreignKey: 'startedBy', as: 'admin' });
 
 User.hasOne(UserNotificationSetting, {
@@ -145,11 +168,11 @@ UserNotificationSetting.belongsTo(User, {
   as: "user",
 });
 // Bookings <-> Booking Extension
-Booking.hasMany(BookingExtension, { foreignKey: 'bookingId', as: 'extensions' });
+Booking.hasMany(BookingExtension, { foreignKey: 'bookingId', as: 'extensions', onDelete: "CASCADE" });
 BookingExtension.belongsTo(Booking, { foreignKey: 'bookingId', as: 'booking' });
 
 // User <-> Booking Extension
-User.hasMany(BookingExtension, { foreignKey: 'userId', as: 'bookingExtensions' });
+User.hasMany(BookingExtension, { foreignKey: 'userId', as: 'bookingExtensions',onDelete: "CASCADE" });
 BookingExtension.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
 // PaymentTransaction <-> Booking Extension
@@ -157,7 +180,7 @@ PaymentTransaction.hasOne(BookingExtension, { foreignKey: 'paymentTransactionId'
 BookingExtension.belongsTo(PaymentTransaction, { foreignKey: 'paymentTransactionId', as: 'paymentTransaction' });
 
 // User <-> Service Team
-User.hasMany(ServiceTeam, { foreignKey: "userId", as: "serviceAssignments" });
+User.hasMany(ServiceTeam, { foreignKey: "userId", as: "serviceAssignments" ,onDelete: "CASCADE" });
 ServiceTeam.belongsTo(User, { foreignKey: "userId", as: "user" });
 
 // Property <-> Service Team
@@ -185,12 +208,13 @@ Rooms.hasMany(DailyCleaning, { foreignKey: "roomId", as: "dailyCleanings" });
 DailyCleaning.belongsTo(Rooms, { foreignKey: "roomId", as: "room" });
 
 // DailyCleaning → Cleaner(User)
-User.hasMany(DailyCleaning, { foreignKey: "cleanerId", as: "dailyCleanings" });
+User.hasMany(DailyCleaning, { foreignKey: "cleanerId", as: "dailyCleanings",onDelete: "CASCADE" });
 DailyCleaning.belongsTo(User, { foreignKey: "cleanerId", as: "cleaner" });
 
 module.exports = {
   sequelize,
   SupportTicket,
+  AuditLog,
   User,
   Booking,
   Rooms,
