@@ -22,6 +22,7 @@ Thumbs.db
 node_modules
 .env
 
+src/uploads
 src/uploads/csv
 src/uploads/profilePicture
 src/uploads/propertyImages

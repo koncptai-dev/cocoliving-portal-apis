@@ -25,20 +25,20 @@ const ServiceTeamRoom = require("./serviceTeamRoom");
 const DailyCleaning = require("./dailyCleaning");
 const DailyCleaningTask = require("./dailyCleaningTask");
 
-User.hasMany(SupportTicket, { foreignKey: "userId", as: "tickets" });
+User.hasMany(SupportTicket, { foreignKey: "userId", as: "tickets" , onDelete: "CASCADE" });
 SupportTicket.belongsTo(User, { foreignKey: "userId", as: "user" });
 
 // Associations
 Rooms.hasMany(Booking, { foreignKey: "roomId", as: "bookings" });
 Booking.belongsTo(Rooms, { foreignKey: "roomId", as: "room" });
 
-User.hasMany(Booking, { foreignKey: "userId", as: "bookings" });
+User.hasMany(Booking, { foreignKey: "userId", as: "bookings", onDelete: "CASCADE" });
 Booking.belongsTo(User, { foreignKey: "userId", as: "user" });
 
 Event.hasMany(EventParticipation, { foreignKey: "eventId" });
 EventParticipation.belongsTo(Event, { foreignKey: "eventId" });
 
-User.hasMany(EventParticipation, { foreignKey: "userId" });
+User.hasMany(EventParticipation, { foreignKey: "userId",onDelete: "CASCADE" });
 EventParticipation.belongsTo(User, { foreignKey: "userId" });
 
 Property.hasMany(Rooms, { foreignKey: "propertyId", as: "rooms" });
@@ -54,7 +54,7 @@ Property.hasMany(Announcement, {
 });
 Announcement.belongsTo(Property, { foreignKey: "propertyId", as: "property" });
 
-User.hasOne(UserPermission, { foreignKey: "userId", as: "permission" });
+User.hasOne(UserPermission, { foreignKey: "userId", as: "permission", onDelete: "CASCADE" });
 UserPermission.belongsTo(User, { foreignKey: "userId", as: "user" });
 
 // Link SupportTicket to Room
@@ -95,8 +95,7 @@ ServiceHistory.belongsTo(SupportTicket, {
 // ServiceHistory → Assigned Admin
 User.hasMany(ServiceHistory, {
   foreignKey: "assignedTo",
-  as: "assignedServiceHistory",
-});
+  as: "assignedServiceHistory",onDelete: "CASCADE" });
 ServiceHistory.belongsTo(User, {
   foreignKey: "assignedTo",
   as: "assignedAdmin",
