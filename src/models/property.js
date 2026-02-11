@@ -31,6 +31,9 @@ const Property = sequelize.define('Property', {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
     },
-})
+    }, {
+  tableName: 'Properties',    
+  timestamps: true
+});
 
 module.exports = Property;

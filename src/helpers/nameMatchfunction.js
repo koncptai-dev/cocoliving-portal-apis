@@ -25,7 +25,7 @@ exports.nameMatchService = async (name1, name2) => {
             }
         );
         
-        const data = response.data;
+        const data = response.data;        
         return {
             success: data?.status === "success",
             matched: data?.match_status === true,

@@ -87,7 +87,7 @@ exports.login = async (req, res) => {
         let roleLabel = 'User';
         if (account.role === 1) roleLabel = 'Superadmin';
         else if (account.role === 3) roleLabel = 'Admin';
-        else if (account.role === 4) roleLabel = 'Service Team';   
+        else if (account.role === 4) roleLabel = 'Service Member';   
 
         // Create a mock req.user for logging since login doesn't have it yet
         req.user = { id: account.id, role: account.role };
@@ -499,10 +499,10 @@ exports.checkEmail = async (req, res) => {
         if (TEST_USERS[email]) {
             // TEST PARENT
             if (TEST_USERS[email] === "parent") {
-                const child = await User.findOne({ where: { parentEmail: email }});
+                const child = await User.findOne({ where: { parentEmail: email } });
 
                 if (!child) {
-                    return res.status(404).json({ exists: false,  message: "Test parent child not found"});
+                    return res.status(404).json({ exists: false, message: "Test parent child not found" });
                 }
                 return res.json({
                     exists: true,

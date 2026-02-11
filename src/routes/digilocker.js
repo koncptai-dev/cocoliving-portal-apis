@@ -45,7 +45,6 @@ const makeIdtoRequest = async (
     return response.data;
   } catch (error) {
     if (error.response) {
-
       throw {
         status: error.response.status,
         message: error.response.data || error.message,
@@ -78,6 +77,7 @@ router.post("/verify-account", authMiddleware, validateConfig, async (req, res) 
       success: true,
       data: result,
     });
+    
   } catch (error) {
     res.status(error.status || 500).json({
       success: false,
@@ -193,6 +193,16 @@ router.post("/get-reference", validateConfig, async (req, res) => {
 router.post("/fetch-aadhaar", validateConfig, authMiddleware, async (req, res) => {
   try {
     const { reference_key } = req.body;
+    const userId = req.user.id;
+    const role = req.user.role;
+
+    /*  Role check (same as PAN) */
+    if (![2, 3].includes(role)) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized role for KYC",
+      });
+    }
 
     if (!reference_key) {
       return res.status(400).json({
@@ -202,9 +212,21 @@ router.post("/fetch-aadhaar", validateConfig, authMiddleware, async (req, res) =
       });
     }
 
-    //fetch user name
-    const userId = req.user.id;
+    //check exisiting KYC
+    const existingKyc = await UserKYC.findOne({
+      where: { userId, role },
+    });
 
+    if (existingKyc && existingKyc.ekycStatus === "verified") {
+      return res.status(200).json({
+        success: true,
+        message: "Aadhaar already verified",
+        ekycStatus: "verified",
+        verifiedAt: existingKyc.verifiedAtAadhaar,
+      });
+    }
+
+    //fetch user name
     const user = await User.findByPk(userId);
     const fullName = user?.fullName;
 
@@ -261,6 +283,7 @@ router.post("/fetch-aadhaar", validateConfig, authMiddleware, async (req, res) =
 
     //name match
     const nameMatchResult = await nameMatchService(fullName, aadhaarName);
+    
     const { matchScore, matched } = nameMatchResult;
 
     //decision
@@ -279,7 +302,7 @@ router.post("/fetch-aadhaar", validateConfig, authMiddleware, async (req, res) =
     }
 
     const [kycRecord, created] = await UserKYC.findOrCreate({
-      where: { userId },
+      where: { userId, role },
       defaults: {
         aadhaarLast4: last4,
         ekycStatus,
@@ -326,7 +349,15 @@ router.post("/fetch-aadhaar", validateConfig, authMiddleware, async (req, res) =
 router.get("/aadhaar-status", authMiddleware, async (req, res) => {
   try {
     const userId = req.user.id;
-    const kycRecord = await UserKYC.findOne({ where: { userId } });
+    const role = req.user.role;
+    // Only allow user and admin
+    if (![2, 3].includes(role)) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized role",
+      });
+    }
+    const kycRecord = await UserKYC.findOne({ where: { userId,role } });
 
     if (!kycRecord) {
       return res.json({ success: true, ekycStatus: "not-verified" });
@@ -336,6 +367,7 @@ router.get("/aadhaar-status", authMiddleware, async (req, res) => {
       success: true,
       ekycStatus: kycRecord.ekycStatus || "not-verified",
       verifiedAt: kycRecord.verifiedAtAadhaar || null,
+      role: role === 2 ? 'user' : 'admin', 
     });
   } catch (error) {
     console.log(error);

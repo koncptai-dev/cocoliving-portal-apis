@@ -35,6 +35,12 @@ const UserDashboardRoutes = require("./routes/UserDashboardRoutes");
 const GatePassRoutes = require("./routes/GatePassRoutes");
 const OnboardingRoutes = require("./routes/OnboardingRoutes");
 const GuestVisitRoutes = require("./routes/GuestVisitRoutes");
+const ScheduleVisitRoute = require("./routes/ScheduleVisitRoute");
+const ServiceTeamRoutes = require("./routes/ServiceTeamRoutes");
+const DailyCleaningRoutes = require('./routes/DailyCleaningRoutes');
+const ServiceUserDashboardRoutes = require('./routes/ServiceUserDashboard');
+const contactRoute = require('./routes/contact');
+const jobsRoute = require('./routes/jobs');
 
 app.use(
   cors({
@@ -84,6 +90,12 @@ app.use("/api/user", UserDashboardRoutes);
 app.use("/api/gate-pass", GatePassRoutes);
 app.use('/api/onboarding', OnboardingRoutes);
 app.use("/api/guest-visits", GuestVisitRoutes);
+app.use('/api/schedule-visit', ScheduleVisitRoute);
+app.use('/api/service-team', ServiceTeamRoutes);
+app.use('/api/daily-cleaning', DailyCleaningRoutes);
+app.use('/api/service', ServiceUserDashboardRoutes);
+app.use('/api/contact', contactRoute);
+app.use('/api/jobs', jobsRoute);
 
 sequelize
   .sync({ alter: true }) //   ensures new models are created

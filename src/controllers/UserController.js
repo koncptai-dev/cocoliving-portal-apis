@@ -514,6 +514,8 @@ exports.editUserProfile = async (req, res) => {
       delete updates.parentEmail; // Prevent multi entry in loop
     }
 
+    //role wise field updates
+
     for (const key in updates) {
       const value = updates[key];
 
@@ -539,6 +541,12 @@ exports.editUserProfile = async (req, res) => {
         ["companyName", "position"].includes(key)
       ) {
         continue;
+      }
+
+      //fields for admin
+      if(user.userType==="admin"){
+        const allowAdminFields=["email", "fullName", "phone", "roleName",]
+        if(!allowAdminFields.includes(key)){continue;}
       }
       user[key] = typeof value === "string" ? value.trim() : value;
     }
@@ -566,7 +574,7 @@ exports.editUserProfile = async (req, res) => {
   }
 };
 
-//delete user account its soft delete only
+//delete user account its hard delete 
 exports.deleteAccount = async (req, res) => {
   try {
     const userId = req.params.id;
@@ -578,14 +586,9 @@ exports.deleteAccount = async (req, res) => {
       return res.status(404).json({ message: 'user not found' })
     }
 
-    //check already deleted
-    if (user.status === 0) {
-      await logApiCall(req, res, 400, `Deleted user account - user already deleted (ID: ${userId})`, "user", parseInt(userId));
-      return res.status(400).json({ message: 'user already deleted' })
-    }
-
-    //soft delete
-    await User.update({ status: 0 }, { where: { id: userId } })
+  
+    //hard delete
+    await user.destroy({force: true});
 
     await logApiCall(req, res, 200, `Deleted user account: ${user.fullName} (ID: ${userId})`, "user", parseInt(userId));
     return res.status(200).json({ message: 'User account deleted successfully' });
