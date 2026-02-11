@@ -5,6 +5,7 @@ const moment = require('moment');
 const Property = require('../models/property');
 const { logApiCall } = require("../helpers/auditLog");
 const { getCancellationMeta } = require("../helpers/cancellation");
+const { Op } = require('sequelize');
 
 exports.getUserBookings = async (req, res) => {
   try {
@@ -97,3 +98,29 @@ exports.requestCancellation = async (req, res) => {
     return res.status(500).json({ message: "Internal server error", error: error.message });
   }
 }
+
+exports.getActiveBookingForUser = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const booking = await Booking.findOne({
+      where: {
+        userId,
+        checkInDate: { [Op.lte]: today },
+        checkOutDate: { [Op.gte]: today },
+      },
+      attributes: ['id'],
+    });
+
+    if (!booking) {
+      return res.status(404).json({ message: 'No active booking found' });
+    }
+
+    res.status(200).json({ bookingId: booking.id });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch active booking' });
+  }
+};

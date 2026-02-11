@@ -22,6 +22,7 @@ Thumbs.db
 node_modules
 .env
 
+<<<<<<< HEAD
 src/uploads
 src/uploads/csv
 src/uploads/profilePicture
@@ -31,6 +32,9 @@ src/uploads/ticketImages
 src/uploads/ticketVideos
 src/uploads/eventImages
 src/uploads/dailyCleaning
+=======
+src/uploads/**
+>>>>>>> b340182bdffcb8ca80f8afe15f9fedadfe7a8af5
 
 # Firebase service account
 src/Auth/serviceAccountKey.json

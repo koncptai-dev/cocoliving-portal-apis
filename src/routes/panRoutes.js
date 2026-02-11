@@ -4,9 +4,9 @@ const { verifyPAN } = require('../controllers/panController');
 const panLimiter = require('../utils/ratelimiter');
 const UserKYC = require("../models/userKYC");
 const authenticateToken = require("../middleware/auth");
+const upload = require("../middleware/upload");
 
-
-router.post('/verify-pan', authenticateToken, panLimiter, verifyPAN);
+router.post('/verify-pan', authenticateToken, panLimiter,upload.single("pan_image") , verifyPAN);
 
 //for pan status
 router.get("/pan-status", authenticateToken, async (req, res) => {

@@ -5,5 +5,6 @@ const authMiddleware = require('../middleware/auth');
 
 router.get('/getUserBookings', authMiddleware, BookRoomController.getUserBookings);
 router.post("/requestCancellation/:bookingId",authMiddleware,BookRoomController.requestCancellation);
+router.get('/active-booking', authMiddleware, BookRoomController.getActiveBookingForUser );
 
 module.exports=router

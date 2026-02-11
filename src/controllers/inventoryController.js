@@ -90,7 +90,7 @@ exports.getInventoryByIds = async (req, res) => {
 
     const items = await Inventory.findAll({
       where: { id: ids },
-      attributes: ["id", "itemName"],
+      attributes: ["id", "itemName", "inventoryCode"],
     });
 
     await logApiCall(req, res, 200, `Fetched ${items.length} inventory items by IDs`, "inventory");
@@ -151,11 +151,31 @@ exports.deleteInventory = async (req, res) => {
   try {
     const { id } = req.params;
     const inventoryItem = await Inventory.findByPk(id);
-    const deleted = await Inventory.destroy({ where: { id } });
-    if (!deleted) {
-      await logApiCall(req, res, 404, `Deleted inventory item - item not found (ID: ${id})`, "inventory", parseInt(id));
+    if (!inventoryItem) {
+      await logApiCall(
+        req,
+        res,
+        404,
+        `Deleted inventory item - item not found (ID: ${id})`,
+        "inventory",
+        parseInt(id)
+      );
       return res.status(404).json({ message: "Item not found" });
     }
+    if (inventoryItem.status === "Allocated") {
+      await logApiCall(
+        req,
+        res,
+        409,
+        `Attempted delete on allocated inventory item (ID: ${id})`,
+        "inventory",
+        parseInt(id)
+      );
+      return res.status(409).json({
+        message: "Allocated inventory items cannot be deleted",
+      });
+    }
+    await Inventory.destroy({ where: { id } });
     await logApiCall(req, res, 200, `Deleted inventory item: ${inventoryItem?.itemName || "Unknown"}`, "inventory", parseInt(id));
     res.json({ message: "Inventory deleted successfully" });
   } catch (error) {

@@ -18,6 +18,7 @@ const storage = multer.diskStorage({
         else if (file.fieldname === 'ticketImage') folder = 'ticketImages';
         else if (file.fieldname === 'ticketVideo') folder = 'ticketVideos';
         else if (file.fieldname === 'eventImage') folder = 'eventImages';
+        else if (file.fieldname === 'aadhaar_front' || file.fieldname === 'aadhaar_back' || file.fieldname === 'pan_image') folder = 'kycDocuments';
         else if (file.fieldname === 'photosBefore' || file.fieldname === 'photosAfter') folder = 'dailyCleaning'; //  single folder for all daily cleaning photos
 
         const uploadDir = path.join(__dirname, '..', 'uploads', folder);

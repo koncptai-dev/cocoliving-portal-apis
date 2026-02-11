@@ -100,9 +100,14 @@ exports.initiate = async (req, res) => {
     }
 
     const { bookingType, metadata = {} } = req.body;
-    if (!metadata.duration || Number(metadata.duration)<1) {
+    const {
+      preferredFloor = null,
+      preferredRoomNumber = null,
+      preferredBed = null,
+    } = metadata;
+    if (!metadata.duration || ![6,12].includes(Number(metadata.duration))) {
       await logApiCall(req, res, 400, "Initiated booking payment - invalid duration", "payment", userId);
-      return res.status(400).json({ success: false, message: 'duration must be atleast 1 month' });
+      return res.status(400).json({ success: false, message: 'duration must be either 6 or 12 months only' });
     }
 
     if (!bookingType || !metadata) {
@@ -200,6 +205,13 @@ exports.initiate = async (req, res) => {
         payableAmount: payableAmountRupees,
         propertyId: rebuiltMeta.propertyId,
         roomType: rebuiltMeta.roomType,
+        meta: {
+          bookingPreferences: {
+            preferredFloor,
+            preferredRoomNumber,
+            preferredBed,
+          }
+        }
       },
       rawResponse: { note: 'pending transaction created' }
     });
@@ -454,8 +466,8 @@ exports.initiateExtension = async (req, res) => {
   try {
     const { bookingId, months } = req.body;
     const userId = req.user?.id;
-    if (!bookingId || !months || months < 1) {
-      return res.status(400).json({ success: false, message: 'bookingId and valid months required' });
+    if (!bookingId || !months || ![6, 12].includes(Number(months))) {
+      return res.status(400).json({ success: false, message: 'bookingId and valid months required(Extension duration must be either 6 or 12 months only)' });
     }
 
     const booking = await Booking.findByPk(bookingId);

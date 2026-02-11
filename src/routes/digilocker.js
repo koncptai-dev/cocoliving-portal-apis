@@ -6,6 +6,7 @@ const UserKYC = require("../models/userKYC");
 const authMiddleware = require('../middleware/auth');
 const User = require("../models/user");
 const { nameMatchService } = require("../helpers/nameMatchfunction");
+const upload = require("../middleware/upload");
 
 const router = express.Router();
 
@@ -57,7 +58,7 @@ const makeIdtoRequest = async (
   }
 };
 
-router.post("/verify-account", validateConfig, async (req, res) => {
+router.post("/verify-account", authMiddleware, validateConfig, async (req, res) => {
   try {
     const { mobile_number } = req.body;
 
@@ -85,8 +86,31 @@ router.post("/verify-account", validateConfig, async (req, res) => {
   }
 });
 
-router.post("/initiate-session", validateConfig, async (req, res) => {
+router.post("/initiate-session", authMiddleware, upload.fields([ { name: "aadhaar_front", maxCount: 1 }, { name: "aadhaar_back", maxCount: 1 }, ]), validateConfig, async (req, res) => {
   try {
+    const userId = req.user.id;
+    if (!req.files?.aadhaar_front || !req.files?.aadhaar_back) {
+      return res.status(400).json({
+        success: false,
+        message: "Aadhaar front and back images are required",
+      });
+    }
+    let kyc = await UserKYC.findOne({ where: { userId } });
+    const aadhaarFrontImage = `/uploads/kycDocuments/${req.files.aadhaar_front[0].filename}`;
+    const aadhaarBackImage  = `/uploads/kycDocuments/${req.files.aadhaar_back[0].filename}`;
+
+    if (kyc) {
+      await kyc.update({
+        aadhaarFrontImage,
+        aadhaarBackImage,
+      });
+    } else {
+      await UserKYC.create({
+        userId,
+        aadhaarFrontImage,
+        aadhaarBackImage,
+      });
+    }
     const {
       consent,
       consent_purpose,
@@ -108,13 +132,22 @@ router.post("/initiate-session", validateConfig, async (req, res) => {
         message: "redirect_to_signup is required",
       });
     }
-
+    let parsedDocuments = documents_for_consent;
+    if (typeof documents_for_consent === "string") {
+      try {
+        parsedDocuments = JSON.parse(documents_for_consent);
+      } catch {
+        parsedDocuments = [];
+      }
+    }
+    const normalizedConsent = consent === true || consent === "true";
+    const normalizedRedirect = redirect_to_signup === true || redirect_to_signup === "true";
     const result = await makeIdtoRequest("/initiate_session", {
-      consent: consent,
+      consent: normalizedConsent,
       consent_purpose: consent_purpose,
       redirect_url: redirect_url,
-      redirect_to_signup: redirect_to_signup,
-      documents_for_consent: documents_for_consent || [],
+      redirect_to_signup: normalizedRedirect,
+      documents_for_consent: parsedDocuments,
     });
 
     res.json({
