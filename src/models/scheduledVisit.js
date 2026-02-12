@@ -32,12 +32,6 @@ const ScheduledVisit = sequelize.define(
       allowNull: false,
     },
 
-    propertyId: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      references: { model: Property, key: 'id' },
-    },
-
     status: {
       type: DataTypes.ENUM('scheduled', 'cancelled'),
       allowNull: false,

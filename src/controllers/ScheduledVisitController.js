@@ -1,12 +1,11 @@
 const ScheduledVisit = require('../models/scheduledVisit');
-const Property = require('../models/property');
 const { logApiCall } = require('../helpers/auditLog');
 
 exports.createScheduledVisit = async (req, res) => {
   try {
-    const { name, email, phone, visitDate, propertyId } = req.body;
+    const { name, email, phone, visitDate } = req.body;
 
-    if (!name || !email || !phone || !visitDate || !propertyId) {
+    if (!name || !email || !phone || !visitDate ) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
@@ -18,17 +17,11 @@ exports.createScheduledVisit = async (req, res) => {
       return res.status(400).json({ message: 'Visit date cannot be in the past' });
     }
 
-    const property = await Property.findByPk(propertyId);
-    if (!property || property.is_active === false) {
-      return res.status(404).json({ message: 'Property not found' });
-    }
-
     const visit = await ScheduledVisit.create({
       name,
       email,
       phone,
       visitDate,
-      propertyId,
     });
 
     await logApiCall(req, res, 201, `Scheduled visit created (ID: ${visit.id})`, 'scheduledVisit', visit.id);
