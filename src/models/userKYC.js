@@ -20,6 +20,7 @@ const UserKYC = sequelize.define(
     role: {
       type: DataTypes.INTEGER,
       allowNull: false,
+      defaultValue : 2,
     },
     // PAN fields
     panNumber: {
