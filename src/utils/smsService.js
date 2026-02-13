@@ -4,11 +4,25 @@ require("dotenv").config();
 const otpApiEndpoint = "https://onlysms.co.in/api/otp.aspx";
 const smsApiEndpoint = "https://onlysms.co.in/api/sms.aspx";
 
+// Random hash generator
+function generateRandomHash(length = 11) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let hash = '';
+  for (let i = 0; i < length; i++) {
+    hash += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return hash;
+}
+
 exports.smsSender = async (phone, type, data) => {
   let message = "";
   let apiEndpoint = "";
   if (type === "otp") {
-    message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED`;
+     const randomHash = generateRandomHash(); 
+     message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED`;
+    //  message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED\n${randomHash}`;
+    //  console.log(message);
+     
     apiEndpoint = otpApiEndpoint;
   }
   const encodedMessage = encodeURIComponent(message);

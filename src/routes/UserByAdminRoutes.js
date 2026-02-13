@@ -4,10 +4,14 @@ const UserByAdminController=require('../controllers/UsersByAdminController')
 const authMiddleware = require('../middleware/auth');
 const {addUserValidate}=require('../middleware/validation');
 const validate=require('../middleware/validateResult');
+const authorizePage = require("../middleware/authorizePage");
+const authorizeRole = require("../middleware/authorizeRole");
+
 
 // create Route
 router.post("/add",authMiddleware, addUserValidate, validate, UserByAdminController.AddUser);
-router.get("/getAllUsers",authMiddleware, UserByAdminController.getAllUser);
+router.get("/getAllUsers",authMiddleware,authorizeRole(1,3),authorizePage("User Management","read"), UserByAdminController.getAllUser);
+router.get('/getNormalUsers', authMiddleware, authorizeRole(1,3), UserByAdminController.getNormalUsers);
 
 //for admin user
 router.post('/create-admin-user', authMiddleware, UserByAdminController.createAdminUser);

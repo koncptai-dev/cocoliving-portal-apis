@@ -2,17 +2,24 @@ const express = require('express');
 const router = express.Router();
 const BookingPaymentController = require('../controllers/BookingPaymentController');
 const authenticateToken = require('../middleware/auth');
+const authorizeRole = require("../middleware/authorizeRole");
 
-router.post('/initiate', authenticateToken, BookingPaymentController.initiate);
+// user
+router.post('/initiate', authenticateToken, authorizeRole(2), BookingPaymentController.initiate);
 
-router.post('/initiate-remaining', authenticateToken, BookingPaymentController.initiateRemaining);
+// user
+router.post('/initiate-remaining', authenticateToken, authorizeRole(2), BookingPaymentController.initiateRemaining);
 
-router.post('/refund', authenticateToken, BookingPaymentController.initiateRefund);
+// admin
+router.post('/refund', authenticateToken, authorizeRole(1,3), BookingPaymentController.initiateRefund);
 
-router.get('/refund/:merchantRefundId/status', authenticateToken, BookingPaymentController.getRefundStatus);
+// admin
+router.get('/refund/:merchantRefundId/status', authenticateToken,authorizeRole(1,3), BookingPaymentController.getRefundStatus);
 
-router.get('/:bookingId/summary', BookingPaymentController.getBookingPaymentSummary);
+// admin
+router.get('/:bookingId/summary', authenticateToken,authorizeRole(1,3), BookingPaymentController.getBookingPaymentSummary);
 
-router.post('/initiate-extension',authenticateToken,BookingPaymentController.initiateExtension);
+// user
+router.post('/initiate-extension',authenticateToken,authorizeRole(2),BookingPaymentController.initiateExtension);
 
 module.exports = router;

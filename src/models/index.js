@@ -28,6 +28,7 @@ const AuditLog = require("./auditLog");
 const UserKYC = require("./userKYC");
 const ScheduledVisit = require("./scheduledVisit");
 
+
 User.hasOne(UserKYC, {
   foreignKey: "userId",
   as: "kyc",

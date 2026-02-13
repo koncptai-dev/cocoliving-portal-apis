@@ -5,13 +5,14 @@ const propertyController=require('../controllers/propertyController');
 const {validateProperty,editPropertyValidate}=require('../middleware/validation');
 const validate=require('../middleware/validateResult');
 const upload = require('../middleware/upload');
+const authorizeRole = require("../middleware/authorizeRole");
 
-
-router.post("/add", upload.any(),validateProperty, validate, authMiddleware, propertyController.createProperty);
-router.get("/getAll",authMiddleware, propertyController.getProperties);
-router.put("/edit/:id",upload.any(),editPropertyValidate, validate, authMiddleware, propertyController.editProperties);
-router.delete("/delete/:id", authMiddleware, propertyController.deleteProperty);
-router.delete("/deleteRateCard", authMiddleware, propertyController.deleteRateCard);
+// admin
+router.post("/add", upload.any(),validateProperty, validate, authMiddleware,authorizeRole(1,3), propertyController.createProperty);
+router.get("/getAll",authMiddleware, authorizeRole(1,3), propertyController.getProperties);
+router.put("/edit/:id",upload.any(),editPropertyValidate, validate, authMiddleware, authorizeRole(1,3), propertyController.editProperties);
+router.delete("/delete/:id", authMiddleware, authorizeRole(1,3), propertyController.deleteProperty);
+router.delete("/deleteRateCard", authMiddleware, authorizeRole(1,3), propertyController.deleteRateCard);
 
 //for user
 router.get("/getPropertiesForUser", propertyController.getPropertiesForUser);

@@ -5,10 +5,15 @@ const validate=require('../middleware/validateResult');
 const router = express.Router();
 const authenticateToken =  require('../middleware/auth');
 const upload = require('../middleware/upload');
+const authorizeRole = require("../middleware/authorizeRole");
+const authorizePage = require("../middleware/authorizePage");
 
 router.post('/register',upload.single('profileImage'), validateSignup,validate,UserController.registerUser);
+
+//admin user
 router.put('/update-profile/:id',authenticateToken, upload.single('profileImage'),editUserProfileValidator,validate,UserController.editUserProfile);
-router.get('/getUser/:id', authenticateToken, UserController.getUserById);
+router.get('/getUser/:id', authenticateToken,authorizeRole(1,3), UserController.getUserById);
+
 router.post('/send-otp',UserController.sendOTP);
 
 // Send OTP to phone
