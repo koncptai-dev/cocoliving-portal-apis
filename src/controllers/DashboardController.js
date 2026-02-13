@@ -22,7 +22,7 @@ exports.getDashboardStats = async (req, res) => {
     );
 
     // 1. Total user count
-    const totalUsers = await User.count();
+    const totalUsers = await User.count({where:{role:{[Op.in]:[2]}}});
 
     // 2. Occupancy rate - percentage of occupied beds out of total beds (all bookings)
     const allRooms = await Rooms.findAll({
