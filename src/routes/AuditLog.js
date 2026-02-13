@@ -5,6 +5,6 @@ const authMiddleware = require('../middleware/auth');
 const authorizeRole = require("../middleware/authorizeRole");
 
 // super-admin
-router.get("/get",authMiddleware, authorizeRole(1,3), AuditLogController.getAuditLogs);
+router.get("/get",authMiddleware, authorizeRole(1), AuditLogController.getAuditLogs);
 
 module.exports = router;
