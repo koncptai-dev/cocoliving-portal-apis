@@ -76,6 +76,21 @@ exports.getAllUser = async (req, res) => {
     }
 }
 
+exports.getNormalUsers = async (req, res) => {
+  try {
+    const users = await User.findAll({
+      where: { role: 2 }, // only normal users
+      attributes: ["id", "fullName"],
+      order: [["fullName", "ASC"]],
+    });
+
+    res.json({ users });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch users" });
+  }
+};
+
+
 //create admin user
 exports.createAdminUser = async (req, res) => {
     const t = await sequelize.transaction(); //  Start transaction

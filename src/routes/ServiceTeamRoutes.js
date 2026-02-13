@@ -3,7 +3,7 @@ const router = express.Router();
 const ServiceTeamController=require('../controllers/ServiceTeamController');
 const authMiddleware = require('../middleware/auth');
 
-// create Route
+// create Route admin
 router.post("/register",authMiddleware, ServiceTeamController.registerServiceTeam);
 router.put("/edit/:id",authMiddleware, ServiceTeamController.editServiceTeam);
 router.get("/getAll",authMiddleware, ServiceTeamController.getAllServiceTeamMembers);

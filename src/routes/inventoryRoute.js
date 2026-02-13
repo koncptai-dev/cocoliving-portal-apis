@@ -4,15 +4,18 @@ const controller = require("../controllers/inventoryController");
 const csvController = require("../controllers/inventoryCsvController.js");
 const authenticateToken = require("../middleware/auth");
 const uploadCSV = require("../middleware/uploadCsv.js");
+const authorizeRole = require("../middleware/authorizeRole");
 
-//CSV Routes
-router.get("/export/csv", authenticateToken, csvController.exportInventory);// Export modes : export all inventory items & export inventory items of a specific property ( use ?propertyId= at end of request to filter by property )
+//CSV Routes admin
+router.get("/export/csv", authenticateToken,authorizeRole(1,3), csvController.exportInventory);// Export modes : export all inventory items & export inventory items of a specific property ( use ?propertyId= at end of request to filter by property )
 
-router.post("/import/csv", authenticateToken, uploadCSV.single("file"), csvController.importInventory);
-router.get("/template", authenticateToken, csvController.downloadTemplate);
+// admin
+router.post("/import/csv", authenticateToken, authorizeRole(1,3), uploadCSV.single("file"), csvController.importInventory);
+router.get("/template", authenticateToken, authorizeRole(1,3), csvController.downloadTemplate);
+
 //Normal Routes
-router.post("/", authenticateToken, controller.addInventory);
-router.get("/", authenticateToken, controller.getAllInventory);
+router.post("/", authenticateToken, authorizeRole(1,3), controller.addInventory);
+router.get("/", authenticateToken, authorizeRole(1,3), controller.getAllInventory);
 router.get("/:id", authenticateToken, controller.getInventoryById);
 router.post("/by-ids", controller.getInventoryByIds);
 router.put("/:id", authenticateToken, controller.updateInventory);

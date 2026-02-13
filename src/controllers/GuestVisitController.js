@@ -77,9 +77,20 @@ exports.createGuestVisit = async (req, res) => {
     let residentUserId = null;
 
     if (permitType === 'guest') {
+      let targetUserId = user.id;
+      if (user.role === 1 || user.role === 3) {
+        const { selectedUserId } = req.body;
+
+        if (!selectedUserId) {
+          return res.status(400).json({ message: "Please select a user" });
+        }
+
+        targetUserId = selectedUserId;
+      }
+
       resolvedBooking = await Booking.findOne({
         where: {
-          userId: user.id,
+          userId: targetUserId,
           checkInDate: { [Op.lte]: today },
           checkOutDate: { [Op.gte]: today },
         },
@@ -91,7 +102,7 @@ exports.createGuestVisit = async (req, res) => {
 
       resolvedPropertyId = resolvedBooking.propertyId;
       resolvedRoomId = resolvedBooking.roomId;
-      residentUserId = user.id;
+      residentUserId = targetUserId;
     }
 
     if (permitType === 'worker') {
@@ -104,7 +115,7 @@ exports.createGuestVisit = async (req, res) => {
         const permission = await UserPermission.findByPk(user.id);
         const allowedProperties = permission?.properties || [];
         if (!allowedProperties.includes(resolvedPropertyId)) {
-          return res.status(403).json({ message: "you are not allowed to view property."})
+          return res.status(403).json({ message: "you are not allowed to view property." })
         }
       }
     }
@@ -195,16 +206,16 @@ exports.scanQrAndCheckIn = async (req, res) => {
 
     const today = getTodayDateOnly();
     const visitDateOnly = new Date(visit.visitDate);
-    visitDateOnly.setHours(0,0,0,0);
-    if (visitDateOnly < today){
-      if (visit.status === 'scheduled'){
+    visitDateOnly.setHours(0, 0, 0, 0);
+    if (visitDateOnly < today) {
+      if (visit.status === 'scheduled') {
         visit.status = 'expired';
         await visit.save();
       }
-      return res.status(400).json({ message : 'Visit Expired' });
+      return res.status(400).json({ message: 'Visit Expired' });
     }
-    if (visitDateOnly > today){
-      return res.status(400).json({ message: `Visit not valid for today ( Visit scheduled for :${visit.visitDate}`})
+    if (visitDateOnly > today) {
+      return res.status(400).json({ message: `Visit not valid for today ( Visit scheduled for :${visit.visitDate}` })
     }
     const now = new Date();
 
@@ -327,7 +338,7 @@ exports.getPropertyGuestVisits = async (req, res) => {
       allowedProperties = await Property.findAll({
         attributes: ['id', 'name'],
       });
-    } 
+    }
     else if (user.role === 3) {
       const permission = await UserPermission.findByPk(user.id);
       if (!permission || !Array.isArray(permission.properties)) {
@@ -339,7 +350,7 @@ exports.getPropertyGuestVisits = async (req, res) => {
         where: { id: { [Op.in]: permission.properties } },
         attributes: ['id', 'name'],
       });
-    } 
+    }
     else {
       return res.status(403).json({ message: 'Unauthorized' });
     }
