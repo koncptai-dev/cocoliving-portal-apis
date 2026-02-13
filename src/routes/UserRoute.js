@@ -12,7 +12,7 @@ router.post('/register',upload.single('profileImage'), validateSignup,validate,U
 
 //admin user
 router.put('/update-profile/:id',authenticateToken, upload.single('profileImage'),editUserProfileValidator,validate,UserController.editUserProfile);
-router.get('/getUser/:id', authenticateToken,authorizeRole(1,3), UserController.getUserById);
+router.get('/getUser/:id', authenticateToken,authorizeRole(1,2,3), UserController.getUserById);
 
 router.post('/send-otp',UserController.sendOTP);
 

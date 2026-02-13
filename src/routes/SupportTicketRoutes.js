@@ -14,7 +14,7 @@ router.get("/get-user-tickets", authMiddleware, SupportTicketController.getUserT
 // admin
 router.get("/get-all-tickets", authMiddleware,authorizeRole(1,3), SupportTicketController.getAllTickets);
 router.put("/update-ticket-status/:id", authMiddleware,authorizeRole(1,3), SupportTicketController.updateTicketStatus);
-router.get('/getroom', authMiddleware,authorizeRole(1,3),SupportTicketController.getRooms);
+router.get('/getroom', authMiddleware,authorizeRole(1,2,3),SupportTicketController.getRooms);
 
 //admin nd user
 router.get("/ticket-details/:id", authMiddleware, authorizeRole(1,2,3), SupportTicketController.getTicketDetails);
