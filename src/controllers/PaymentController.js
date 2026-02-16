@@ -115,6 +115,7 @@ exports.getUserTransactions = async (req, res) => {
         status: r.status,
         redirectUrl: r.redirectUrl || null,
         rawResponse: r.rawResponse || null,
+        refundReason: r.refundReason || null,
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
       };

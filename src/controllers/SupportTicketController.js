@@ -14,15 +14,40 @@ const { logApiCall } = require("../helpers/auditLog");
 exports.createTicket = async (req, res) => {
     try {
         const userId = req.user.id;
-
-        const { roomNumber, date, issue, description, priority, inventoryId } = req.body;
+        const CATEGORY_MAP = {
+            "Booking & Maintenance": [
+                "Plumbing",
+                "Electrical",
+                "Appliance Issue",
+                "Roommate Issue",
+                "Other",
+            ],
+            "Payments & Refunds": [
+                "Payment Not Reflecting Correctly",
+                "Refund Not Received",
+                "Request Refund",
+                "Remaining Payment Issue",
+                "Other",
+            ],
+            "Other": [
+                "Suggestion",
+                "Complaint",
+                "Feedback",
+                "Other",
+            ],
+        };
+        const { roomNumber, date, issue, description, priority, inventoryId, category , subCategory } = req.body;
 
         //validation
-        if (!roomNumber || !date || !issue) {
+        if (!roomNumber || !date || !issue || !category || !subCategory) {
             await logApiCall(req, res, 400, "Failed to create support ticket - missing required fields", "supportTicket");
             return res.status(400).json({ message: "Please provide all required fields" });
         }
-
+        if ( !CATEGORY_MAP[category] || !CATEGORY_MAP[category].includes(subCategory) ) {
+            return res.status(400).json({
+                message: "Invalid category/subCategory combination"
+            });
+        }
         //check room exists
         const room = await Rooms.findOne({ where: { roomNumber } });
         if (!room) {
@@ -95,6 +120,8 @@ exports.createTicket = async (req, res) => {
             videos: videoUrls,
             inventoryId: inventoryId || null,
             inventoryName: inventoryName || null,
+            category,
+            subCategory
         })
         await logTicketEvent({
             ticketId: ticket.id,

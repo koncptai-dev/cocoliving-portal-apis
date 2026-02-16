@@ -37,3 +37,23 @@ exports.createScheduledVisit = async (req, res) => {
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
+
+exports.getScheduledVisitList = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const { count, rows: visits } = await ScheduledVisit.findAndCountAll({
+      order: [
+        ["visitDate", "DESC"],
+      ],
+      limit,offset
+    });
+
+    return res.status(200).json({ success: true, total:count,page, totalPages: Math.ceil(count / limit),data: visits, });
+  } catch (error) {
+    console.error("Schedule Visit List Error:", error);
+    return res.status(500).json({ success: false,  message: "Failed to fetch schedule visit list", });
+  }
+};

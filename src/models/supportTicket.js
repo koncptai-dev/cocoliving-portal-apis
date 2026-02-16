@@ -101,7 +101,16 @@ const SupportTicket = sequelize.define('SupportTicket', {
             model: Property, // your properties table
             key: 'id'
         }
-    }
+    },
+    category: {
+        type: DataTypes.STRING,
+        allowNull: false,
+    },
+
+    subCategory: {
+        type: DataTypes.STRING,
+        allowNull: false,
+    },
 },
     {
         tableName: 'support_tickets'
