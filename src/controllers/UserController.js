@@ -488,7 +488,7 @@ exports.editUserProfile = async (req, res) => {
       delete updates.email;
     }
     //parent email validation
-    if (updates.parentEmail !== undefined) {
+    if (updates.parentEmail !== undefined && updates.parentEmail !== null) {
       if (user.userType === "student") {
         const newParentEmail = updates.parentEmail.trim();
 
