@@ -10,8 +10,8 @@ const authMiddleware = require('../middleware/auth');
 //admin
 router.post('/add',validateRooms,validate,authMiddleware, authorizeRole(1,3), RoomController.AddRooms);
 router.put('/edit/:id',editRoomsValidate,validate, authMiddleware,authorizeRole(1,3), RoomController.EditRooms);
-router.delete('/delete/:id', authorizeRole(1,3), RoomController.DeleteRooms);
-router.get('/getall', authorizeRole(1,3), RoomController.getAllRooms);
+router.delete('/delete/:id',authMiddleware, authorizeRole(1,3), RoomController.DeleteRooms);
+router.get('/getall',authMiddleware, authorizeRole(1,3), RoomController.getAllRooms);
 
 router.get('/getAll/:propertyId', RoomController.getRoomsByProperty);
 router.get("/available/:propertyId/:roomType", RoomController.getAvailableRooms);
