@@ -16,8 +16,8 @@ router.post('/refund', authenticateToken, authorizeRole(1,3), BookingPaymentCont
 // admin
 router.get('/refund/:merchantRefundId/status', authenticateToken,authorizeRole(1,3), BookingPaymentController.getRefundStatus);
 
-// admin
-router.get('/:bookingId/summary', authenticateToken,authorizeRole(1,3), BookingPaymentController.getBookingPaymentSummary);
+// admin also for user
+router.get('/:bookingId/summary', authenticateToken,authorizeRole(1,2,3), BookingPaymentController.getBookingPaymentSummary);
 
 // user
 router.post('/initiate-extension',authenticateToken,authorizeRole(2),BookingPaymentController.initiateExtension);
