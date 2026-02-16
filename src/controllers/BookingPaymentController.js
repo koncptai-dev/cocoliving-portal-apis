@@ -579,8 +579,11 @@ exports.initiateExtension = async (req, res) => {
 exports.initiateRefund = async (req, res) => {
   try {
     const actorId = req.user?.id;
-    const { transactionId, amountRupees } = req.body;
+    const { transactionId, amountRupees, reason } = req.body;
 
+    if (!reason || reason.trim().length < 5){
+      return res.status(400).json({success: false, message: 'Refund reason is required ( minimum 5 characters)'});
+    }
     if (!transactionId || typeof amountRupees === 'undefined') {
       await logApiCall(req, res, 400, "Initiated refund - transactionId and amountRupees required", "payment", actorId);
       return res.status(400).json({ success: false, message: 'transactionId and amountRupees are required' });
@@ -598,7 +601,10 @@ exports.initiateRefund = async (req, res) => {
     }
 
     const allRefundTxs = await PaymentTransaction.findAll({
-      where: { type: 'REFUND' },
+      where: {
+        type: 'REFUND',
+        originalMerchantOrderId: originalTx.merchantOrderId
+      },
       order: [['createdAt', 'ASC']],
     });
 
@@ -639,7 +645,12 @@ exports.initiateRefund = async (req, res) => {
       status: 'PENDING',
       merchantOrderId: tempMerchantRefundId,
       merchantRefundId: null,
-      rawResponse: { note: 'created refund draft', originalMerchantOrderId: origMerchantOrderId },
+      refundReason: reason.trim(),
+      rawResponse: { 
+        note: 'created refund draft',  
+        originalMerchantOrderId: origMerchantOrderId,
+        refundReason: reason.trim()
+       },
     });
 
     const finalMerchantRefundId = `REFUND-${draftRefund.id}`;
@@ -668,10 +679,11 @@ exports.initiateRefund = async (req, res) => {
     let propertyName = '-';
 
     if (originalTx.bookingId) {
-      const booking = await Booking.findByPk(originalTx.bookingId, {
-        include: [{ model: Property, as: 'property' }]
-      });
-      propertyName = booking?.property?.name || '-';
+      const booking = await Booking.findByPk(originalTx.bookingId);
+      if(booking?.propertyId) {
+        const property = await Property.findByPk(booking.propertyId);
+        propertyName = property?.name || '-';
+      }
     }
 
     const email = refundInitiatedEmail({
@@ -679,7 +691,7 @@ exports.initiateRefund = async (req, res) => {
       bookingId: originalTx.bookingId,
       propertyName,
       refundAmount: amountRupees,
-      reason: 'Booking cancelled'
+      reason: reason.trim()
     });
 
     await mailsender(
@@ -781,6 +793,7 @@ exports.getBookingPaymentSummary = async (req, res) => {
     const mappedTransactions = transactions.map(t => ({
       ...t.toJSON(),
       amountRupees: Math.round(Number(t.amount || 0) / 100),
+      refundReason: t.refundReason || null,
     }));
 
     return res.json({

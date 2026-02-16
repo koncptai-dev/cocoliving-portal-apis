@@ -27,6 +27,10 @@ const PaymentTransaction = sequelize.define(
       allowNull: true,
       unique: true,
     },
+    refundReason: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
     originalMerchantOrderId: {
       type: DataTypes.STRING,
       allowNull: true,
