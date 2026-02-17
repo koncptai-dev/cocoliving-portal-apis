@@ -19,7 +19,8 @@ exports.smsSender = async (phone, type, data) => {
   let apiEndpoint = "";
   if (type === "otp") {
      const randomHash = generateRandomHash(); 
-     message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED\n${randomHash}`;
+     message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED\nwgL7cQuRsnk`;
+    //  message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED\n${randomHash}`;
     //  console.log(message);
      
     apiEndpoint = otpApiEndpoint;
