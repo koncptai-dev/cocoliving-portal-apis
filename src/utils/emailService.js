@@ -2,62 +2,62 @@ const nodemailer = require('nodemailer');
 require('dotenv').config();
 
 const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: 587,
-    secure: false,
-    auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-    },
-    tls: {
-        rejectUnauthorized: false
-    }
+  host: process.env.SMTP_HOST,
+  port: 587,
+  secure: false,
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+  tls: {
+    rejectUnauthorized: false
+  }
 });
 
 //forgot password
 exports.sendResetEmail = async (email, code) => {
-    try {
-        const info = await transporter.sendMail({
-            from: process.env.SMTP_USER,
-            to: email,
-            subject: 'Password Reset Code',
-            text: `Your password reset code is ${code}`,
-        })
-        console.log('Reset email sent:', info.response);
-        
-    } catch (error) {
-        console.log('Error sending reset email:', error);
-        throw error;
-    }
+  try {
+    const info = await transporter.sendMail({
+      from: process.env.SMTP_USER,
+      to: email,
+      subject: 'Password Reset Code',
+      text: `Your password reset code is ${code}`,
+    })
+    console.log('Reset email sent:', info.response);
+
+  } catch (error) {
+    console.log('Error sending reset email:', error);
+    throw error;
+  }
 }
 
 //mail sender
-const mailsender=async (email,title,body,attachments=[])=>{
+const mailsender = async (email, title, body, attachments = []) => {
 
-    try{
-        let transporter=nodemailer.createTransport({
-            host:process.env.SMTP_HOST,
-            port:465,
-            secure:true,
-            auth:{
-                user:process.env.SMTP_USER,
-                pass:process.env.SMTP_PASS
-            }
-        })
-        let info=await transporter.sendMail({
-            from:'COCO_LIVING',
-            to:`${email}`,
-            subject:`${title}`,
-            html:`${body}`,
-            attachments,
-        })
-        // console.log('information',info);
-        return info;
-    }
-    catch(err){
-        console.log("Email Sendin Failed:",err.message);
-        throw err;
-    }
+  try {
+    let transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: 465,
+      secure: true,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+      }
+    })
+    let info = await transporter.sendMail({
+      from: 'COCO_LIVING',
+      to: `${email}`,
+      subject: `${title}`,
+      html: `${body}`,
+      attachments,
+    })
+    // console.log('information',info);
+    return info;
+  }
+  catch (err) {
+    console.log("Email Sendin Failed:", err.message);
+    throw err;
+  }
 }
 
 // 1. For contact form submissions
@@ -88,7 +88,7 @@ const sendContactEmail = async (name, email, phone, message) => {
 
               <tr>
                 <td style="border-top: 1px solid #e5e7eb; padding: 16px; text-align: center; color: #6b7280; font-size: 14px;">
-                  This message was sent via the website contact form.
+                  This message was sent via the website contact form.<br>© 2025 COCO LIVING
                 </td>
               </tr>
             </table>
@@ -98,10 +98,10 @@ const sendContactEmail = async (name, email, phone, message) => {
     `;
 
     const info = await transporter.sendMail({
-      from: `"${name}" <${process.env.SMTP_USER}>`,
+      from: `"CocoLiving Website" <info@cocoliving.in>`,
       replyTo: `"${name}" <${email}>`,
-      to: email,
-      subject: `Contact Form Submission from ${name}`,
+      to: `<${process.env.SMTP_USER}>`,
+      subject: "Website Contact Inquiry",
       html: htmlContent,
     });
 
@@ -125,12 +125,25 @@ const sendThankYouEmail = async (name, email) => {
       <td align="center">
         <table border="0" cellpadding="0" cellspacing="0" width="600" style="background:#ffffff;border-radius:12px;overflow:hidden;">
           <tr>
-            <td align="center" style="height:300px; background: url('https://cocoliving.in/background-img.png') center / cover no-repeat;">
+            <td align="center" style="padding:0;">
+              <img 
+                src="https://cocoliving.in/background-img.png" 
+                width="600" 
+                alt="Banner"
+                style="width:100%; max-width:600px; display:block;"
+              />
+            </td>
               <table border="0" cellpadding="0" cellspacing="0" width="100%" height="100%" style="background-color: rgba(69, 50, 43, 0.75);">
                 <tr>
-                  <td align="center" valign="middle">
-                    <img src="https://cocoliving.in/logo.png" alt="COCO Living Logo" style="height:120px;display:block;margin-bottom:16px;">
-                    <h2 style="color:white;font-size:28px;font-weight:600;margin:0;">Hello ${name},</h2>
+                  <td align="center" style="background-color:#45322b; padding:40px 20px;">
+                  <img 
+                    src="https://cocoliving.in/logo.png" 
+                    alt="COCO Living Logo" 
+                    width="120"
+                    style="display:block; margin:0 auto 16px;"
+                  />
+                    <h2 style="color:white;font-size:28px;font-weight:600;margin:0;">
+                    Hello ${name},</h2>
                   </td>
                 </tr>
               </table>
@@ -259,8 +272,8 @@ const sendJobApplicationEmail = async (applicant) => {
 };
 
 
-module.exports={
-    mailsender,
-    sendContactEmail,
-    sendJobApplicationEmail
+module.exports = {
+  mailsender,
+  sendContactEmail,
+  sendJobApplicationEmail
 };

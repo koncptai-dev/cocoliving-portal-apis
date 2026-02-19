@@ -1,5 +1,7 @@
 const axios = require("axios");
 require("dotenv").config();
+// const UserHashCode = require("../models/userAppHashcode");
+const { app } = require("firebase-admin");
 
 const otpApiEndpoint = "https://onlysms.co.in/api/otp.aspx";
 const smsApiEndpoint = "https://onlysms.co.in/api/sms.aspx";
@@ -18,11 +20,30 @@ exports.smsSender = async (phone, type, data) => {
   let message = "";
   let apiEndpoint = "";
   if (type === "otp") {
-     const randomHash = generateRandomHash(); 
-     message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED\nwgL7cQuRsnk`;
-    //  message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED\n${randomHash}`;
-    //  console.log(message);
-     
+
+    // if (!data?.userId) {
+    //   throw new Error("userId is required for OTP SMS");
+    // }
+    
+    const randomHash = generateRandomHash(); //portal
+
+    // //for application
+    // const userHash = await UserHashCode.findOne({
+    //   where: { userId: data.userId }
+    // });
+
+    // let appHash;
+
+    // if (userHash && userHash.hashCode) {
+    //   appHash = userHash.hashCode;
+    // } else {
+    //   appHash = randomHash;
+    // }
+
+    // message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED\n${appHash}`;
+    // console.log(message);
+    
+    message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED\nwgL7cQuRsnk`;
     apiEndpoint = otpApiEndpoint;
   }
   const encodedMessage = encodeURIComponent(message);

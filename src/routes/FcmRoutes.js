@@ -15,6 +15,5 @@ router.get('/get-notifications', authenticate, getNotifications);
 
 
 
-
 module.exports = router;    
 

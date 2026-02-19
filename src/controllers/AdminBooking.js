@@ -9,7 +9,25 @@ const User=require('../models/user');
 const PropertyRateCard = require("../models/propertyRateCard");
 const BookingExtension = require('../models/bookingExtension');
 const Inventory = require("../models/inventory");
+const { sendPushNotification } = require("../helpers/notificationHelper");
 
+//for notification application side
+async function notifyBookingUser(booking) {
+  if (!booking.userId) return;
+
+  const user = await User.findByPk(booking.userId);
+  if (!user || !user.fcmToken) return;
+
+  const roomNumber = booking.room?.roomNumber || "your booked room";
+
+  await sendPushNotification(
+    user.id,
+    "Booking Approved",
+    `Your booking for room ${roomNumber} has been approved by admin Please Sign the Contract.`,
+    { bookingId: booking.id.toString(), type: "booking" },
+    "booking"
+  );
+}
 
 exports.getAllBookings=async(req,res)=>{
   try{
@@ -70,7 +88,10 @@ exports.approveBooking = async (req, res) => {
 
     room.status = activeBookings >= room.capacity ? "booked" : "available";
     await room.save();
-
+    
+    //notification send 
+    await notifyBookingUser(booking);
+    
     await logApiCall(req, res, 200, `Approved booking (ID: ${bookingId})`, "booking", parseInt(bookingId));
     res.status(200).json({
       message: "Booking approved successfully",

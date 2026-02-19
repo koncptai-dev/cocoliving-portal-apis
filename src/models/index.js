@@ -27,7 +27,7 @@ const DailyCleaningTask = require("./dailyCleaningTask");
 const AuditLog = require("./auditLog");
 const UserKYC = require("./userKYC");
 const ScheduledVisit = require("./scheduledVisit");
-
+// const UserHashCode = require("./userAppHashcode");
 
 User.hasOne(UserKYC, {
   foreignKey: "userId",
@@ -216,6 +216,10 @@ DailyCleaning.belongsTo(User, { foreignKey: "cleanerId", as: "cleaner" });
 Property.hasMany(ScheduledVisit, { foreignKey: "propertyId", as: "scheduledVisits" });
 ScheduledVisit.belongsTo(Property, { foreignKey: "propertyId", as: "property" });
 
+// User.hasOne(UserHashCode, { foreignKey: "userId",  as: "hashCode",  onDelete: "CASCADE",});
+
+// UserHashCode.belongsTo(User, {  foreignKey: "userId",  as: "user" });
+
 module.exports={
   sequelize,
   SupportTicket,
@@ -244,4 +248,5 @@ module.exports={
   DailyCleaning,
   DailyCleaningTask,
   ScheduledVisit,
+  // UserHashCode
 }
