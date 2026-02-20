@@ -21,29 +21,9 @@ exports.smsSender = async (phone, type, data) => {
   let apiEndpoint = "";
   if (type === "otp") {
 
-    // if (!data?.userId) {
-    //   throw new Error("userId is required for OTP SMS");
-    // }
-    
     const randomHash = generateRandomHash(); //portal
 
-    // //for application
-    // const userHash = await UserHashCode.findOne({
-    //   where: { userId: data.userId }
-    // });
-
-    // let appHash;
-
-    // if (userHash && userHash.hashCode) {
-    //   appHash = userHash.hashCode;
-    // } else {
-    //   appHash = randomHash;
-    // }
-
-    // message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED\n${appHash}`;
-    // console.log(message);
-    
-    message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED\nwgL7cQuRsnk`;
+    message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED\nKMKeu+hzfYK`;
     apiEndpoint = otpApiEndpoint;
   }
   const encodedMessage = encodeURIComponent(message);
