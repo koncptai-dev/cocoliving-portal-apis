@@ -27,7 +27,7 @@ const DailyCleaningTask = require("./dailyCleaningTask");
 const AuditLog = require("./auditLog");
 const UserKYC = require("./userKYC");
 const ScheduledVisit = require("./scheduledVisit");
-// const UserHashCode = require("./userAppHashcode");
+const Notification = require("./notifications");
 
 User.hasOne(UserKYC, {
   foreignKey: "userId",
@@ -42,7 +42,17 @@ UserKYC.belongsTo(User, {
 
 User.hasMany(SupportTicket, { foreignKey: "userId", as: "tickets" , onDelete: "CASCADE" });
 SupportTicket.belongsTo(User, { foreignKey: "userId", as: "user" });
+User.hasMany(Notification, {
+  foreignKey: "userId",
+  as: "notifications",
+  onDelete: "CASCADE",
+  hooks: true,
+});
 
+Notification.belongsTo(User, {
+  foreignKey: "userId",
+  as: "user",
+});
 User.hasMany(AuditLog, {
   foreignKey: "userId",
   as: "auditLogs",
@@ -248,5 +258,5 @@ module.exports={
   DailyCleaning,
   DailyCleaningTask,
   ScheduledVisit,
-  // UserHashCode
+  Notification,
 }
