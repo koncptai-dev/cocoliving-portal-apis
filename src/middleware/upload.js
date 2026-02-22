@@ -21,6 +21,8 @@ const storage = multer.diskStorage({
         else if (file.fieldname === 'aadhaar_front' || file.fieldname === 'aadhaar_back' || file.fieldname === 'pan_image') folder = 'kycDocuments';
         else if (file.fieldname === 'photos')
             folder = 'dailyCleaning';
+        else if(file.fieldname === 'signature') folder = 'contracts';
+
         const uploadDir = path.join(__dirname, '..', 'uploads', folder);
         if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 

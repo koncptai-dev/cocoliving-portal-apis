@@ -42,6 +42,7 @@ const contactRoute = require('./routes/contact');
 const jobsRoute = require('./routes/jobs');
 const ScheduledVisitRoutes = require("./routes/ScheduledVisitRoutes");
 // const HashRoutes = require("./routes/HashRoutes");
+const ContractRoutes = require('./routes/ContractsRoutes');
 
 app.use(
   cors({
@@ -98,6 +99,7 @@ app.use('/api/contact', contactRoute);
 app.use('/api/jobs', jobsRoute);
 app.use("/api/scheduled-visits",ScheduledVisitRoutes);
 // app.use("/api/hashcode", HashRoutes);
+app.use("/api/contracts", ContractRoutes);
 
 sequelize
   .sync({ alter: true }) //   ensures new models are created
