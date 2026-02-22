@@ -32,7 +32,7 @@ exports.submitDailyCleaning = async (req, res) => {
     }
 
     // Handle photos
-    const photosFiles = req.files?.photosBefore || [];
+    const photosFiles = req.files?.photos || [];
 
     const photos = photosFiles.map(f => `/uploads/dailyCleaning/${f.filename}`);
 

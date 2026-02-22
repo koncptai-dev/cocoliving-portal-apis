@@ -7,6 +7,8 @@ const Notification = sequelize.define("Notification", {
       type: DataTypes.INTEGER,
       allowNull: false,
       references: { model: User, key: "id" },
+      onDelete: "CASCADE",
+  onUpdate: "CASCADE",
     },
   title: {
     type: DataTypes.STRING,

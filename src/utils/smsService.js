@@ -23,7 +23,7 @@ exports.smsSender = async (phone, type, data) => {
 
     const randomHash = generateRandomHash(); //portal
 
-    message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED\nKMKeu+hzfYK`;
+    message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED\nUMDH0MpGRBH`;
     apiEndpoint = otpApiEndpoint;
   }
   const encodedMessage = encodeURIComponent(message);

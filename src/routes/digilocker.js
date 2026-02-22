@@ -89,13 +89,15 @@ router.post("/verify-account", authMiddleware, validateConfig, async (req, res) 
 router.post("/initiate-session", authMiddleware, upload.fields([ { name: "aadhaar_front", maxCount: 1 }, { name: "aadhaar_back", maxCount: 1 }, ]), validateConfig, async (req, res) => {
   try {
     const userId = req.user.id;
+    const role = req.user.role; 
+    
     if (!req.files?.aadhaar_front || !req.files?.aadhaar_back) {
       return res.status(400).json({
         success: false,
         message: "Aadhaar front and back images are required",
       });
     }
-    let kyc = await UserKYC.findOne({ where: { userId } });
+    let kyc = await UserKYC.findOne({ where: { userId,role } });
     const aadhaarFrontImage = `/uploads/kycDocuments/${req.files.aadhaar_front[0].filename}`;
     const aadhaarBackImage  = `/uploads/kycDocuments/${req.files.aadhaar_back[0].filename}`;
 
@@ -107,6 +109,7 @@ router.post("/initiate-session", authMiddleware, upload.fields([ { name: "aadhaa
     } else {
       await UserKYC.create({
         userId,
+        role,
         aadhaarFrontImage,
         aadhaarBackImage,
       });
