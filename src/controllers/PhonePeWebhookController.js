@@ -110,8 +110,7 @@ async function sendRefundCompletedEmailIfNeeded(refundTx) {
 async function recomputeBookingTotals(booking, t = null) {
   const rows = await sequelize.query(
     `SELECT
-       COALESCE(SUM(CASE WHEN type != 'REFUND' AND status = 'SUCCESS' THEN amount ELSE 0 END), 0) as paid,
-       COALESCE(SUM(CASE WHEN type = 'REFUND' AND status = 'SUCCESS' THEN amount ELSE 0 END), 0) as refunded
+       COALESCE(SUM(CASE WHEN type != 'REFUND' AND status = 'SUCCESS' THEN amount ELSE 0 END), 0) as paid
      FROM payment_transactions
      WHERE "bookingId" = :bookingId`,
     {
@@ -122,16 +121,13 @@ async function recomputeBookingTotals(booking, t = null) {
   );
 
   const paid = Number(rows[0]?.paid || 0);
-  const refunded = Number(rows[0]?.refunded || 0);
-  const netPaid = Math.max(paid - refunded, 0);
-
   const totalPaise = Math.round(Number(booking.totalAmount || 0) * 100);
-  const remainingPaise = Math.max(totalPaise - netPaid, 0);
+  const remainingPaise = Math.max(totalPaise - paid, 0);
 
   booking.remainingAmount = Math.ceil(remainingPaise / 100);
 
-  if (netPaid <= 0) booking.paymentStatus = 'INITIATED';
-  else if (netPaid >= totalPaise) booking.paymentStatus = 'COMPLETED';
+  if (paid <= 0) booking.paymentStatus = 'INITIATED';
+  else if (paid >= totalPaise) booking.paymentStatus = 'COMPLETED';
   else booking.paymentStatus = 'PARTIAL';
 
   await booking.save({ transaction: t });
