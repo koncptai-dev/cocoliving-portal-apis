@@ -802,7 +802,7 @@ exports.getBookingPaymentSummary = async (req, res) => {
       paymentStatus: booking.paymentStatus,
       totals: {
         totalAmountRupees,
-        totalPaidRupees: Math.round(netPaidPaise / 100),
+        totalPaidRupees: Math.round(totalPaidPaise / 100),
         remainingRupees: Math.round(remainingPaise / 100),
         totalRefundedRupees
       },

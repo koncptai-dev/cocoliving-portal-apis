@@ -32,7 +32,12 @@ const ScheduledVisit = sequelize.define(
       allowNull: false,
     },
 
-    
+    status: {
+      type: DataTypes.ENUM('pending', 'approved', 'denied'),
+      allowNull: false,
+      defaultValue: 'pending',
+    },
+
   },
   {
     tableName: 'scheduled_visits',

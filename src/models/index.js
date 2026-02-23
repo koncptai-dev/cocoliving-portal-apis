@@ -28,6 +28,8 @@ const AuditLog = require("./auditLog");
 const UserKYC = require("./userKYC");
 const ScheduledVisit = require("./scheduledVisit");
 const Notification = require("./notifications");
+const Contract = require("./contract");
+
 
 User.hasOne(UserKYC, {
   foreignKey: "userId",
@@ -229,6 +231,8 @@ ScheduledVisit.belongsTo(Property, { foreignKey: "propertyId", as: "property" })
 // User.hasOne(UserHashCode, { foreignKey: "userId",  as: "hashCode",  onDelete: "CASCADE",});
 
 // UserHashCode.belongsTo(User, {  foreignKey: "userId",  as: "user" });
+Booking.hasOne(Contract, { foreignKey: "bookingId", as: "contract", onDelete: "CASCADE" });
+Contract.belongsTo(Booking, { foreignKey: "bookingId", as: "booking" });
 
 module.exports={
   sequelize,
@@ -259,4 +263,5 @@ module.exports={
   DailyCleaningTask,
   ScheduledVisit,
   Notification,
+  Contract
 }
