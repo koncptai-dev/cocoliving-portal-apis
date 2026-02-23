@@ -1,6 +1,6 @@
 const ScheduledVisit = require('../models/scheduledVisit');
 const { logApiCall } = require('../helpers/auditLog');
-const { mailsender } = require('../utils/emailservice');
+const { mailsender } = require('../utils/emailService');
 
 exports.createScheduledVisit = async (req, res) => {
   try {
