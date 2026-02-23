@@ -290,17 +290,10 @@ exports.getAssignedRoomsForServiceTeam = async (req, res) => {
             return res.status(404).json({ message: "Service team not found" });
         }
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
 
         const assigned = await ServiceTeamRoom.findAll({
             where: {
                 serviceTeamId: serviceTeam.id,
-                effectiveFromDate: { [Op.lte]: today },
-                [Op.or]: [
-                    { effectiveToDate: null },
-                    { effectiveToDate: { [Op.gte]: today } }
-                ],
                 isActive: true
             },
             include: [
