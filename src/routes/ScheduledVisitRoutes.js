@@ -5,6 +5,7 @@ const ScheduledVisitController = require('../controllers/ScheduledVisitControlle
 
 router.post('/', ScheduledVisitController.createScheduledVisit);
 
-router.get('/admin/getAll', authMiddleware,ScheduledVisitController.getScheduledVisitList);
+router.get('/admin/getAll', authMiddleware, ScheduledVisitController.getScheduledVisitList);
 
+router.patch('/admin/:id/status', authMiddleware, ScheduledVisitController.updateScheduledVisitStatus);
 module.exports = router;
