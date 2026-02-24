@@ -144,6 +144,8 @@ exports.createGuestVisit = async (req, res) => {
     });
 
     if (guestEmail) {
+      console.log(guestEmail);
+      
       const qrBuffer = await generateQrBuffer(qrToken);
       const body = `
         <p>Hello <b>${guestName}</b>,</p>
@@ -159,7 +161,7 @@ exports.createGuestVisit = async (req, res) => {
         <p>- COCO Living</p>
       `;
 
-      await mailsender(
+      const info=await mailsender(
         guestEmail,
         'COCO Living - Guest Entry QR',
         body,
@@ -171,6 +173,8 @@ exports.createGuestVisit = async (req, res) => {
           },
         ]
       );
+      //  console.log('Mail sent:', info);
+      // console.log('Mail sent successfully');
     }
     await logApiCall(
       req,

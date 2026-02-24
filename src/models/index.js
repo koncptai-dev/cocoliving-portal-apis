@@ -29,7 +29,7 @@ const UserKYC = require("./userKYC");
 const ScheduledVisit = require("./scheduledVisit");
 const Notification = require("./notifications");
 const Contract = require("./contract");
-
+const PropertyFloorLayout = require("./floorLayout");
 
 User.hasOne(UserKYC, {
   foreignKey: "userId",
@@ -234,6 +234,11 @@ ScheduledVisit.belongsTo(Property, { foreignKey: "propertyId", as: "property" })
 Booking.hasOne(Contract, { foreignKey: "bookingId", as: "contract", onDelete: "CASCADE" });
 Contract.belongsTo(Booking, { foreignKey: "bookingId", as: "booking" });
 
+// Property ↔ Floor Layout
+Property.hasMany(PropertyFloorLayout, {foreignKey: "propertyId",as: "floorLayout",onDelete: "CASCADE", });
+
+PropertyFloorLayout.belongsTo(Property, { foreignKey: "propertyId",as: "property",});
+
 module.exports={
   sequelize,
   SupportTicket,
@@ -263,5 +268,6 @@ module.exports={
   DailyCleaningTask,
   ScheduledVisit,
   Notification,
-  Contract
+  Contract,
+  PropertyFloorLayout
 }
