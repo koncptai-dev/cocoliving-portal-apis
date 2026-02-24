@@ -10,6 +10,7 @@ const PropertyRateCard = require('../models/propertyRateCard');
 const { log } = require('console');
 const { logApiCall } = require("../helpers/auditLog");
 const UserPermission = require('../models/userPermissoin');
+const PropertyFloorLayout = require("../models/floorLayout");
 
 //helper for preventing adding image into property and room Image
 const deleteFiles = (files) => {
@@ -23,7 +24,7 @@ const deleteFiles = (files) => {
 exports.createProperty = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { name, address, description, amenities, is_active, rateCard } = req.body;
+    const { name, address, description, amenities, is_active, rateCard, floorLayout } = req.body;
 
     // Check if property already exists
     const existing = await Property.findOne({ where: { name, address }, transaction: t });
@@ -67,7 +68,8 @@ exports.createProperty = async (req, res) => {
         const rateCardsToCreate = [];
 
         for (const rc of rateCardArray) {
-          const roomImages = req.files?.filter(f => f.fieldname === `roomImages_${rc.roomType}`) || [];
+          const safeRoomType = rc.roomType.replace(/\s+/g, "_");
+          const roomImages = req.files?.filter(f => f.fieldname === `roomImages_${safeRoomType}`) || [];
           const roomImageUrls = roomImages.map(f => `/uploads/roomImages/${f.filename}`);
 
           if (roomImageUrls.length > 10) {
@@ -88,6 +90,48 @@ exports.createProperty = async (req, res) => {
           });
         }
         await PropertyRateCard.bulkCreate(rateCardsToCreate, { transaction: t });
+      }
+    }
+
+    // // Handle Floor Layout
+    if (floorLayout) {
+      const floorArray = typeof floorLayout === "string" ? JSON.parse(floorLayout) : floorLayout;
+
+      if (Array.isArray(floorArray) && floorArray.length > 0) {
+        const floorsToCreate = [];
+
+        for (const floor of floorArray) {
+          if (!floor.floorNumber) {
+            deleteFiles(req.files || []);
+            await t.rollback();
+            return res.status(400).json({
+              message: "Floor number is required"
+            });
+          }
+          const floorImages = req.files?.filter(
+            f => f.fieldname === `floorImages_${floor.floorNumber}`
+          ) || [];
+
+          const floorImageUrls = floorImages.map(
+            f => `/uploads/floorImages/${f.filename}`
+          );
+
+          if (floorImageUrls.length > 10) {
+            deleteFiles(req.files || []);
+            await t.rollback();
+            return res.status(400).json({
+              message: `Maximum 10 images allowed for floor ${floor.floorName}`
+            });
+          }
+
+          floorsToCreate.push({
+            propertyId: property.id,
+            floorNumber: floor.floorNumber || null,
+            floorImages: floorImageUrls
+          });
+        }
+
+        await PropertyFloorLayout.bulkCreate(floorsToCreate, { transaction: t });
       }
     }
 
@@ -295,6 +339,144 @@ exports.editProperties = async (req, res) => {
         }
       }
     }
+
+    //floor layout
+    if (req.body.floorLayout) {
+      const floorArray =
+        typeof req.body.floorLayout === "string"
+          ? JSON.parse(req.body.floorLayout)
+          : req.body.floorLayout;
+
+      for (const floor of floorArray) {
+
+        if (!floor.floorNumber) {
+          await t.rollback();
+          return res.status(400).json({ message: "Floor number is required" });
+        }
+
+        let existingFloor = null;
+
+        if (floor.id) {
+          //  find by ID first
+          existingFloor = await PropertyFloorLayout.findByPk(floor.id, { transaction: t });
+        } else {
+          // For new floors, check by floorNumber to prevent duplicates
+          existingFloor = await PropertyFloorLayout.findOne({
+            where: {
+              propertyId: property.id,
+              floorNumber: floor.floorNumber
+            },
+            transaction: t
+          });
+        }
+        // update existing floor
+        if (existingFloor) {
+
+          let removedFloorImages = Array.isArray(floor.removedFloorImages)
+            ? floor.removedFloorImages
+            : [];
+
+          let updatedFloorImages = Array.isArray(existingFloor.floorImages)
+            ? [...existingFloor.floorImages]
+            : [];
+
+          // Remove deleted images from DB array
+          updatedFloorImages = updatedFloorImages.filter(
+            img => !removedFloorImages.includes(img)
+          );
+
+          // Delete removed images from folder
+          for (const imgUrl of removedFloorImages) {
+            try {
+              const filePath = path.join(__dirname, "..", imgUrl.replace(/^\//, ""));
+              if (fs.existsSync(filePath)) await fs.promises.unlink(filePath);
+            } catch (err) {
+              console.error("Failed to delete floor image:", err);
+            }
+          }
+
+          // Add new uploaded images
+          const floorFiles =
+            req.files?.filter(
+              f => f.fieldname === `floorImages_${floor.floorNumber}`
+            ) || [];
+
+          const newFloorImages = floorFiles.map(
+            f => `/uploads/floorImages/${f.filename}`
+          );
+
+          // Max 10 check
+          if (updatedFloorImages.length + newFloorImages.length > 10) {
+            await t.rollback();
+
+            floorFiles.forEach(f => {
+              const filePath = path.join(
+                __dirname,
+                "..",
+                "uploads/floorImages",
+                f.filename
+              );
+              if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+            });
+
+            return res.status(400).json({
+              message: `Max 10 images allowed for floor ${floor.floorNumber}`
+            });
+          }
+
+          updatedFloorImages = [...updatedFloorImages, ...newFloorImages];
+
+          await existingFloor.update(
+            {
+              floorNumber: floor.floorNumber,
+              floorImages: updatedFloorImages
+            },
+            { transaction: t }
+          );
+
+        }
+        // create new floor if not exist
+        else {
+
+          const floorFiles =
+            req.files?.filter(
+              f => f.fieldname === `floorImages_${floor.floorNumber}`
+            ) || [];
+
+          const floorImageUrls = floorFiles.map(
+            f => `/uploads/floorImages/${f.filename}`
+          );
+
+          if (floorImageUrls.length > 10) {
+            await t.rollback();
+
+            floorFiles.forEach(f => {
+              const filePath = path.join(
+                __dirname,
+                "..",
+                "uploads/floorImages",
+                f.filename
+              );
+              if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+            });
+
+            return res.status(400).json({
+              message: `Max 10 images allowed for floor ${floor.floorNumber}`
+            });
+          }
+
+          await PropertyFloorLayout.create(
+            {
+              propertyId: property.id,
+              floorNumber: floor.floorNumber,
+              floorImages: floorImageUrls
+            },
+            { transaction: t }
+          );
+        }
+      }
+    }
+
     await t.commit();
     await logApiCall(req, res, 200, `Updated property: ${property.name} (ID: ${id})`, "property", parseInt(id));
     res.status(200).json({ message: "Property updated successfully", property });
@@ -316,7 +498,7 @@ exports.getProperties = async (req, res) => {
 
     const queryOptions = {
       order: [["createdAt", "DESC"]],
-      include: [{ model: PropertyRateCard, as: "rateCard" }],
+      include: [{ model: PropertyRateCard, as: "rateCard" }, { model: PropertyFloorLayout, as: "floorLayout" }],
       distinct: true,
       col: 'id',
       limit,
@@ -361,7 +543,7 @@ exports.getPropertiesForUser = async (req, res) => {
     // Fetch all properties with rate cards
     const { rows: properties, count } = await Property.findAndCountAll({
       order: [["createdAt", "DESC"]],
-      include: [{ model: PropertyRateCard, as: "rateCard" }],
+      include: [{ model: PropertyRateCard, as: "rateCard" }, { model: PropertyFloorLayout, as: "floorLayout" }],
       limit,
       offset
     });
@@ -429,38 +611,59 @@ exports.deleteProperty = async (req, res) => {
     const { id } = req.params;
     const today = new Date();
 
-    const property = await Property.findByPk(id);
+    const property = await Property.findByPk(id, {
+      include: [
+        { model: PropertyFloorLayout, as: "floorLayout" },
+        { model: PropertyRateCard, as: "rateCard" }
+      ]
+    });
 
     if (!property) {
       await logApiCall(req, res, 404, `Deleted property - property not found (ID: ${id})`, "property", parseInt(id));
       return res.status(404).json({ message: "Property not found" });
     }
 
-    //check for active or future booking
-    const hasActiveOrFutureBookings = await Booking.findOne({
-      where: {
-        propertyId: id,
-        status: { [Op.in]: ["approved", "pending"] },
-        checkOutDate: { [Op.gte]: today }
-      }
-    });
+    for (const rc of property.rateCard || []) {
+      const hasBooking = await Booking.findOne({
+        where: {
+          propertyId: id,
+          roomType: rc.roomType,
+          status: { [Op.in]: ["approved", "pending"] },
+          checkOutDate: { [Op.gte]: today }
+        }
+      });
 
-    if (hasActiveOrFutureBookings) {
-      await logApiCall(req, res, 400, `Deleted property - has active bookings (ID: ${id})`, "property", parseInt(id));
-      return res.status(400).json({ message: "Cannot delete property: There are active or future bookings linked to this property." });
+      if (hasBooking) {
+        return res.status(400).json({
+          message: `Cannot delete property: Room type "${rc.roomType}" has active or future bookings.`
+        });
+      }
     }
 
     // --- Delete property and room images from server ---
     const propertyImages = property.images || []; // if Property has images column
-    const roomImages = (property.rooms || []).flatMap(room => room.images || []);
-    const allImages = [...propertyImages, ...roomImages];
+    const floorImages = (property.floorLayout || []).flatMap(f => f.floorImages || []);
+    const roomImages = (property.rateCard || []).flatMap(rc => rc.roomImages || []);
+    const allImages = [...propertyImages, ...floorImages, ...roomImages];
 
-    allImages.forEach(imgPath => {
+    for (const imgPath of allImages) {
       const fullPath = path.join(__dirname, '..', imgPath.replace(/^\//, ''));
-      fs.unlink(fullPath, (err) => {
-        if (err) console.error(`Failed to delete file ${fullPath}:`, err);
-      });
-    });
+      if (fs.existsSync(fullPath)) {
+        fs.unlink(fullPath, err => {
+          if (err) console.error(`Failed to delete file ${fullPath}:`, err);
+        });
+      }
+    }
+
+    // Delete rate cards
+    if (property.rateCard && property.rateCard.length > 0) {
+      await PropertyRateCard.destroy({ where: { propertyId: id } });
+    }
+
+    // Delete floor layouts
+    if (property.floorLayout && property.floorLayout.length > 0) {
+      await PropertyFloorLayout.destroy({ where: { propertyId: id } });
+    }
 
     await property.destroy();
 
@@ -532,5 +735,52 @@ exports.deleteRateCard = async (req, res) => {
     console.error(err);
     await logApiCall(req, res, 500, "Error occurred while deleting rate card", "property");
     res.status(500).json({ message: "Failed to delete room type." });
+  }
+};
+
+exports.deleteFloorLayout = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const { propertyId, floorNumber } = req.body;
+
+    // Find the floor layout
+    const floor = await PropertyFloorLayout.findOne({
+      where: { propertyId, floorNumber },
+      transaction: t
+    });
+
+    if (!floor) {
+      await t.rollback();
+      await logApiCall(req, res, 404, `Deleted floor layout - floor not found (Property ID: ${propertyId}, Floor: ${floorNumber})`, "property");
+      return res.status(404).json({ message: "Floor layout not found." });
+    }
+
+    // delete floor images from filesystem
+    if (floor.floorImages && floor.floorImages.length > 0) {
+      for (const imgUrl of floor.floorImages) {
+        try {
+          const filePath = path.join(__dirname, '..', imgUrl.replace(/^\//, ''));
+          if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        } catch (err) {
+          console.error(`Failed to delete floor image ${imgUrl}:`, err);
+        }
+      }
+    }
+
+    // delete floorlayout from db
+    await PropertyFloorLayout.destroy({
+      where: { propertyId, floorNumber },
+      transaction: t
+    });
+
+    await t.commit();
+    await logApiCall(req, res, 200, `Deleted floor layout: Floor ${floorNumber} (Property ID: ${propertyId})`, "property", propertyId);
+    res.status(200).json({ message: "Floor layout deleted successfully." });
+
+  } catch (err) {
+    await t.rollback();
+    console.error(err);
+    await logApiCall(req, res, 500, "Error occurred while deleting floor layout", "property");
+    res.status(500).json({ message: "Failed to delete floor layout." });
   }
 };

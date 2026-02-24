@@ -2,12 +2,6 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-const uploadDir = path.join(__dirname, '..', 'uploads');
-
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-}
-
 //config storage
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -15,6 +9,7 @@ const storage = multer.diskStorage({
         if (file.fieldname === 'profileImage') folder = 'profilePicture';
         else if (file.fieldname.startsWith('propertyImages')) folder = 'propertyImages';
         else if (file.fieldname.startsWith('roomImages_')) folder = 'roomImages';
+        else if (file.fieldname.startsWith('floorImages_')) folder = 'floorImages';
         else if (file.fieldname === 'ticketImage') folder = 'ticketImages';
         else if (file.fieldname === 'ticketVideo') folder = 'ticketVideos';
         else if (file.fieldname === 'eventImage') folder = 'eventImages';
@@ -36,7 +31,9 @@ const storage = multer.diskStorage({
 
 //file filter allow only images
 const fileFilter = (req, file, cb) => {
-    if (['profileImage', 'roomImages', 'propertyImages', 'ticketImage', 'eventImage'].includes(file.fieldname) || file.fieldname.startsWith('roomImages_')) {
+    if (['profileImage', 'roomImages', 'propertyImages', 'ticketImage', 'eventImage'].includes(file.fieldname) || file.fieldname.startsWith('roomImages_')
+    ||  file.fieldname.startsWith('floorImages_') 
+    ) {
         const allowedTypes = /jpeg|jpg|png/;
         const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
         const mimetype = allowedTypes.test(file.mimetype);

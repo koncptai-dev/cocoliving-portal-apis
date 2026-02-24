@@ -13,6 +13,7 @@ router.get("/getAll",authMiddleware, authorizeRole(1,3), propertyController.getP
 router.put("/edit/:id",upload.any(),editPropertyValidate, validate, authMiddleware, authorizeRole(1,3), propertyController.editProperties);
 router.delete("/delete/:id", authMiddleware, authorizeRole(1,3), propertyController.deleteProperty);
 router.delete("/deleteRateCard", authMiddleware, authorizeRole(1,3), propertyController.deleteRateCard);
+router.delete("/deleteFloorLayout", authMiddleware, authorizeRole(1,3), propertyController.deleteFloorLayout);
 
 //for user
 router.get("/getPropertiesForUser", propertyController.getPropertiesForUser);

@@ -272,7 +272,7 @@ const sendJobApplicationEmail = async (applicant) => {
 };
 
 
-module.exports = {
+module.exports = {      
   mailsender,
   sendContactEmail,
   sendJobApplicationEmail
