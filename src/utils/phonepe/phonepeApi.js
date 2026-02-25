@@ -3,7 +3,8 @@ const {
   CREATE_PAYMENT_URL,
   ORDER_STATUS_URL_TEMPLATE,
   REFUND_URL,
-  MOBILE_SDK_ORDER_URL
+  MOBILE_SDK_ORDER_URL,
+  REFUND_STATUS_URL_TEMPLATE
 } = require('./phonepeConfig');
 const { getPhonePeAuthToken, clearPhonePeAuthToken } = require('./phonepeAuth');
 
@@ -122,9 +123,32 @@ async function createMobileOrder({ merchantOrderId, amount, userId }) {
   };
 }
 
+// Fetch Refund Status
+async function getRefundStatus(merchantRefundId) {
+  const token = await getPhonePeAuthToken();
+  const url = REFUND_STATUS_URL_TEMPLATE.replace('{merchantRefundId}', encodeURIComponent(merchantRefundId));
+
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `O-Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  const json = await res.json().catch(() => null);
+
+  return {
+    success: res.ok,
+    status: res.status,
+    body: json,
+  };
+}
+
 module.exports = {
   createPayment,
   getOrderStatus,
+  getRefundStatus,
   initiateRefund,
   createMobileOrder,
 };
