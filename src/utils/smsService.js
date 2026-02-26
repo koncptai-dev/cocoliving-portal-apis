@@ -27,16 +27,16 @@ exports.smsSender = async (phone, type, data) => {
 
     const randomHash = generateRandomHash(); //portal
 
-    message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED`;
-    if (
-      data.platform === "android" &&
-      data.appHash &&
-      typeof data.appHash === "string" &&
-      data.appHash.length === 11 &&
-      allowedAndroidHashes.includes(data.appHash)
-    ) {
-      message += `\n${data.appHash}`;
-    }
+    message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED\nKMKeu+hzfYK`;
+    // if (
+    //   data.platform === "android" &&
+    //   data.appHash &&
+    //   typeof data.appHash === "string" &&
+    //   data.appHash.length === 11 &&
+    //   allowedAndroidHashes.includes(data.appHash)
+    // ) {
+    //   message += `\n${data.appHash}`;
+    // }
 
     apiEndpoint = otpApiEndpoint;
   }
