@@ -15,7 +15,7 @@ exports.createTicket = async (req, res) => {
     try {
         const userId = req.user.id;
         const CATEGORY_MAP = {
-            "Booking & Maintenance": [
+            "Maintenance": [
                 "Plumbing",
                 "Electrical",
                 "Appliance Issue",
@@ -27,6 +27,11 @@ exports.createTicket = async (req, res) => {
                 "Refund Not Received",
                 "Request Refund",
                 "Remaining Payment Issue",
+                "Other",
+            ],
+            "Food Issue": [
+                "Food Quality is not good",
+                "Food Taste not good",
                 "Other",
             ],
             "Other": [

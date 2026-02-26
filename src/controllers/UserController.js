@@ -249,7 +249,7 @@ exports.sendOTP = async (req, res) => {
 //register (with otp verification)
 exports.registerUser = async (req, res) => {
   try {
-    const { fullName, email, phone, userType, gender, dateOfBirth, otp, parentName, parentMobile, parentEmail, type } = req.body;
+    const { fullName, email, phone, userType, gender, dateOfBirth, otp, type } = req.body;
 
     if (!email || !otp) {
       await logApiCall(req, res, 400, "Failed to register user - email and OTP required", "user");
@@ -328,33 +328,33 @@ exports.registerUser = async (req, res) => {
       }
     }
 
-    //if usertype=student add parent details
-    if (userType === "student") {
+    // //if usertype=student add parent details
+    // if (userType === "student") {
 
-      //require
-      if (!parentName || !parentEmail) {
-        await logApiCall(req, res, 400, "Failed to register user - parent details missing", "user");
-        return res.status(400).json({
-          message: "Parent name and email are required for students"
-        });
-      }
-      //same email check
-      if (parentEmail === email) {
-        await logApiCall(req, res, 400, "Failed to register user - parent email cannot be same as user email", "user");
-        return res.status(400).json({ message: "Parent email cannot be the same as student email" });
-      }
+    //   //require
+    //   if (!parentName || !parentEmail) {
+    //     await logApiCall(req, res, 400, "Failed to register user - parent details missing", "user");
+    //     return res.status(400).json({
+    //       message: "Parent name and email are required for students"
+    //     });
+    //   }
+    //   //same email check
+    //   if (parentEmail === email) {
+    //     await logApiCall(req, res, 400, "Failed to register user - parent email cannot be same as user email", "user");
+    //     return res.status(400).json({ message: "Parent email cannot be the same as student email" });
+    //   }
 
-      const parentConflict = await User.findOne({
-        where: {
-          email: parentEmail
-        }
-      })
-      if (parentConflict) {
-        await logApiCall(req, res, 400, "Failed to register user - parent email is a registered user email", "user");
-        return res.status(400).json({ success: false, message: "Parent email is already registered as a student/professional email. Please use a different email" });
-      }
+    //   const parentConflict = await User.findOne({
+    //     where: {
+    //       email: parentEmail
+    //     }
+    //   })
+    //   if (parentConflict) {
+    //     await logApiCall(req, res, 400, "Failed to register user - parent email is a registered user email", "user");
+    //     return res.status(400).json({ success: false, message: "Parent email is already registered as a student/professional email. Please use a different email" });
+    //   }
 
-    }
+    // }
 
     //image upload 
     let profileImagePath = null;
@@ -375,9 +375,9 @@ exports.registerUser = async (req, res) => {
       status: 1,
 
       //only for student
-      parentName: userType === "student" ? parentName : null,
-      parentMobile: userType === "student" ? parentMobile : null,
-      parentEmail: userType === "student" ? parentEmail : null,
+      // parentName: userType === "student" ? parentName : null,
+      // parentMobile: userType === "student" ? parentMobile : null,
+      // parentEmail: userType === "student" ? parentEmail : null,
     });
     try {
       const mail = welcomeEmail({ firstName: newUser.fullName });

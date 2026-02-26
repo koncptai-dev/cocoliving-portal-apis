@@ -6,6 +6,10 @@ const { app } = require("firebase-admin");
 const otpApiEndpoint = "https://onlysms.co.in/api/otp.aspx";
 const smsApiEndpoint = "https://onlysms.co.in/api/sms.aspx";
 
+// please store the hashes as comma separated in .env file
+const allowedAndroidHashes = process.env.ANDROID_APP_HASHES
+  ? process.env.ANDROID_APP_HASHES.split(",").map(h => h.trim())
+  : [];
 // Random hash generator
 function generateRandomHash(length = 11) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -23,7 +27,17 @@ exports.smsSender = async (phone, type, data) => {
 
     const randomHash = generateRandomHash(); //portal
 
-    message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED\nwgL7cQuRsnk`;
+    message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED`;
+    if (
+      data.platform === "android" &&
+      data.appHash &&
+      typeof data.appHash === "string" &&
+      data.appHash.length === 11 &&
+      allowedAndroidHashes.includes(data.appHash)
+    ) {
+      message += `\n${data.appHash}`;
+    }
+
     apiEndpoint = otpApiEndpoint;
   }
   const encodedMessage = encodeURIComponent(message);
