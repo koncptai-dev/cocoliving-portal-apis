@@ -121,7 +121,7 @@ const TEST_OTP = process.env.TEST_OTP;
 // SEND OTP FOR LOGIN
 exports.sendLoginOtp = async (req, res) => {
     try {
-        const { identifier } = req.body;
+        const { identifier, platform, appHash } = req.body;
 
         if (!identifier) {
             return res.status(400).json({ message: "Email or phone is required" });
@@ -218,7 +218,7 @@ exports.sendLoginOtp = async (req, res) => {
                 mail.attachments
             );
         } else {
-            await smsSender(identifier, "otp", { otp });
+            await smsSender(identifier, "otp", { otp, platform, appHash });
         }
 
         req.user = { id: user.id };

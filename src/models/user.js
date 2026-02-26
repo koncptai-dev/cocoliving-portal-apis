@@ -89,6 +89,7 @@ const User = sequelize.define('User', {
     allergies: { type: DataTypes.TEXT, allowNull: true },
     collegeName: { type: DataTypes.STRING, allowNull: true },
     course: { type: DataTypes.STRING, allowNull: true },
+    studyingYear: { type: DataTypes.STRING, allowNull: true },
     // medicalRecords: { type: DataTypes.JSON, allowNull: true } // store multiple files/details
 
     companyName: { type: DataTypes.STRING, allowNull: true },

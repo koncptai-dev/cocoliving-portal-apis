@@ -65,6 +65,46 @@ async function assertUserKycVerified(userId) {
   return true;
 }
 
+async function assertProfileDetailsComplete(userId) {
+  const user = await User.findByPk(userId);
+
+  if (!user) {
+    const err = new Error("User not found");
+    err.code = "USER_NOT_FOUND";
+    throw err;
+  }
+
+  // Parent Details
+  if (!user.parentName || !user.parentMobile || !user.parentEmail) {
+    const err = new Error("Parent details are mandatory before booking");
+    err.code = "PROFILE_INCOMPLETE";
+    throw err;
+  }
+
+  // Food Preference
+  if (!user.foodPreference) {
+    const err = new Error("Food preference is required before booking");
+    err.code = "PROFILE_INCOMPLETE";
+    throw err;
+  }
+
+  // Allergies
+  if (!user.allergies || !user.allergies.trim()) {
+    const err = new Error("Allergies field is required before booking");
+    err.code = "PROFILE_INCOMPLETE";
+    throw err;
+  }
+
+  // Studying Year (students only)
+  if (user.userType === "student" && !user.studyingYear) {
+    const err = new Error("Studying year is required before booking");
+    err.code = "PROFILE_INCOMPLETE";
+    throw err;
+  }
+
+  return true;
+}
+
 async function checkOverlappingBooking(userId, checkInDate, checkOutDate) {
   const checkIn = moment(checkInDate, ['YYYY-MM-DD', 'DD-MM-YYYY']).format('YYYY-MM-DD');
   const checkOut = moment(checkOutDate, ['YYYY-MM-DD', 'DD-MM-YYYY']).format('YYYY-MM-DD');
@@ -92,12 +132,14 @@ async function checkOverlappingBooking(userId, checkInDate, checkOutDate) {
 exports.initiate = async (req, res) => {
   try {
     const userId = req.user?.id;
-    // await assertUserKycVerified(userId);
+
     const isMobile = req.headers['x-client'] === 'mobile';
     if (!userId) {
       await logApiCall(req, res, 400, "Initiated booking payment - unauthorized access", "payment");
       return res.status(400).json({ success: false, message: 'Unauthorized Access' });
     }
+    // await assertUserKycVerified(userId);
+    await assertProfileDetailsComplete(userId);
 
     const { bookingType, metadata = {} } = req.body;
     const {
@@ -184,7 +226,7 @@ exports.initiate = async (req, res) => {
 
     let payableAmountRupees = totalAmountRupees;
 
-    if (rebuiltMeta.bookingType === "PREBOOK") { payableAmountRupees = Math.ceil(totalAmountRupees * 0.10);}
+    if (rebuiltMeta.bookingType === "PREBOOK") { payableAmountRupees = 5000;}
     const amountPaise = paiseFromRupees(payableAmountRupees);
 
     const tx = await PaymentTransaction.create({
@@ -307,8 +349,13 @@ exports.initiate = async (req, res) => {
       });
     }
   } catch (err) {
-    if (err.code === 'KYC_REQUIRED' || err.code === 'KYC_INCOMPLETE') {
-      return res.status(403).json({
+    if (
+      err.code === 'KYC_REQUIRED' ||
+      err.code === 'KYC_INCOMPLETE' ||
+      err.code === 'PROFILE_INCOMPLETE' ||
+      err.code === 'USER_NOT_FOUND'
+    ) {
+      return res.status(422).json({
         success: false,
         code: err.code,
         message: err.message
