@@ -70,6 +70,7 @@ exports.exportPropertyUsersZip = async (req, res) => {
       { header: "Aadhaar Last 4", key: "aadhaarLast4", width: 15 },
       { header: "eKYC Status", key: "ekycStatus", width: 20 },
       { header: "Aadhaar Verified At", key: "verifiedAtAadhaar", width: 25 },
+      { header: "Media Filename", key: "mediaFilename", width: 30 },
     ];
 
     uniqueUsers.forEach((user) => {
@@ -91,6 +92,7 @@ exports.exportPropertyUsersZip = async (req, res) => {
         aadhaarLast4: kyc?.aadhaarLast4,
         ekycStatus: kyc?.ekycStatus,
         verifiedAtAadhaar: kyc?.verifiedAtAadhaar,
+        mediaFilename: user.fullname + "-" + user.phone
       });
     });
 
@@ -127,7 +129,7 @@ exports.exportPropertyUsersZip = async (req, res) => {
         ? user.fullName.replace(/[^a-zA-Z0-9]/g, "_")
         : `User_${user.id}`;
 
-      const userFolderPath = `Media/${safeUserName}/`;
+      const userFolderPath = `Media/${safeUserName}+"-"+${user.phone}/`;
 
       // -------- PAN FRONT --------
       if (kyc.panFrontImage) {
