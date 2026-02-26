@@ -143,7 +143,7 @@ exports.exportPropertyUsersZip = async (req, res) => {
         }
       }
 
-      // ------- AADHAAR FRONT --------
+      // -------- AADHAAR FRONT --------
       if (kyc.aadhaarFrontImage) {
         const aadhaarFrontPath = path.join(
           uploadBasePath,
