@@ -96,11 +96,11 @@ async function assertProfileDetailsComplete(userId) {
   }
 
   // Studying Year (students only)
-  if (user.userType === "student" && !user.studyingYear) {
-    const err = new Error("Studying year is required before booking");
-    err.code = "PROFILE_INCOMPLETE";
-    throw err;
-  }
+  // if (user.userType === "student" && !user.studyingYear) {
+  //   const err = new Error("Studying year is required before booking");
+  //   err.code = "PROFILE_INCOMPLETE";
+  //   throw err;
+  // }
 
   return true;
 }
