@@ -122,7 +122,7 @@ exports.exportPropertyUsersZip = async (req, res) => {
     );
 
     uniqueUsers.forEach((user) => {
-      const kyc = user.kyc; // ✅ correct alias
+      const kyc = user.kyc;
       if (!kyc) return;
 
       const safeUserName = user.fullName
