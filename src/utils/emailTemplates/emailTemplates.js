@@ -438,10 +438,72 @@ padding:16px;font-size:11px;">
   };
 }
 
+// schedule visit
+function scheduledVisitEmail({ name, visitDate }) {
+  return {
+    attachments: [
+      { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
+      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' }
+    ],
+    html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8" /></head>
+<body style="margin:0;background:#f3efe9;font-family:'Rethink Sans','Inter','Segoe UI',Arial,sans-serif;">
+<table width="100%" align="center"><tr><td align="center">
+<table width="600" style="max-width:600px;">
+
+<tr>
+<td align="center" style="background-color:#4F3421;background-image:url(cid:bg);background-repeat:repeat;background-size:400px 400px;padding:28px 28px 90px;">
+<img src="cid:logo" width="140" />
+</td>
+</tr>
+
+<tr>
+<td align="center" style="background:#f3efe9;padding:0 24px 40px;">
+<div style="background:#f3efe9;border-radius:80px 80px 0 0;padding:40px 24px 0;max-width:520px;margin:-60px auto 0;">
+
+<h1 style="margin:0 0 16px;font-size:32px;font-weight:700;">
+Visit Request Received 📩
+</h1>
+
+<p style="max-width:420px;margin:0 auto 28px;font-size:15px;line-height:1.6;">
+Hi <strong>${name}</strong>,<br/><br/>
+Thank you for scheduling a visit with Coco Living.
+Your request has been successfully received and is currently under review.
+</p>
+
+<div style="background:#ffffff;padding:20px;border-radius:12px;margin:24px 0;text-align:left;font-size:15px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+<strong>Requested Visit Date:</strong> ${new Date(visitDate).toLocaleDateString('en-IN')}
+</div>
+
+<p style="font-size:15px;margin:20px 0;">
+Our team will review your request and notify you once it is approved.
+</p>
+
+</div>
+</td>
+</tr>
+
+<tr>
+<td align="center" style="background:#4a2f1b;color:#fff;padding:28px 20px;font-size:12px;">
+© 2025 COCO LIVING
+</td>
+</tr>
+
+</table>
+</td></tr></table>
+</body>
+</html>
+    `,
+  };
+}
+
 module.exports = {
   welcomeEmail,
   otpEmail,
   refundInitiatedEmail,
   refundCompletedEmail,
-  adminCredentialsEmail
+  adminCredentialsEmail,
+  scheduledVisitEmail
 };

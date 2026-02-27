@@ -1,18 +1,19 @@
 const ScheduledVisit = require('../models/scheduledVisit');
 const { logApiCall } = require('../helpers/auditLog');
 const { mailsender } = require('../utils/emailService');
+const { scheduledVisitEmail } = require("../utils/emailTemplates/emailTemplates");
 
 exports.createScheduledVisit = async (req, res) => {
   try {
     const { name, email, phone, visitDate } = req.body;
 
-    if (!name || !email || !phone || !visitDate ) {
+    if (!name || !email || !phone || !visitDate) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
     const visitDay = new Date(visitDate);
     const today = new Date();
-    today.setHours(0,0,0,0);
+    today.setHours(0, 0, 0, 0);
 
     if (visitDay < today) {
       return res.status(400).json({ message: 'Visit date cannot be in the past' });
@@ -24,7 +25,18 @@ exports.createScheduledVisit = async (req, res) => {
       phone,
       visitDate,
     });
+    const { html, attachments } = scheduledVisitEmail({
+      name,
+      visitDate,
+    });
 
+    // same mail admin and user(who has scheduled the visit)
+    await mailsender(
+      `${email}`,
+      "New Scheduled Visit - Coco Living",
+      html,
+      attachments
+    );
     await logApiCall(req, res, 201, `Scheduled visit created (ID: ${visit.id})`, 'scheduledVisit', visit.id);
 
     return res.status(201).json({
@@ -49,13 +61,13 @@ exports.getScheduledVisitList = async (req, res) => {
       order: [
         ["visitDate", "DESC"],
       ],
-      limit,offset
+      limit, offset
     });
 
-    return res.status(200).json({ success: true, total:count,page, totalPages: Math.ceil(count / limit),data: visits, });
+    return res.status(200).json({ success: true, total: count, page, totalPages: Math.ceil(count / limit), data: visits, });
   } catch (error) {
     console.error("Schedule Visit List Error:", error);
-    return res.status(500).json({ success: false,  message: "Failed to fetch schedule visit list", });
+    return res.status(500).json({ success: false, message: "Failed to fetch schedule visit list", });
   }
 };
 exports.updateScheduledVisitStatus = async (req, res) => {

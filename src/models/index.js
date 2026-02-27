@@ -26,7 +26,7 @@ const DailyCleaning = require("./dailyCleaning");
 const DailyCleaningTask = require("./dailyCleaningTask");
 const AuditLog = require("./auditLog");
 const UserKYC = require("./userKYC");
-const ScheduledVisit = require("./scheduledVisit");
+// const ScheduledVisit = require("./scheduledVisit");
 const Notification = require("./notifications");
 const Contract = require("./contract");
 const PropertyFloorLayout = require("./floorLayout");
@@ -112,10 +112,10 @@ Booking.belongsTo(PropertyRateCard, { foreignKey: "rateCardId", as: "rateCard", 
 
 // Inventory and Service History
 Inventory.belongsTo(Property, { foreignKey: "propertyId", as: "property" });
-Property.hasMany(Inventory, { foreignKey: "propertyId", as: "inventories" }); // ← ADDED
+Property.hasMany(Inventory, { foreignKey: "propertyId", as: "inventories" }); 
 
 Inventory.belongsTo(Rooms, { foreignKey: "roomId", as: "room" });
-Rooms.hasMany(Inventory, { foreignKey: "roomId", as: "roomInventories" }); // ← ADDED
+Rooms.hasMany(Inventory, { foreignKey: "roomId", as: "roomInventories" }); 
 
 Inventory.hasMany(ServiceHistory, {
   foreignKey: "inventoryId",
@@ -171,16 +171,9 @@ BookingOnboarding.belongsTo(Booking, { foreignKey: 'bookingId', as: 'booking' })
 User.hasMany(BookingOnboarding, { foreignKey: 'startedBy', as: 'startedOnboardings',onDelete: "CASCADE" });
 BookingOnboarding.belongsTo(User, { foreignKey: 'startedBy', as: 'admin' });
 
-User.hasOne(UserNotificationSetting, {
-  foreignKey: "userId",
-  as: "notificationSettings",
-  onDelete: "CASCADE",
-});
+User.hasOne(UserNotificationSetting, {foreignKey: "userId",as: "notificationSettings", onDelete: "CASCADE",});
+UserNotificationSetting.belongsTo(User, {foreignKey: "userId", as: "user",});
 
-UserNotificationSetting.belongsTo(User, {
-  foreignKey: "userId",
-  as: "user",
-});
 // Bookings <-> Booking Extension
 Booking.hasMany(BookingExtension, { foreignKey: 'bookingId', as: 'extensions', onDelete: "CASCADE" });
 BookingExtension.belongsTo(Booking, { foreignKey: 'bookingId', as: 'booking' });
@@ -225,8 +218,8 @@ DailyCleaning.belongsTo(Rooms, { foreignKey: "roomId", as: "room" });
 User.hasMany(DailyCleaning, { foreignKey: "cleanerId", as: "dailyCleanings",onDelete: "CASCADE" });
 DailyCleaning.belongsTo(User, { foreignKey: "cleanerId", as: "cleaner" });
 
-Property.hasMany(ScheduledVisit, { foreignKey: "propertyId", as: "scheduledVisits" });
-ScheduledVisit.belongsTo(Property, { foreignKey: "propertyId", as: "property" });
+// Property.hasMany(ScheduledVisit, { foreignKey: "propertyId", as: "scheduledVisits" });
+// ScheduledVisit.belongsTo(Property, { foreignKey: "propertyId", as: "property" });
 
 // User.hasOne(UserHashCode, { foreignKey: "userId",  as: "hashCode",  onDelete: "CASCADE",});
 
@@ -266,7 +259,7 @@ module.exports={
   ServiceTeamRoom,
   DailyCleaning,
   DailyCleaningTask,
-  ScheduledVisit,
+  // ScheduledVisit,
   Notification,
   Contract,
   PropertyFloorLayout
