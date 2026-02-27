@@ -18,6 +18,9 @@ module.exports = {
   //  Order Status
   ORDER_STATUS_URL_TEMPLATE: `${BASE_URL}/checkout/v2/order/{merchantOrderId}/status`,
 
+  //  Refund Status
+  REFUND_STATUS_URL_TEMPLATE: `${BASE_URL}/payments/v2/refund/{merchantRefundId}/status`,
+
   // Refund
   REFUND_URL:
     ENV === 'prod'
