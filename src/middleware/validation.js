@@ -320,10 +320,11 @@ exports.validateProperty = [
   ,
   check("amenities")
     .optional({ checkFalsy: true })
-    .isString()
-    .withMessage("Amenities must be a string")
-    .matches(/^[A-Za-z0-9\s,]+$/)
-    .withMessage("Amenities can only contain letters, numbers, commas, and spaces"),
+    .custom((value) => {
+      if (Array.isArray(value)) return true;
+      if (typeof value === "string") return true; // backward compatibility
+      throw new Error("Amenities must be an array");
+    }),
   check("status").optional().isString().withMessage("Status must be a string"),
 ];
 
@@ -358,10 +359,11 @@ exports.editPropertyValidate = [
     }),
   check("amenities")
     .optional({ checkFalsy: true })
-    .isString()
-    .withMessage("Amenities must be a string")
-    .matches(/^[A-Za-z0-9\s,]+$/)
-    .withMessage("Amenities can only contain letters, numbers, commas, and spaces"),
+    .custom((value) => {
+      if (Array.isArray(value)) return true;
+      if (typeof value === "string") return true;
+      throw new Error("Amenities must be an array");
+    }),
   check("status").optional().isString().withMessage("Status must be a string"),
 ];
 

@@ -1,0 +1,22 @@
+exports.ALLOWED_AMENITIES = [
+  "Four Meals",
+  "High-Speed Wifi",
+  "Professional Housekeeping Service",
+  "Professional Laundry Service",
+  "Cafeteria",
+  "Vending Machine",
+  "Wall Mirror",
+  "Comfortable Beds",
+  "Ceiling Fan",
+  "Sliding Window",
+  "Air Conditioning",
+  "Clean Washrooms",
+  "Waste Management",
+  "Delicious Meals",
+  "CCTV Surveillance 24x7",
+  "Doctor On Call 24x7",
+  "Gym Facilities",
+  "Entertainment Zone",
+  "Gymnasium",
+  "Spacious Cupboard"
+];

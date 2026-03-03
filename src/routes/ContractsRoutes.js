@@ -9,7 +9,10 @@ router.get("/:bookingId", authenticateToken, ContractController.getContract);
 router.post(
   "/:bookingId/sign",
   authenticateToken,
-  upload.single("signature"),
+  upload.fields([
+  { name: "tenantSignature", maxCount: 1 },
+  { name: "guardianSignature", maxCount: 1 }
+]),
   ContractController.signContract
 );
 

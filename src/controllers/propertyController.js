@@ -11,6 +11,7 @@ const { log } = require('console');
 const { logApiCall } = require("../helpers/auditLog");
 const UserPermission = require('../models/userPermissoin');
 const PropertyFloorLayout = require("../models/floorLayout");
+const { ALLOWED_AMENITIES } = require("../constants/amenities");
 
 //helper for preventing adding image into property and room Image
 const deleteFiles = (files) => {
@@ -37,7 +38,18 @@ exports.createProperty = async (req, res) => {
 
     // Convert amenities to array if needed
     const amenitiesArray = Array.isArray(amenities) ? amenities : amenities?.split(",").map(a => a.trim()) || [];
+    // Validate property amenities
+    const invalidAmenities = amenitiesArray.filter(
+      a => !ALLOWED_AMENITIES.includes(a)
+    );
 
+    if (invalidAmenities.length > 0) {
+      deleteFiles(req.files || []);
+      await t.rollback();
+      return res.status(400).json({
+        message: `Invalid amenities: ${invalidAmenities.join(", ")}`
+      });
+    }
     // Handle images for property
     const propertyFiles = req.files?.filter(f => f.fieldname === 'propertyImages') || [];
     const imageUrls = propertyFiles.map(f => `/uploads/propertyImages/${f.filename}`);
@@ -80,6 +92,18 @@ exports.createProperty = async (req, res) => {
           }
 
           const amenitiesArray = Array.isArray(rc.roomAmenities) ? rc.roomAmenities : rc.roomAmenities?.split(",").map(a => a.trim()) || [];
+
+          const invalidRoomAmenities = amenitiesArray.filter(
+            a => !ALLOWED_AMENITIES.includes(a)
+          );
+
+          if (invalidRoomAmenities.length > 0) {
+            deleteFiles([...propertyFiles, ...roomImages]);
+            await t.rollback();
+            return res.status(400).json({
+              message: `Invalid room amenities: ${invalidRoomAmenities.join(", ")}`
+            });
+          }
 
           rateCardsToCreate.push({
             propertyId: property.id,
@@ -203,6 +227,18 @@ exports.editProperties = async (req, res) => {
     const amenitiesArray = Array.isArray(amenities)
       ? amenities
       : amenities?.split(",").map(a => a.trim()) || property.amenities;
+    if (amenities !== undefined) {
+      const invalidAmenities = amenitiesArray.filter(
+        a => !ALLOWED_AMENITIES.includes(a)
+      );
+
+      if (invalidAmenities.length > 0) {
+        await t.rollback();
+        return res.status(400).json({
+          message: `Invalid amenities: ${invalidAmenities.join(", ")}`
+        });
+      }
+    }
 
     // Removed images to array
     if (!removedImages) removedImages = [];
@@ -299,6 +335,18 @@ exports.editProperties = async (req, res) => {
             const roomAmenitiesParsed = Array.isArray(rc.roomAmenities)
               ? rc.roomAmenities
               : rc.roomAmenities?.split(",").map(a => a.trim()) || existingRC.roomAmenities;
+            // Validate edited room amenities
+            if (rc.roomAmenities !== undefined) {
+              const invalidRoomAmenities = roomAmenitiesParsed.filter(
+                a => !ALLOWED_AMENITIES.includes(a)
+              ); 
+              if (invalidRoomAmenities.length > 0) {
+                await t.rollback();
+                return res.status(400).json({
+                  message: `Invalid room amenities: ${invalidRoomAmenities.join(", ")}`
+                });
+              }
+            }
 
             // Update the rate card
             await existingRC.update({
@@ -328,6 +376,17 @@ exports.editProperties = async (req, res) => {
           const roomAmenitiesParsed = Array.isArray(rc.roomAmenities)
             ? rc.roomAmenities
             : rc.roomAmenities?.split(",").map(a => a.trim()) || existingRC.roomAmenities;
+          // Validate new rate card amenities
+          const invalidRoomAmenities = roomAmenitiesParsed.filter(
+            a => !ALLOWED_AMENITIES.includes(a)
+          );
+
+          if (invalidRoomAmenities.length > 0) {
+            await t.rollback();
+            return res.status(400).json({
+              message: `Invalid room amenities: ${invalidRoomAmenities.join(", ")}`
+            });
+          }
 
           await PropertyRateCard.create({
             propertyId: property.id,

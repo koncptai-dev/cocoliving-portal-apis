@@ -23,7 +23,9 @@ exports.startOnboarding = async (req, res) => {
   }
 
   const booking = await Booking.findByPk(bookingId);
-  if (!booking) return res.status(404).json({ message: 'Booking not found' });
+  if (!booking) {
+    return res.status(404).json({ message: 'Booking not found' });
+  }
 
   if (
     booking.status !== 'approved' ||
@@ -39,13 +41,15 @@ exports.startOnboarding = async (req, res) => {
   if (!onboarding) {
     onboarding = await BookingOnboarding.create({
       bookingId,
-      checklist: checklist,
+      checklist,
       startedBy: req.user.id,
     });
-
-    booking.onboardingStatus = 'INITIATED';
-    await booking.save();
+  } else if (!onboarding.checklist || onboarding.checklist.length === 0) {
+    onboarding.checklist = checklist;
+    await onboarding.save();
   }
+  booking.onboardingStatus = 'INITIATED';
+  await booking.save();
 
   return res.json({ onboarding });
 };
@@ -85,6 +89,13 @@ exports.completeOnboarding = async (req, res) => {
   const onboarding = await BookingOnboarding.findOne({ where: { bookingId } });
   if (!onboarding) {
     return res.status(404).json({ message: 'Onboarding not found' });
+  }
+  if (booking.user.userType === 'professional') {
+    if (!onboarding.proofOfWork) {
+      return res.status(422).json({
+        message: 'Proof of work is mandatory for professionals'
+      });
+    }
   }
 
   const allChecked = onboarding.checklist.every(i => i.checked);
@@ -204,7 +215,7 @@ exports.getOnboardingByBookingId = async (req, res) => {
 
   const booking = await Booking.findByPk(bookingId, {
     include: [
-      { model: User, as: 'user', attributes: ['id', 'fullName', 'email', 'phone']},
+      { model: User, as: 'user', attributes: ['id', 'fullName', 'email', 'phone','userType']},
       { model: BookingOnboarding, as: 'onboarding' }
     ]
   });
@@ -218,5 +229,47 @@ exports.getOnboardingByBookingId = async (req, res) => {
     onboardingStatus: booking.onboardingStatus,
     user: booking.user,
     onboarding: booking.onboarding || null
+  });
+};
+
+exports.uploadProofOfWork = async (req, res) => {
+  const { bookingId } = req.params;
+
+  if (!assertAdmin(req.user.role)) {
+    return res.status(403).json({ message: 'Forbidden' });
+  }
+
+  const booking = await Booking.findByPk(bookingId, {
+    include: [{ model: User, as: 'user' }]
+  });
+
+  if (!booking) {
+    return res.status(404).json({ message: 'Booking not found' });
+  }
+
+  if (booking.user.userType !== 'professional') {
+    return res.status(422).json({ message: 'Proof required only for professionals' });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ message: 'File is required' });
+  }
+
+  let onboarding = await BookingOnboarding.findOne({ where: { bookingId } });
+
+  if (!onboarding) {
+    onboarding = await BookingOnboarding.create({
+      bookingId,
+      checklist: [],
+      startedBy: req.user.id,
+    });
+  }
+
+  onboarding.proofOfWork = `uploads/proofOfWork/${req.file.filename}`;
+  await onboarding.save();
+
+  return res.json({
+    success: true,
+    proofOfWork: onboarding.proofOfWork
   });
 };

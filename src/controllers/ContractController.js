@@ -117,13 +117,28 @@ exports.signContract = async (req, res) => {
     if (existingContract)
       return res.status(400).json({ message: "Contract already signed" });
 
-    if (!req.file)
-      return res.status(400).json({ message: "Signature file required" });
+    if (!req.files?.tenantSignature) {
+      return res.status(400).json({ message: "Tenant signature is required" });
+    }
+
+    if (booking.user.userType === "student" && !req.files?.guardianSignature) {
+      return res.status(400).json({ message: "Guardian signature is required for students" });
+    }
 
     const pdfDoc = await generateBasePdf(booking);
+    const tenantSigPath = req.files.tenantSignature[0].path;
 
-    const signatureImageBytes = fs.readFileSync(req.file.path);
-    const pngImage = await pdfDoc.embedPng(signatureImageBytes);
+    const tenantImageBytes = fs.readFileSync(tenantSigPath);
+
+    const tenantPng = await pdfDoc.embedPng(tenantImageBytes);
+    let guardianSigPath = null;
+    let guardianPng = null;
+
+    if (booking.user.userType === "student") {
+      guardianSigPath = req.files.guardianSignature[0].path;
+      const guardianImageBytes = fs.readFileSync(guardianSigPath);
+      guardianPng = await pdfDoc.embedPng(guardianImageBytes);
+    }
 
     
     const page = pdfDoc.getPages()[0];
@@ -138,27 +153,65 @@ exports.signContract = async (req, res) => {
       minute: "2-digit",
     });
 
-    page.drawText(`Digitally Signed By: ${booking.user.fullName}`, {
-      x: 350,
-      y: 210,
+    /* TENANT SIGNATURE */
+    page.drawText("Tenant Signature:", {
+      x: 80,
+      y: 200,
       size: 10,
       font,
-      color: rgb(0, 0, 0),
-    });
-    page.drawText(`Date: ${formattedDate}`, {
-      x: 350,
-      y: 195,
-      size: 10,
-      font,
-      color: rgb(0, 0, 0),
-    });
-    page.drawImage(pngImage, {
-      x: 350,
-      y: 120,
-      width: 160,
-      height: 60,
     });
 
+    page.drawImage(tenantPng, {
+      x: 80,
+      y: 140,
+      width: 150,
+      height: 50,
+    });
+
+    page.drawText(`Signed By: ${booking.user.fullName}`, {
+      x: 80,
+      y: 125,
+      size: 9,
+      font,
+    });
+
+    page.drawText(`Date: ${formattedDate}`, {
+      x: 80,
+      y: 112,
+      size: 9,
+      font,
+    });
+
+    if (booking.user.userType === "student") {
+      /* GUARDIAN SIGNATURE */
+      page.drawText("Guardian Signature:", {
+        x: 350,
+        y: 200,
+        size: 10,
+        font,
+      });
+
+      page.drawImage(guardianPng, {
+        x: 350,
+        y: 140,
+        width: 150,
+        height: 50,
+      });
+
+      page.drawText(`Signed By: ${booking.user.parentName || "Guardian"}`, {
+        x: 350,
+        y: 125,
+        size: 9,
+        font,
+      });
+
+      page.drawText(`Date: ${formattedDate}`, {
+        x: 350,
+        y: 112,
+        size: 9,
+        font,
+      });
+    }
     const pdfBytes = await pdfDoc.save();
 
     const finalPath = path.join(
@@ -176,8 +229,10 @@ exports.signContract = async (req, res) => {
 
     booking.contractStatus = "SIGNED";
     await booking.save();
-
-    fs.unlinkSync(req.file.path);
+    fs.unlinkSync(tenantSigPath);
+    if (guardianSigPath) {
+      fs.unlinkSync(guardianSigPath);
+    }
 
     await mailsender(
       booking.user.email,

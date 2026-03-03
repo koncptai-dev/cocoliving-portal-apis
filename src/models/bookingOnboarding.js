@@ -32,6 +32,10 @@ const BookingOnboarding = sequelize.define('BookingOnboarding', {
     type: DataTypes.DATE,
     allowNull: true,
   },
+  proofOfWork: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
 }, {
   tableName: 'booking_onboardings'
 });
