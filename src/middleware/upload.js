@@ -16,7 +16,8 @@ const storage = multer.diskStorage({
         else if (file.fieldname === 'aadhaar_front' || file.fieldname === 'aadhaar_back' || file.fieldname === 'pan_image') folder = 'kycDocuments';
         else if (file.fieldname === 'photos')
             folder = 'dailyCleaning';
-        else if(file.fieldname === 'signature') folder = 'contracts';
+        else if (file.fieldname === 'tenantSignature' || file.fieldname === 'guardianSignature') folder = 'contracts';
+        else if (file.fieldname === 'proofOfWork') folder = 'proofOfWork';
 
         const uploadDir = path.join(__dirname, '..', 'uploads', folder);
         if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
@@ -51,6 +52,16 @@ const fileFilter = (req, file, cb) => {
 
         // check video size <= 50MB
         if (file.size > 50 * 1024 * 1024) return cb(new Error('Video exceeds 50MB limit!'));
+        return cb(null, true);
+    }else if (file.fieldname === 'proofOfWork') {
+        const allowedTypes = /jpeg|jpg|png|pdf/;
+        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+        const mimetype = /image\/jpeg|image\/jpg|image\/png|application\/pdf/.test(file.mimetype);
+
+        if (!extname || !mimetype) return cb(new Error('Only PDF or images allowed!'));
+
+        if (file.size > 10 * 1024 * 1024)
+            return cb(new Error('File exceeds 10MB limit!'));
         return cb(null, true);
     } else {
         cb(null, true);
