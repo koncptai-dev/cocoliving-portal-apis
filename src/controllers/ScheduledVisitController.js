@@ -1,16 +1,124 @@
+const axios = require('axios');
 const ScheduledVisit = require('../models/scheduledVisit');
 const { logApiCall } = require('../helpers/auditLog');
 const { mailsender } = require('../utils/emailService');
 const { scheduledVisitEmail } = require("../utils/emailTemplates/emailTemplates");
 
+// exports.createScheduledVisit = async (req, res) => {
+//   try {
+//     const { name, email, phone, visitDate } = req.body;
+
+//     if (!name || !email || !phone || !visitDate) {
+//       return res.status(400).json({ message: 'Missing required fields' });
+//     }
+
+//     const visitDay = new Date(visitDate);
+//     const today = new Date();
+//     today.setHours(0, 0, 0, 0);
+
+//     if (visitDay < today) {
+//       return res.status(400).json({ message: 'Visit date cannot be in the past' });
+//     }
+
+//     const visit = await ScheduledVisit.create({
+//       name,
+//       email,
+//       phone,
+//       visitDate,
+//     });
+//     const { html, attachments } = scheduledVisitEmail({
+//       name,
+//       visitDate,
+//     });
+
+//     // same mail admin and user(who has scheduled the visit)
+//     await mailsender(
+//       `${email}`,
+//       "New Scheduled Visit - Coco Living",
+//       html,
+//       attachments
+//     );
+//     await logApiCall(req, res, 201, `Scheduled visit created (ID: ${visit.id})`, 'scheduledVisit', visit.id);
+
+//     return res.status(201).json({
+//       message: 'Visit scheduled successfully',
+//       visit,
+//     });
+
+//   } catch (err) {
+//     console.error(err);
+//     await logApiCall(req, res, 500, 'Error creating scheduled visit', 'scheduledVisit');
+//     return res.status(500).json({ message: 'Internal server error' });
+//   }
+// };
 exports.createScheduledVisit = async (req, res) => {
   try {
-    const { name, email, phone, visitDate } = req.body;
+    const { name, email, phone, visitDate, recaptchaToken } = req.body;
 
+    // ────────────────────────────────────────────────
+    // 1. Basic field validation + require token
+    // ────────────────────────────────────────────────
     if (!name || !email || !phone || !visitDate) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
+    if (!recaptchaToken) {
+      return res.status(400).json({ message: 'reCAPTCHA token is required' });
+    }
+
+    // ────────────────────────────────────────────────
+    // 2. Verify reCAPTCHA with Google
+    // ────────────────────────────────────────────────
+    const secret = process.env.RECAPTCHA_SECRET_KEY;
+
+    if (!secret) {
+      console.error('RECAPTCHA_SECRET_KEY is not set in .env');
+      return res.status(500).json({ message: 'Server configuration error' });
+    }
+
+    const verificationUrl = 'https://www.google.com/recaptcha/api/siteverify';
+
+    const verificationResponse = await axios.post(verificationUrl, null, {
+      params: {
+        secret: secret,
+        response: recaptchaToken,
+        remoteip: req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'],
+      },
+    });
+// console.log(verificationResponse);
+    const verificationData = verificationResponse.data;
+
+    if (!verificationData.success) {
+      console.warn('reCAPTCHA verification failed:', verificationData['error-codes']);
+      return res.status(403).json({ 
+        message: 'reCAPTCHA verification failed. Please try again.' 
+      });
+    }
+
+    // Score check (1.0 = human, 0.0 = bot)
+    // Start conservative — you can lower it later if real users get blocked
+    const MIN_SCORE = 0.4;   // ← 0.4–0.5 is common starting point
+
+    if (verificationData.score < MIN_SCORE) {
+      console.warn(`Low reCAPTCHA score: ${verificationData.score} | IP: ${req.ip} | Email: ${email}`);
+      return res.status(403).json({ 
+        message: 'Verification failed - suspicious activity detected' 
+      });
+    }
+console.log('Received action from Google:', verificationData.action);  // ← key line!
+    // Optional: check action name (must match what you used in frontend)
+    // if (verificationData.action !== 'book_a_visit') {
+    //   return res.status(403).json({ message: 'Invalid reCAPTCHA action' });
+    // }
+if (verificationData.action !== 'book_a_visit') {
+  console.warn('Action mismatch! Expected: book_a_visit | Got:', verificationData.action);
+  return res.status(403).json({ message: 'Invalid reCAPTCHA action' });
+}
+    
+
+    // ────────────────────────────────────────────────
+    // 3. Your existing date check
+    // ────────────────────────────────────────────────
     const visitDay = new Date(visitDate);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -19,24 +127,31 @@ exports.createScheduledVisit = async (req, res) => {
       return res.status(400).json({ message: 'Visit date cannot be in the past' });
     }
 
+    // ────────────────────────────────────────────────
+    // 4. Create the record (only reaches here if captcha passed)
+    // ────────────────────────────────────────────────
     const visit = await ScheduledVisit.create({
       name,
       email,
       phone,
       visitDate,
     });
+
+    // ────────────────────────────────────────────────
+    // 5. Email + logging (your original code)
+    // ────────────────────────────────────────────────
     const { html, attachments } = scheduledVisitEmail({
       name,
       visitDate,
     });
 
-    // same mail admin and user(who has scheduled the visit)
     await mailsender(
       `${email}`,
       "New Scheduled Visit - Coco Living",
       html,
       attachments
     );
+
     await logApiCall(req, res, 201, `Scheduled visit created (ID: ${visit.id})`, 'scheduledVisit', visit.id);
 
     return res.status(201).json({
@@ -45,12 +160,11 @@ exports.createScheduledVisit = async (req, res) => {
     });
 
   } catch (err) {
-    console.error(err);
+    console.error('Error in createScheduledVisit:', err);
     await logApiCall(req, res, 500, 'Error creating scheduled visit', 'scheduledVisit');
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
-
 exports.getScheduledVisitList = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
