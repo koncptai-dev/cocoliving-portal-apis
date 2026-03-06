@@ -120,6 +120,22 @@ const Booking = sequelize.define(
       type: DataTypes.DATEONLY,
       allowNull: true,
     },
+    securityDepositPaid: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    monthlyPlanSelected: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    monthlyInstallment: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
+    installmentsPaid: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0
+    },
     meta: {
       type: DataTypes.JSON,
       allowNull: true,

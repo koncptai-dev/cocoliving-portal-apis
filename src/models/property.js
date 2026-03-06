@@ -31,6 +31,10 @@ const Property = sequelize.define('Property', {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
     },
+    lateFeePerDay: {
+      type: DataTypes.INTEGER,
+      defaultValue: 100
+    }
     }, {
   tableName: 'Properties',    
   timestamps: true

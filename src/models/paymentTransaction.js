@@ -45,7 +45,7 @@ const PaymentTransaction = sequelize.define(
       comment: 'Amount in paise (integer)',
     },
     type: {
-      type: DataTypes.ENUM('PREBOOK', 'FULL', 'REMAINING', 'REFUND', 'EXTENSION'),
+      type: DataTypes.ENUM('PREBOOK', 'FULL', 'REMAINING','SECURITY_DEPOSIT','MONTHLY_RENT', 'REFUND', 'EXTENSION'),
       allowNull: false,
     },
     status: {
@@ -67,6 +67,10 @@ const PaymentTransaction = sequelize.define(
     },
     redirectUrl: {
       type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    meta: {
+      type: DataTypes.JSON,
       allowNull: true,
     },
   },

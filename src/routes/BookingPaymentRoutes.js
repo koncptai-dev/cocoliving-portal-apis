@@ -10,6 +10,12 @@ router.post('/initiate', authenticateToken, authorizeRole(2), BookingPaymentCont
 // user
 router.post('/initiate-remaining', authenticateToken, authorizeRole(2), BookingPaymentController.initiateRemaining);
 
+// user
+router.post('/initiate-security-deposit', authenticateToken, authorizeRole(2), BookingPaymentController.initiateSecurityDeposit);
+
+// user
+router.post('/initiate-monthly-rent', authenticateToken, authorizeRole(2), BookingPaymentController.initiateMonthlyRent);
+
 // admin
 router.post('/refund', authenticateToken, authorizeRole(1,3), BookingPaymentController.initiateRefund);
 
