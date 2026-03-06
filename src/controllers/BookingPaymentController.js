@@ -75,7 +75,7 @@ async function assertProfileDetailsComplete(userId) {
   }
 
   // Parent Details
-  if (!user.parentName || !user.parentMobile || !user.parentEmail) {
+  if ((!user.parentName || !user.parentMobile || !user.parentEmail ) && ( user.userType == "student" )) {
     const err = new Error("Parent details are mandatory before booking");
     err.code = "PROFILE_INCOMPLETE";
     throw err;
