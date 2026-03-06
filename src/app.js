@@ -45,6 +45,8 @@ const ScheduledVisitRoutes = require("./routes/ScheduledVisitRoutes");
 const ContractRoutes = require('./routes/ContractsRoutes');
 const ExportRoutes = require("./routes/ExportRoutes");
 
+require('./utils/rentDetailsCron');
+
 app.use(
   cors({
     origin: "*", // Allow only your frontend's IP
