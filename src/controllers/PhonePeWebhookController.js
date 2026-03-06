@@ -328,7 +328,17 @@ async function handleOrderSuccess(ctx, tx) {
         transaction: t,
         lock: t.LOCK.UPDATE
       });
-      if (booking) await recomputeBookingTotals(booking, t);
+      if(booking){
+        if(tx.type === 'SECURITY_DEPOSIT'){
+          booking.securityDepositPaid = true;
+        }
+        if(tx.type === 'MONTHLY_RENT'){
+          const months = tx.meta?.unpaidMonths || 1;
+          booking.installmentsPaid += months;
+        }
+        await booking.save({transaction:t});
+        await recomputeBookingTotals(booking,t);
+      }
       return;
     }
 

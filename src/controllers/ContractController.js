@@ -4,6 +4,7 @@ const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
 
 const { Booking, User, Rooms, Property, Contract } = require("../models");
 const { mailsender } = require("../utils/emailService");
+const { securityDepositPaymentEmail } = require("../utils/emailTemplates/emailTemplates");
 
 const generateBasePdf = async (booking) => {
   const pdfDoc = await PDFDocument.create();
@@ -245,7 +246,18 @@ exports.signContract = async (req, res) => {
         }
       ]
     );
+    const email = securityDepositPaymentEmail({
+      userName: booking.user.fullName,
+      propertyName: booking.room.property.name,
+      bookingId: booking.id
+    });
 
+    await mailsender(
+      booking.user.email,
+      "Security Deposit Payment Required - Coco Living",
+      email.html,
+      email.attachments
+    );
     return res.json({
       message: "Contract signed successfully",
       fileUrl: `/uploads/contracts/contract-${bookingId}.pdf`

@@ -499,11 +499,83 @@ Our team will review your request and notify you once it is approved.
   };
 }
 
+function securityDepositPaymentEmail({ userName, propertyName, bookingId }) {
+  return {
+    attachments: baseAttachments,
+    html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8" /></head>
+
+<body style="margin:0;background:#f3efe9;font-family:'Rethink Sans','Inter','Segoe UI',Arial,sans-serif;">
+<table width="100%" align="center"><tr><td align="center">
+
+<table width="600" style="max-width:600px;">
+
+<tr>
+<td align="center"
+style="background-color:#4F3421;
+background-image:url(cid:bg);
+background-repeat:repeat;
+background-size:400px 400px;
+padding:28px 28px 90px;">
+<img src="cid:logo" width="140" />
+</td>
+</tr>
+
+<tr>
+<td align="center" style="background:#f3efe9;padding:0 24px 40px;">
+<div style="background:#f3efe9;border-radius:80px 80px 0 0;padding:40px 24px 0;max-width:520px;margin:-60px auto 0;">
+
+<h1 style="margin:0 0 16px;font-size:32px;font-weight:700;">
+Security Deposit Payment Required
+</h1>
+
+<p style="font-size:15px;line-height:1.6;">
+Hi <strong>${userName}</strong>,<br/><br/>
+
+Your rental agreement for <strong>${propertyName}</strong> has been successfully signed.
+</p>
+
+<p style="font-size:15px;line-height:1.6;">
+To complete your booking process, please pay the
+<strong>security deposit (2 months rent)</strong>.
+</p>
+
+<div style="background:#ffffff;padding:20px;border-radius:12px;margin:24px 0;text-align:left;font-size:15px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+<strong>Booking ID:</strong> ${bookingId}<br/>
+Please visit your <strong>My Booking</strong> page to complete the payment.
+</div>
+
+<a href="https://staging.cocoliving.in/my-bookings"
+style="display:inline-block;padding:14px 32px;background:#D36517;color:#fff;text-decoration:none;border-radius:24px;font-weight:600;">
+Pay Security Deposit
+</a>
+
+</div>
+</td>
+</tr>
+
+<tr>
+<td align="center" style="background:#4a2f1b;color:#fff;padding:28px 20px;font-size:12px;">
+© 2025 COCO LIVING
+</td>
+</tr>
+
+</table>
+</td></tr></table>
+</body>
+</html>
+`
+  };
+}
+
 module.exports = {
   welcomeEmail,
   otpEmail,
   refundInitiatedEmail,
   refundCompletedEmail,
   adminCredentialsEmail,
-  scheduledVisitEmail
+  scheduledVisitEmail,
+  securityDepositPaymentEmail
 };
