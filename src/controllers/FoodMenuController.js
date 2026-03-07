@@ -6,6 +6,9 @@ const Booking = require('../models/bookRoom');
 const Room = require('../models/rooms');
 const PropertyRateCard = require('../models/propertyRateCard');
 const { logApiCall } = require("../helpers/auditLog");
+const sharp = require("sharp");
+const path = require("path");
+const fs = require("fs");
 
 // exports.createFoodMenu = async (req, res) => {
 //   try {
@@ -94,15 +97,43 @@ exports.upsertFoodMenu = async (req, res) => {
     // Check if menu already exists
     let existingMenu = await FoodMenu.findOne({ where: { propertyId } });
 
+    let imagePaths = [];
+
+    if (req.files && req.files.length) {
+
+      for (const file of req.files) {
+
+        const baseName = path.parse(file.filename).name;
+        const dir = path.dirname(file.path);
+
+        const formats = ["jpg", "jpeg", "png", "bmp"];
+
+        for (const format of formats) {
+
+          const newPath = path.join(dir, `${baseName}.${format}`);
+
+          await sharp(file.path)
+           .toFormat(format)
+           .toFile(newPath);
+
+          imagePaths.push(newPath);
+        }
+
+        // remove original uploaded file
+        fs.unlinkSync(file.path);
+      }
+    }
+
     if (existingMenu) {
       // Update existing menu
       existingMenu.menu = menu;
+      existingMenu.photos = imagePaths;
       await existingMenu.save();
       await logApiCall(req, res, 200, `Updated food menu (Property ID: ${propertyId}, Menu ID: ${existingMenu.id})`, "foodMenu", existingMenu.id);
       return res.status(200).json({ message: "Food menu updated successfully", menu: existingMenu });
     } else {
       // Create new menu
-      const newMenu = await FoodMenu.create({ propertyId, menu });
+      const newMenu = await FoodMenu.create({ propertyId, menu, photos: imagePaths });
       await logApiCall(req, res, 201, `Created new food menu (Property ID: ${propertyId}, Menu ID: ${newMenu.id})`, "foodMenu", newMenu.id);
       return res.status(201).json({ message: "Food menu created successfully", menu: newMenu });
     }
