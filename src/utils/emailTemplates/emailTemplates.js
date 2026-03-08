@@ -570,6 +570,104 @@ Pay Security Deposit
   };
 }
 
+function invoiceEmail({
+  userName,
+  invoiceNo,
+  amount,
+  paymentDate
+}) {
+  return {
+    attachments: baseAttachments,
+    html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8" /></head>
+
+<body style="margin:0;background:#f3efe9;font-family:'Rethink Sans','Inter','Segoe UI',Arial,sans-serif;">
+<table width="100%" align="center">
+<tr><td align="center">
+
+<table width="600" style="max-width:600px;">
+
+<tr>
+<td align="center"
+style="background-color:#4F3421;
+background-image:url(cid:bg);
+background-repeat:repeat;
+background-size:400px 400px;
+padding:28px 28px 90px;">
+<img src="cid:logo" width="140" />
+</td>
+</tr>
+
+<tr>
+<td align="center" style="background:#f3efe9;padding:0 24px 40px;">
+<div style="background:#f3efe9;border-radius:80px 80px 0 0;padding:40px 24px 0;max-width:520px;margin:-60px auto 0;">
+
+<h1 style="margin:0 0 16px;font-size:32px;font-weight:700;">
+Invoice Generated 🧾
+</h1>
+
+<p style="font-size:15px;line-height:1.6;">
+Hi <strong>${userName}</strong>,<br/><br/>
+
+Your payment has been successfully processed and an invoice has been generated for your transaction.
+Please find the <strong>invoice attached</strong> with this email for your records.
+</p>
+
+<div style="background:#ffffff;padding:24px;border-radius:12px;margin:24px 0;text-align:left;font-size:15px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+
+<strong>Invoice Details</strong><br/><br/>
+
+<strong>Invoice No:</strong> ${invoiceNo}<br/>
+<strong>Amount Paid:</strong> ₹${amount.toLocaleString('en-IN')}<br/>
+<strong>Payment Date:</strong> ${new Date(paymentDate).toLocaleDateString('en-IN')}
+
+</div>
+
+<p style="font-size:15px;margin:20px 0;">
+If you have any questions regarding this invoice, feel free to contact our support team.
+</p>
+
+</div>
+</td>
+</tr>
+
+<tr>
+<td align="center" style="background:#4a2f1b;color:#fff;padding:28px 20px;font-size:12px;line-height:1.6;">
+<div>© 2025 COCO LIVING</div>
+<div>The Spark Tower S.G. Highway, Ahmedabad</div>
+
+<div>
+<img src="cid:phone" width="9"/> +91-7041454455
+&nbsp;
+<img src="cid:mail" width="10"/> info@cocoliving.in
+</div>
+
+<div style="margin:10px 0;">
+<a href="https://cocoliving.in/privacy-policy" style="color:#fff;">Privacy Policy</a>
+&nbsp;&nbsp;
+<a href="https://cocoliving.in/terms-and-conditions" style="color:#fff;">Terms & Conditions</a>
+</div>
+
+<div>
+<img src="cid:instagram" width="18"/>
+<img src="cid:facebook" width="18"/>
+<img src="cid:linkedin" width="18"/>
+</div>
+
+</td>
+</tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>
+`,
+  };
+}
+
 module.exports = {
   welcomeEmail,
   otpEmail,
@@ -577,5 +675,6 @@ module.exports = {
   refundCompletedEmail,
   adminCredentialsEmail,
   scheduledVisitEmail,
-  securityDepositPaymentEmail
+  securityDepositPaymentEmail,
+  invoiceEmail
 };
