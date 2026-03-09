@@ -653,7 +653,26 @@ exports.initiateMonthlyRent = async (req,res)=>{
     return res.json({success:false,message:'No pending installments'});
   }
 
-  const rentAmount = booking.monthlyInstallment * unpaidMonths;
+  let rentAmount = 0;
+  if (booking.installmentsPaid === 0) {
+    const daysInMonth = checkInDate.daysInMonth();
+    const checkInDay = checkInDate.date();
+    const remainingDays = daysInMonth - checkInDay + 1;
+    const dailyRent = booking.monthlyInstallment / daysInMonth;
+    const proratedRent = dailyRent * remainingDays;
+    const prebookTx = await PaymentTransaction.findOne({
+      where: {
+        bookingId,
+        type: 'PREBOOK',
+        status: 'SUCCESS'
+      }
+    });
+
+    const prebookPaid = prebookTx ? Number(prebookTx.amount) / 100 : 0;
+    rentAmount = Math.max(proratedRent - prebookPaid, 0);
+  } else {
+    rentAmount = booking.monthlyInstallment * unpaidMonths;
+  }
 
   let lateFee = 0;
 
