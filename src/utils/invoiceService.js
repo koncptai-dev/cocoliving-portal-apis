@@ -2,7 +2,7 @@ const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
 
-const Booking = require("../models/booking");
+const Booking = require("../models/bookRoom");
 const User = require("../models/user");
 const { invoiceEmail } = require("./emailTemplates/emailTemplates");
 
