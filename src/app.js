@@ -44,6 +44,7 @@ const ScheduledVisitRoutes = require("./routes/ScheduledVisitRoutes");
 // const HashRoutes = require("./routes/HashRoutes");
 const ContractRoutes = require('./routes/ContractsRoutes');
 const ExportRoutes = require("./routes/ExportRoutes");
+const CouponRoute = require('./routes/CouponRoute');
 
 require('./utils/rentDetailsCron');
 
@@ -100,10 +101,11 @@ app.use('/api/daily-cleaning', DailyCleaningRoutes);
 app.use('/api/service', ServiceUserDashboardRoutes);
 app.use('/api/contact', contactRoute);
 app.use('/api/jobs', jobsRoute);
-app.use("/api/scheduled-visits",ScheduledVisitRoutes);
+app.use("/api/scheduled-visits", ScheduledVisitRoutes);
 // app.use("/api/hashcode", HashRoutes);
 app.use("/api/contracts", ContractRoutes);
 app.use("/api/export", ExportRoutes);
+app.use("/api/coupons", CouponRoute);
 
 sequelize
   .sync({ alter: true }) //   ensures new models are created
