@@ -147,11 +147,33 @@ if (verificationData.action !== 'book_a_visit') {
 
     await mailsender(
       `${email}`,
-      "New Scheduled Visit - Coco Living",
+      "Visit Approved - Coco Living",
       html,
       attachments
     );
+    const adminHtml = `
+    <p>A new visit request has been submitted.</p>
 
+    <p>
+    <strong>Name:</strong> ${name}<br/>
+    <strong>Email:</strong> ${email}<br/>
+    <strong>Phone:</strong> ${phone}<br/>
+    <strong>Visit Date:</strong> ${new Date(visitDate).toLocaleDateString('en-IN')}
+    </p>
+
+    <p>Please review and take action from the admin panel.</p>
+    `;
+
+    await mailsender(
+      "deepanshu7419@gmail.com,deepanshu.choudhary@koncpt.ai",
+      "New Visit Request - Action Required",
+      adminHtml
+    );
+    // await mailsender(
+    //   "admin@cocoliving.in,kuldeep.parmar@cocoliving.in,rohit.rathor@cocoliving.in",
+    //   "New Visit Request - Action Required",
+    //   adminHtml
+    // );
     await logApiCall(req, res, 201, `Scheduled visit created (ID: ${visit.id})`, 'scheduledVisit', visit.id);
 
     return res.status(201).json({
@@ -210,29 +232,29 @@ exports.updateScheduledVisitStatus = async (req, res) => {
     visit.status = status;
     await visit.save();
 
-    // EMAIL CONTENT
-    let subject = '';
-    let html = '';
+    // // EMAIL CONTENT
+    // let subject = '';
+    // let html = '';
 
-    if (status === 'approved') {
-      subject = 'Visit Request Approved';
-      html = `
-        <p>Dear ${visit.name},</p>
-        <p>Your request to visit our property has been approved.</p>
-        <p>Please visit during working hours on ${visit.visitDate}.</p>
-        <p>Regards,<br/>COCO Living Team</p>
-      `;
-    } else {
-      subject = 'Visit Request Denied';
-      html = `
-        <p>Dear ${visit.name},</p>
-        <p>Due to some reason we will not be able to help you visit our site on ${visit.visitDate}.</p>
-        <p>Please select another date and we will try to accommodate your visit.</p>
-        <p>Regards,<br/>COCO Living Team</p>
-      `;
-    }
+    // if (status === 'approved') {
+    //   subject = 'Visit Request Approved';
+    //   html = `
+    //     <p>Dear ${visit.name},</p>
+    //     <p>Your request to visit our property has been approved.</p>
+    //     <p>Please visit during working hours on ${visit.visitDate}.</p>
+    //     <p>Regards,<br/>COCO Living Team</p>
+    //   `;
+    // } else {
+    //   subject = 'Visit Request Denied';
+    //   html = `
+    //     <p>Dear ${visit.name},</p>
+    //     <p>Due to some reason we will not be able to help you visit our site on ${visit.visitDate}.</p>
+    //     <p>Please select another date and we will try to accommodate your visit.</p>
+    //     <p>Regards,<br/>COCO Living Team</p>
+    //   `;
+    // }
 
-    await mailsender(visit.email, subject, html);
+    // await mailsender(visit.email, subject, html);
 
     return res.status(200).json({
       message: `Visit ${status} successfully`,
