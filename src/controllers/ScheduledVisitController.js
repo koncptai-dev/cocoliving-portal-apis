@@ -165,15 +165,10 @@ if (verificationData.action !== 'book_a_visit') {
     `;
 
     await mailsender(
-      "deepanshu7419@gmail.com,deepanshu.choudhary@koncpt.ai",
+      "admin@cocoliving.in,kuldeep.parmar@koncpt.ai,rohit.rathod@koncpt.ai",
       "New Visit Request - Action Required",
       adminHtml
     );
-    // await mailsender(
-    //   "admin@cocoliving.in,kuldeep.parmar@cocoliving.in,rohit.rathor@cocoliving.in",
-    //   "New Visit Request - Action Required",
-    //   adminHtml
-    // );
     await logApiCall(req, res, 201, `Scheduled visit created (ID: ${visit.id})`, 'scheduledVisit', visit.id);
 
     return res.status(201).json({
