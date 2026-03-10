@@ -109,7 +109,7 @@ async function generateAndSendInvoice(transaction) {
           ...template.attachments,
           {
             filename: `${invoiceNo}.pdf`,
-            path: invoicePath
+            path: filePath
           }
         ]
       });
