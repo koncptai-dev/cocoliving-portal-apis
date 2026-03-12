@@ -373,12 +373,6 @@ exports.phonePeWebhook = async (req, res) => {
 
     const tx = await PaymentTransaction.findOne({
       where: { merchantOrderId: ctx.merchantOrderId },
-      include: [
-        {
-          model: Booking,
-          include: [{ model: User }]
-        }
-      ]
     });
 
     if (!tx) {

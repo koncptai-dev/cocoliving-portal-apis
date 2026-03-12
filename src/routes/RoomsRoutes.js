@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const {validateRooms,editRoomsValidate}=require('../middleware/validation');
 const validate=require('../middleware/validateResult');
-const upload = require('../middleware/upload');
+const uploadCSV = require('../middleware/uploadCsv');
 const authorizeRole = require("../middleware/authorizeRole");
 const authMiddleware = require('../middleware/auth');
 
@@ -15,8 +15,8 @@ router.get('/getall',authMiddleware, authorizeRole(1,3), RoomController.getAllRo
 
 router.get('/getAll/:propertyId', RoomController.getRoomsByProperty);
 router.get("/available/:propertyId/:roomType", RoomController.getAvailableRooms);
-router.post("/assign/:roomId", RoomController.assignInventoryManual);
-router.post("/auto-assign/:roomId", RoomController.assignInventoryAuto);
 router.get("/inventory/:propertyId", RoomController.getInventoryForProperty);
+router.post("/import/csv", authMiddleware , authorizeRole(1,3), uploadCSV.single("file"), RoomController.importRooms);
+router.get("/template", authMiddleware, RoomController.downloadRoomCsvTemplate);
 
 module.exports=router
