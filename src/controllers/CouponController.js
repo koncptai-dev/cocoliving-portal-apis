@@ -14,6 +14,21 @@ exports.createCoupon = async (req, res) => {
     try {
         const { title, code, discountType, discountValue, startDate, endDate, status } = req.body;
 
+        // Validation for spaces in code
+        if (code && /\s/.test(code)) {
+            return res.status(400).json({ message: "Coupon code cannot contain spaces." });
+        }
+
+        // Percentage constraint: 0 < value < 100
+        let finalDiscountValue = discountValue;
+        if (discountType === 'percentage') {
+            // Truncate to 2 decimal places to prevent rounding up to 100
+            finalDiscountValue = Math.floor(discountValue * 100) / 100;
+            if (finalDiscountValue <= 0 || finalDiscountValue >= 100) {
+                return res.status(400).json({ message: "Percentage discount must be greater than 0 and less than 100." });
+            }
+        }
+
         // Duplicate code check
         const existingCoupon = await Coupon.findOne({ where: { code } });
         if (existingCoupon) {
@@ -23,9 +38,9 @@ exports.createCoupon = async (req, res) => {
 
         const coupon = await Coupon.create({
             title,
-            code,
+            code: code.trim(), // Ensure no stray spaces from bypasses
             discountType,
-            discountValue,
+            discountValue: finalDiscountValue,
             startDate,
             endDate,
             status: status || 'Active',
@@ -55,6 +70,23 @@ exports.updateCoupon = async (req, res) => {
             return res.status(404).json({ message: "Coupon not found" });
         }
 
+        // Validation for spaces in code
+        if (code && /\s/.test(code)) {
+            return res.status(400).json({ message: "Coupon code cannot contain spaces." });
+        }
+
+        // Percentage constraint: 0 < value < 100
+        const finalDiscountType = discountType || coupon.discountType;
+        let finalDiscountValue = discountValue !== undefined ? discountValue : coupon.discountValue;
+
+        if (finalDiscountType === 'percentage') {
+            // Truncate to 2 decimal places to prevent rounding up to 100
+            finalDiscountValue = Math.floor(finalDiscountValue * 100) / 100;
+            if (finalDiscountValue <= 0 || finalDiscountValue >= 100) {
+                return res.status(400).json({ message: "Percentage discount must be greater than 0 and less than 100." });
+            }
+        }
+
         if (coupon.isDisabled) {
             await logApiCall(req, res, 400, `Edited coupon - disabled (ID: ${couponId})`, "coupon", parseInt(couponId));
             return res.status(400).json({ message: "Cannot edit a permanently disabled coupon" });
@@ -76,9 +108,9 @@ exports.updateCoupon = async (req, res) => {
 
         await coupon.update({
             title: title || coupon.title,
-            code: code || coupon.code,
+            code: code ? code.trim() : coupon.code,
             discountType: discountType || coupon.discountType,
-            discountValue: discountValue || coupon.discountValue,
+            discountValue: finalDiscountValue,
             startDate: startDate || coupon.startDate,
             endDate: endDate || coupon.endDate
         });
@@ -306,5 +338,76 @@ exports.shareCoupon = async (req, res) => {
     } catch (err) {
         await logApiCall(req, res, 500, "Error occurred while sharing coupon", "coupon", parseInt(req.params.id) || 0);
         return res.status(500).json({ message: "Error sharing coupon", error: err.message });
+    }
+};
+// Validate Coupon
+exports.validateCoupon = async (req, res) => {
+    try {
+        let { code, propertyId } = req.body;
+
+        if (!code) {
+            return res.status(400).json({ message: "Coupon code is required" });
+        }
+
+        // Convert code to uppercase for normalization
+        code = code.toUpperCase().trim();
+
+        const coupon = await Coupon.findOne({
+            where: { code },
+            include: [{
+                model: Property,
+                as: 'property',
+                attributes: ['id', 'name']
+            }]
+        });
+
+        if (!coupon) {
+            return res.status(404).json({ message: "Invalid coupon code" });
+        }
+
+        if (coupon.isDisabled || coupon.status !== 'Active') {
+            return res.status(400).json({ message: "This coupon is no longer active" });
+        }
+
+        // Check shareTarget logic
+        // 'Specific Property' means it's restricted to a building.
+        // 'All Users' or 'Not Shared' means it's globally valid for any property.
+        if (coupon.shareTarget === 'Specific Property') {
+            if (!propertyId || parseInt(propertyId) !== coupon.propertyId) {
+                return res.status(400).json({ message: "This coupon is not valid for this property." });
+            }
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const startDate = new Date(coupon.startDate);
+        const endDate = new Date(coupon.endDate);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(0, 0, 0, 0);
+
+        if (today.getTime() < startDate.getTime()) {
+            return res.status(400).json({ message: "This coupon is not yet valid" });
+        }
+
+        if (today.getTime() > endDate.getTime()) {
+            return res.status(400).json({ message: "This coupon has expired" });
+        }
+
+        await logApiCall(req, res, 200, `Validated coupon: ${code} (Property: ${propertyId})`, "coupon", coupon.id);
+        return res.status(200).json({
+            message: "Coupon is valid",
+            coupon: {
+                id: coupon.id,
+                title: coupon.title,
+                code: coupon.code,
+                discountType: coupon.discountType,
+                discountValue: coupon.discountValue,
+                property: coupon.property
+            }
+        });
+    } catch (err) {
+        await logApiCall(req, res, 500, "Error occurred while validating coupon", "coupon");
+        return res.status(500).json({ message: "Error validating coupon", error: err.message });
     }
 };
