@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const puppeteer = require("puppeteer");
 
 const Booking = require("../models/bookRoom");
 const User = require("../models/user");
@@ -84,6 +85,24 @@ function numberToWordsINR(value) {
   return result;
 }
 
+async function renderHtmlToPdf(html, outputPath) {
+  const browser = await puppeteer.launch({
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle0" });
+    await page.pdf({
+      path: outputPath,
+      format: "A4",
+      printBackground: true,
+      margin: { top: "16mm", right: "12mm", bottom: "16mm", left: "12mm" },
+    });
+  } finally {
+    await browser.close();
+  }
+}
+
 async function generateAndSendInvoice(transaction) {
   try {
     const booking = await Booking.findOne({ where: { id: transaction.bookingId } });
@@ -108,7 +127,7 @@ async function generateAndSendInvoice(transaction) {
       fs.mkdirSync(invoiceDir, { recursive: true });
     }
 
-    const filePath = path.join(invoiceDir, `${invoiceNo}.html`);
+    const filePath = path.join(invoiceDir, `${invoiceNo}.pdf`);
 
     const amountInWords = numberToWordsINR(total);
     const partyAddress = (user.address || "Ahmedabad").replace(/\n/g, "<br />");
@@ -240,7 +259,7 @@ async function generateAndSendInvoice(transaction) {
   </body>
 </html>`;
 
-    fs.writeFileSync(filePath, invoiceHtml, "utf8");
+    await renderHtmlToPdf(invoiceHtml, filePath);
 
     /* SEND EMAIL */
     const template = invoiceEmail({
@@ -257,7 +276,7 @@ async function generateAndSendInvoice(transaction) {
         attachments: [
           ...template.attachments,
           {
-            filename: `${invoiceNo}.html`,
+            filename: `${invoiceNo}.pdf`,
             path: filePath
           }
         ]
