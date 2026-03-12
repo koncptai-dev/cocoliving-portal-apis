@@ -669,6 +669,72 @@ If you have any questions regarding this invoice, feel free to contact our suppo
   };
 }
 
+function couponShareEmail({ title, code, discountValue, discountType, propertyName, endDate }) {
+  const discountDisplay = discountType === 'percentage' ? `${discountValue}%` : `₹${discountValue}`;
+  const propertyDisplay = propertyName ? propertyName : "All Coco Living Properties";
+  const validUntilDisplay = new Date(endDate).toLocaleDateString('en-IN');
+
+  return {
+    attachments: [
+      { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
+      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' }
+    ],
+    html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8" /></head>
+<body style="margin:0;background:#f3efe9;font-family:'Rethink Sans','Inter','Segoe UI',Arial,sans-serif;">
+<table width="100%" align="center"><tr><td align="center">
+<table width="600" style="max-width:600px;">
+
+<tr>
+<td align="center" style="background-color:#4F3421;background-image:url(cid:bg);background-repeat:repeat;background-size:400px 400px;padding:28px 28px 90px;">
+<img src="cid:logo" width="140" />
+</td>
+</tr>
+
+<tr>
+<td align="center" style="background:#f3efe9;padding:0 24px 40px;">
+<div style="background:#f3efe9;border-radius:80px 80px 0 0;padding:40px 24px 0;max-width:520px;margin:-60px auto 0;">
+
+<h1 style="margin:0 0 16px;font-size:32px;font-weight:700;">
+Exclusive Offer For You! 🎉
+</h1>
+
+<p style="max-width:420px;margin:0 auto 28px;font-size:15px;line-height:1.6;">
+Hi there,<br/><br/>
+We're excited to share a special promotion with you: <strong>${title}</strong>.
+Redeem your coupon in our app to get <strong>${discountDisplay} Off</strong>!
+</p>
+
+<div style="background:#ffffff;padding:20px;border-radius:12px;margin:24px 0;text-align:left;font-size:15px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+<strong>Coupon Code:</strong> <span style="font-family: monospace; font-size: 18px; color: #4F3421; font-weight: bold;">${code}</span><br/><br/>
+<strong>Eligible Property:</strong> ${propertyDisplay}<br/>
+<strong>Valid Until:</strong> ${validUntilDisplay}
+</div>
+
+<p style="font-size:15px;margin:20px 0;">
+Apply this code at checkout to enjoy your discount. Don't wait, book your stay now!
+</p>
+
+</div>
+</td>
+</tr>
+
+<tr>
+<td align="center" style="background:#4a2f1b;color:#fff;padding:28px 20px;font-size:12px;">
+© 2026 COCO LIVING
+</td>
+</tr>
+
+</table>
+</td></tr></table>
+</body>
+</html>
+    `,
+  };
+}
+
 module.exports = {
   welcomeEmail,
   otpEmail,
@@ -677,5 +743,6 @@ module.exports = {
   adminCredentialsEmail,
   scheduledVisitEmail,
   securityDepositPaymentEmail,
-  invoiceEmail
+  invoiceEmail,
+  couponShareEmail
 };

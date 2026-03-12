@@ -1,8 +1,10 @@
 const Coupon = require('../models/coupon');
 const Property = require('../models/property');
 const User = require('../models/user');
+const ScheduledVisit = require('../models/scheduledVisit');
 const { Booking, Rooms } = require('../models');
 const { Op } = require('sequelize');
+const sequelize = require('../config/database');
 const { logApiCall } = require('../helpers/auditLog');
 const { mailsender } = require('../utils/emailService');
 const emailTemplates = require('../utils/emailTemplates/emailTemplates');
@@ -159,6 +161,22 @@ exports.getAllCoupons = async (req, res) => {
             order: [['createdAt', 'DESC']]
         });
 
+        // Auto-disable past due coupons silently
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        for (let coupon of coupons) {
+            if (!coupon.isDisabled && coupon.endDate) {
+                const endDate = new Date(coupon.endDate);
+                endDate.setHours(0, 0, 0, 0);
+                if (today.getTime() > endDate.getTime()) {
+                    coupon.isDisabled = true;
+                    coupon.status = 'Inactive';
+                    await coupon.save();
+                }
+            }
+        }
+
         await logApiCall(req, res, 200, "Viewed all coupons list", "coupon");
         return res.status(200).json({
             message: "Coupons retrieved successfully",
@@ -211,28 +229,32 @@ exports.shareCoupon = async (req, res) => {
                 attributes: ['email', 'fullName']
             });
         } else if (shareTarget === 'Specific Property') {
-            // Find active users currently booking a room in this property
-            const bookings = await Booking.findAll({
-                where: { status: { [Op.in]: ['approved', 'active'] } },
-                include: [{
-                    model: Rooms,
-                    as: 'room',
-                    where: { propertyId }
-                }, {
-                    model: User,
-                    as: 'user',
-                    where: { status: 1 }
-                }]
+            // 1. Fetch users without bookings and not super-admin using Raw Query
+            const [unbookedUsers] = await sequelize.query(`
+                SELECT u.id, u."fullName", u.email
+                FROM users u
+                LEFT JOIN bookings b ON u.id = b."userId"
+                WHERE b.id IS NULL
+                AND u."userType" != 'super-admin'
+            `);
+
+            // 2. Fetch users from scheduled_visits
+            const visits = await ScheduledVisit.findAll({
+                attributes: ['email', 'name']
             });
 
-            // Remove duplicates via Map
-            const uniqueUsers = new Map();
-            bookings.forEach(b => {
-                if (b.user && b.user.email) {
-                    uniqueUsers.set(b.user.email, b.user);
-                }
+            // Combine and deduplicate
+            const uniqueEmails = new Map();
+
+            unbookedUsers.forEach(u => {
+                if (u.email) uniqueEmails.set(u.email, { email: u.email, fullName: u.fullName });
             });
-            usersToEmail = Array.from(uniqueUsers.values());
+
+            visits.forEach(v => {
+                if (v.email) uniqueEmails.set(v.email, { email: v.email, fullName: v.name });
+            });
+
+            usersToEmail = Array.from(uniqueEmails.values());
         } else {
             return res.status(400).json({ message: "Invalid share target" });
         }
@@ -244,6 +266,15 @@ exports.shareCoupon = async (req, res) => {
         }
         await coupon.save();
 
+        // Fetch Property Name for email if applicable
+        let propertyName = null;
+        if (shareTarget === 'Specific Property' && propertyId) {
+            const property = await Property.findByPk(propertyId);
+            if (property) {
+                propertyName = property.name;
+            }
+        }
+
         // Fire & Forget Emails (Don't hold up the request waiting for thousands of emails)
         const sendEmailsAsync = async () => {
             for (const u of usersToEmail) {
@@ -254,7 +285,8 @@ exports.shareCoupon = async (req, res) => {
                             code: coupon.code,
                             discountValue: coupon.discountValue,
                             discountType: coupon.discountType,
-                            endDate: coupon.endDate
+                            endDate: coupon.endDate,
+                            propertyName: propertyName
                         });
                         await mailsender(u.email, `Special Offer: ${coupon.title}`, mail.html, mail.attachments);
                     } catch (e) {

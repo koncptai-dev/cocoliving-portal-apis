@@ -26,7 +26,14 @@ const Coupon = sequelize.define('Coupon', {
     },
     discountValue: {
         type: DataTypes.DECIMAL(10, 2),
-        allowNull: false
+        allowNull: false,
+        validate: {
+            maxPercentage(value) {
+                if (this.discountType === 'percentage' && value > 100) {
+                    throw new Error('Percentage discount cannot exceed 100%');
+                }
+            }
+        }
     },
     startDate: {
         type: DataTypes.DATEONLY,
