@@ -25,4 +25,7 @@ router.patch('/:id/disable', authMiddleware, adminPrivilege, CouponController.di
 // POST Share Coupon
 router.post('/:id/share', authMiddleware, adminPrivilege, CouponController.shareCoupon);
 
+// POST Validate Coupon (Accessible to all authenticated users)
+router.post('/validate', authMiddleware, authorizeRole(1, 2, 3), CouponController.validateCoupon);
+
 module.exports = router;
