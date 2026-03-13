@@ -194,7 +194,10 @@ exports.getAllCoupons = async (req, res) => {
         });
 
         // Auto-disable past due coupons silently
-        const today = new Date();
+        // IST Offset: +5:30 (5.5 hours)
+        const IST_OFFSET = 5.5 * 60 * 60 * 1000;
+        const nowUTC = new Date();
+        const today = new Date(nowUTC.getTime() + IST_OFFSET);
         today.setHours(0, 0, 0, 0);
 
         for (let coupon of coupons) {
@@ -378,7 +381,10 @@ exports.validateCoupon = async (req, res) => {
             }
         }
 
-        const today = new Date();
+        // IST Offset: +5:30 (5.5 hours)
+        const IST_OFFSET = 5.5 * 60 * 60 * 1000;
+        const nowUTC = new Date();
+        const today = new Date(nowUTC.getTime() + IST_OFFSET);
         today.setHours(0, 0, 0, 0);
 
         const startDate = new Date(coupon.startDate);
