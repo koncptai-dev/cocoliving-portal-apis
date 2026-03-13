@@ -29,7 +29,7 @@ exports.startOnboarding = async (req, res) => {
 
   if (
     booking.status !== 'approved' ||
-    booking.paymentStatus !== 'COMPLETED'
+    ( booking.paymentStatus !== 'COMPLETED' && booking.monthlyPlanSelected === false ) 
   ) {
     return res.status(422).json({
       message: 'Booking not eligible for onboarding'

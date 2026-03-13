@@ -165,7 +165,7 @@ exports.initiate = async (req, res) => {
     }
 
     const normalizedCheckIn = moment(metadata.checkInDate, ['YYYY-MM-DD','DD-MM-YYYY']).format('YYYY-MM-DD');
-    const normalizedCheckOut = moment(normalizedCheckIn).add(Number(metadata.duration || 0), 'months').format('YYYY-MM-DD');
+    const normalizedCheckOut = moment(normalizedCheckIn).add(Number(metadata.duration || 0), 'months').subtract(1,'day').format('YYYY-MM-DD');
 
     const rebuiltMeta = {
       bookingType: bookingType.toUpperCase() === 'PREBOOK' ? 'PREBOOK' : 'BOOK',
@@ -702,54 +702,61 @@ exports.initiateMonthlyRent = async (req,res)=>{
   const today = moment();
   const checkInDate = moment(booking.checkInDate);
 
-  if(booking.installmentsPaid === 0){
-
-    if(!today.isSame(checkInDate,'day')){
-      return res.status(422).json({
-        success:false,
-        message:'First installment can only be paid on check-in date'
-      });
-    }
-
-  } else {
-
-    if(today.date() < 1 || today.date() > 7){
-      return res.status(422).json({
-        success:false,
-        message:'Installments can only be paid between 1st and 7th'
-      });
-    }
-
-  }
-
-  const monthsElapsed = today.diff(checkInDate,'months') + 1;
+  const monthsElapsed = today.year() * 12 + today.month() - (checkInDate.year() * 12 + checkInDate.month()) + 1;
   const unpaidMonths = monthsElapsed - booking.installmentsPaid;
 
   if(unpaidMonths <= 0){
     return res.json({success:false,message:'No pending installments'});
   }
 
-  let rentAmount = 0;
-  if (booking.installmentsPaid === 0) {
+  let payableAmount = 0;
+  let installments = 0;
+  let remainingMonths = unpaidMonths;
+  if(booking.installmentsPaid === 0){
     const daysInMonth = checkInDate.daysInMonth();
     const checkInDay = checkInDate.date();
     const remainingDays = daysInMonth - checkInDay + 1;
     const dailyRent = booking.monthlyInstallment / daysInMonth;
     const proratedRent = dailyRent * remainingDays;
+    payableAmount += proratedRent;
+    installments += 1;
+    remainingMonths -= 1;
+  }
+  if(remainingMonths > 0){
+    const checkoutDate = moment(booking.checkOutDate);
+    for(let i=0;i<remainingMonths;i++){
+      const monthStart = moment(checkInDate).add(booking.installmentsPaid + installments,'months').startOf('month');
+      if(monthStart.isSame(checkoutDate,'month')){
+        const daysInMonth = monthStart.daysInMonth();
+        const checkoutDay = checkoutDate.date();
+        const dailyRent = booking.monthlyInstallment / daysInMonth;
+        const proratedLastMonth = dailyRent * checkoutDay;
+        payableAmount += proratedLastMonth;
+      }else{
+        payableAmount += booking.monthlyInstallment;
+      }
+      installments += 1;
+    }
+  }
+  booking.meta = booking.meta || {};
+  if(!booking.meta.prebookAdjusted){
     const prebookTx = await PaymentTransaction.findOne({
-      where: {
+      where:{
         bookingId,
-        type: 'PREBOOK',
-        status: 'SUCCESS'
+        type:'PREBOOK',
+        status:'SUCCESS'
       }
     });
 
-    const prebookPaid = prebookTx ? Number(prebookTx.amount) / 100 : 0;
-    rentAmount = Math.max(proratedRent - prebookPaid, 0);
-  } else {
-    rentAmount = booking.monthlyInstallment * unpaidMonths;
+    const prebookPaid = prebookTx ? Number(prebookTx.amount)/100 : 0;
+    if(prebookPaid > 0){
+      if(payableAmount >= prebookPaid){
+        payableAmount -= prebookPaid;
+        booking.meta.prebookAdjusted = true;
+        await booking.save();
+      }
+    }
   }
-
   let lateFee = 0;
 
   if(unpaidMonths > 0){
@@ -766,7 +773,7 @@ exports.initiateMonthlyRent = async (req,res)=>{
     }
 
   }
-
+  const rentAmount = payableAmount;
   const totalAmount = rentAmount + lateFee;
   const amountPaise = Math.round(totalAmount * 100);
 
@@ -778,6 +785,7 @@ exports.initiateMonthlyRent = async (req,res)=>{
     status:'PENDING',
     merchantOrderId:`tmp-month-${Date.now()}`,
     meta:{
+      installments,
       unpaidMonths,
       lateFee
     }
