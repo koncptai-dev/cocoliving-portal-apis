@@ -154,210 +154,210 @@ exports.getDashboardStats = async (req, res) => {
 
 exports.getReport = async (req, res) => {
   try {
-    // 1. Complete revenue (all time revenue - all time refunds)
-    const completeRevenueResult = await PaymentTransaction.findAll({
+    const { timeline = "30" } = req.query;
+
+    // IST Offset: +5:30 (5.5 hours)
+    const IST_OFFSET = 5.5 * 60 * 60 * 1000;
+    const nowUTC = new Date();
+    const now = new Date(nowUTC.getTime() + IST_OFFSET);
+
+    let startDate;
+    let interval = "day"; // day, week, month
+    let dataPoints = 0;
+
+    if (timeline === "7") {
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
+      startDate.setHours(0, 0, 0, 0);
+      interval = "day";
+      dataPoints = 7;
+    } else if (timeline === "30") {
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29);
+      startDate.setHours(0, 0, 0, 0);
+      interval = "day";
+      dataPoints = 30;
+    } else if (timeline === "90") {
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 89);
+      startDate.setHours(0, 0, 0, 0);
+      interval = "week";
+      dataPoints = 13;
+    } else if (timeline === "365") {
+      startDate = new Date(now.getFullYear() - 1, now.getMonth() + 1, 1);
+      startDate.setHours(0, 0, 0, 0);
+      interval = "month";
+      dataPoints = 12;
+    } else {
+      // Default to 30 days
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29);
+      startDate.setHours(0, 0, 0, 0);
+      interval = "day";
+      dataPoints = 30;
+    }
+
+    // 1. Stats based on timeline
+    const revenueWhere = {
+      status: "SUCCESS",
+      createdAt: { [Op.between]: [startDate, now] },
+    };
+
+    const revenueResult = await PaymentTransaction.findAll({
       attributes: [
-        [
-          sequelize.fn(
-            "SUM",
-            sequelize.literal(
-              "CASE WHEN type != 'REFUND' AND status = 'SUCCESS' THEN amount ELSE 0 END"
-            )
-          ),
-          "totalRevenue",
-        ],
-        [
-          sequelize.fn(
-            "SUM",
-            sequelize.literal(
-              "CASE WHEN type = 'REFUND' AND status = 'SUCCESS' THEN amount ELSE 0 END"
-            )
-          ),
-          "totalRefund",
-        ],
+        [sequelize.fn("SUM", sequelize.literal("CASE WHEN type != 'REFUND' THEN amount ELSE 0 END")), "totalRevenue"],
+        [sequelize.fn("SUM", sequelize.literal("CASE WHEN type = 'REFUND' THEN amount ELSE 0 END")), "totalRefund"],
       ],
+      where: revenueWhere,
       raw: true,
     });
 
-    const totalRevenuePaise = parseInt(
-      completeRevenueResult[0]?.totalRevenue || 0
-    );
-    const totalRefundPaise = parseInt(
-      completeRevenueResult[0]?.totalRefund || 0
-    );
-    const completeRevenue = (totalRevenuePaise - totalRefundPaise) / 100;
+    const totalRevenuePaise = parseInt(revenueResult[0]?.totalRevenue || 0);
+    const totalRefundPaise = parseInt(revenueResult[0]?.totalRefund || 0);
+    const timelineRevenue = (totalRevenuePaise - totalRefundPaise) / 100;
 
-    // 2. Total users count
-    const totalUsers = await User.count();
-
-    // 3. Complete occupancy rate
-    const allRooms = await Rooms.findAll({
-      attributes: ["id", "capacity"],
+    const totalUsers = await User.count({
+      where: {
+        role: { [Op.in]: [2] },
+        createdAt: { [Op.between]: [startDate, now] },
+      },
     });
 
-    const allBookings = await Booking.findAll({
+    const openedTickets = await SupportTicket.count({
       where: {
-        status: { [Op.in]: ["approved", "active"] },
-        roomId: { [Op.ne]: null },
+        status: "open",
+        createdAt: { [Op.between]: [startDate, now] },
       },
-      attributes: ["id", "roomId"],
+    });
+
+    // Global Current Occupancy (Approved only, Today between check-in and check-out)
+    const todayStr = now.toISOString().split('T')[0];
+    const allRooms = await Rooms.findAll({ attributes: ["id", "capacity"] });
+    const currentActiveBookings = await Booking.findAll({
+      where: {
+        status: "approved",
+        roomId: { [Op.ne]: null },
+        checkInDate: { [Op.lte]: todayStr },
+        checkOutDate: { [Op.gte]: todayStr }
+      },
     });
 
     let totalBeds = 0;
     let occupiedBeds = 0;
-
     allRooms.forEach((room) => {
       totalBeds += room.capacity || 0;
-      const roomBookings = allBookings.filter(
-        (b) => b.roomId === room.id
-      ).length;
+      const roomBookings = currentActiveBookings.filter((b) => b.roomId === room.id).length;
       occupiedBeds += Math.min(roomBookings, room.capacity || 0);
     });
+    const currentOccupancyRate = totalBeds > 0 ? ((occupiedBeds / totalBeds) * 100).toFixed(2) : 0;
 
-    const occupancyRate =
-      totalBeds > 0 ? ((occupiedBeds / totalBeds) * 100).toFixed(2) : 0;
-
-    // 4. Total opened tickets
-    const openedTickets = await SupportTicket.count({
-      where: { status: "open" },
+    // 2. Trend Data Generation (Optimized with Bulk Fetching)
+    const allTransactions = await PaymentTransaction.findAll({
+      where: {
+        status: "SUCCESS",
+        createdAt: { [Op.between]: [startDate, now] },
+      },
+      attributes: ["amount", "type", "createdAt"],
+      raw: true,
     });
 
-    // 5. Monthly graph data for revenue (last 12 months)
-    const now = new Date();
-    const monthlyRevenueData = [];
+    const allTimelineBookings = await Booking.findAll({
+      where: {
+        status: "approved",
+        roomId: { [Op.ne]: null },
+        checkInDate: { [Op.lte]: now },
+        checkOutDate: { [Op.gte]: startDate }
+      },
+      attributes: ["id", "roomId", "checkInDate", "checkOutDate"],
+      raw: true,
+    });
 
-    for (let i = 11; i >= 0; i--) {
-      const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const startOfMonth = new Date(
-        monthDate.getFullYear(),
-        monthDate.getMonth(),
-        1
-      );
-      const endOfMonth = new Date(
-        monthDate.getFullYear(),
-        monthDate.getMonth() + 1,
-        0,
-        23,
-        59,
-        59
-      );
+    const graphRevenue = [];
+    const graphOccupancy = [];
 
-      const monthRevenueResult = await PaymentTransaction.findAll({
-        attributes: [
-          [
-            sequelize.fn(
-              "SUM",
-              sequelize.literal(
-                "CASE WHEN type != 'REFUND' AND status = 'SUCCESS' THEN amount ELSE 0 END"
-              )
-            ),
-            "totalRevenue",
-          ],
-          [
-            sequelize.fn(
-              "SUM",
-              sequelize.literal(
-                "CASE WHEN type = 'REFUND' AND status = 'SUCCESS' THEN amount ELSE 0 END"
-              )
-            ),
-            "totalRefund",
-          ],
-        ],
-        where: {
-          createdAt: {
-            [Op.between]: [startOfMonth, endOfMonth],
-          },
-        },
-        raw: true,
+    // Helper for date string key to group
+    const getDateKey = (date, interval) => {
+      const d = new Date(date);
+      if (interval === "day" || interval === "week") {
+        return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+      } else {
+        return d.toLocaleDateString("en-IN", { month: "short", year: "numeric" });
+      }
+    };
+
+    for (let i = 0; i < dataPoints; i++) {
+      let dStart, dEnd, label;
+
+      if (interval === "day") {
+        dStart = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + i, 0, 0, 0, 0);
+        dEnd = new Date(dStart);
+        dEnd.setHours(23, 59, 59, 999);
+      } else if (interval === "week") {
+        dStart = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + i * 7, 0, 0, 0, 0);
+        dEnd = new Date(dStart);
+        dEnd.setDate(dEnd.getDate() + 6);
+        dEnd.setHours(23, 59, 59, 999);
+      } else if (interval === "month") {
+        dStart = new Date(startDate.getFullYear(), startDate.getMonth() + i, 1, 0, 0, 0, 0);
+        dEnd = new Date(dStart.getFullYear(), dStart.getMonth() + 1, 0, 23, 59, 59, 999);
+      }
+
+      if (dStart > now) break;
+      label = getDateKey(dStart, interval);
+
+      // Aggregate Revenue
+      const periodTransactions = allTransactions.filter(t => {
+        const tDate = new Date(t.createdAt);
+        return tDate >= dStart && tDate <= dEnd;
       });
 
-      const monthRevenuePaise = parseInt(
-        monthRevenueResult[0]?.totalRevenue || 0
-      );
-      const monthRefundPaise = parseInt(
-        monthRevenueResult[0]?.totalRefund || 0
-      );
-      const monthRevenue = (monthRevenuePaise - monthRefundPaise) / 100;
-
-      monthlyRevenueData.push({
-        month: monthDate.toLocaleString("default", {
-          month: "short",
-          year: "numeric",
-        }),
-        revenue: Math.max(0, monthRevenue),
-      });
-    }
-
-    // 6. Monthly graph data for room occupancy (last 12 months)
-    const monthlyOccupancyData = [];
-
-    for (let i = 11; i >= 0; i--) {
-      const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const startOfMonth = new Date(
-        monthDate.getFullYear(),
-        monthDate.getMonth(),
-        1
-      );
-      const endOfMonth = new Date(
-        monthDate.getFullYear(),
-        monthDate.getMonth() + 1,
-        0
-      );
-
-      // Get bookings that were active during this month
-      const monthBookings = await Booking.findAll({
-        where: {
-          status: { [Op.in]: ["approved", "active"] },
-          roomId: { [Op.ne]: null },
-          checkInDate: { [Op.lte]: endOfMonth },
-          checkOutDate: { [Op.gte]: startOfMonth },
-        },
-        attributes: ["id", "roomId"],
+      let pRevPaise = 0;
+      let pRefPaise = 0;
+      periodTransactions.forEach(t => {
+        const amt = parseInt(t.amount || 0);
+        if (t.type === 'REFUND') pRefPaise += amt;
+        else pRevPaise += amt;
       });
 
-      let monthTotalBeds = 0;
-      let monthOccupiedBeds = 0;
-
-      allRooms.forEach((room) => {
-        monthTotalBeds += room.capacity || 0;
-        const roomBookings = monthBookings.filter(
-          (b) => b.roomId === room.id
-        ).length;
-        monthOccupiedBeds += Math.min(roomBookings, room.capacity || 0);
+      graphRevenue.push({
+        month: label,
+        revenue: Math.max(0, (pRevPaise - pRefPaise) / 100),
       });
 
-      const monthOccupancyRate =
-        monthTotalBeds > 0
-          ? ((monthOccupiedBeds / monthTotalBeds) * 100).toFixed(2)
-          : 0;
+      // Aggregate Occupancy
+      let pOccupied = 0;
+      const periodBookings = allTimelineBookings.filter(b => {
+        const bIn = new Date(b.checkInDate);
+        const bOut = b.checkOutDate ? new Date(b.checkOutDate) : null;
+        return bIn <= dEnd && (!bOut || bOut >= dStart);
+      });
 
-      monthlyOccupancyData.push({
-        month: monthDate.toLocaleString("default", {
-          month: "short",
-          year: "numeric",
-        }),
-        occupancyRate: parseFloat(monthOccupancyRate),
+      allRooms.forEach(room => {
+        const roomBookings = periodBookings.filter(b => b.roomId === room.id).length;
+        pOccupied += Math.min(roomBookings, room.capacity || 0);
+      });
+
+      const pOccupancyRate = totalBeds > 0 ? ((pOccupied / totalBeds) * 100).toFixed(2) : 0;
+      graphOccupancy.push({
+        month: label,
+        occupancyRate: parseFloat(pOccupancyRate),
       });
     }
 
     res.status(200).json({
       message: "Report fetched successfully",
-      completeRevenue: Math.max(0, completeRevenue),
+      completeRevenue: Math.max(0, timelineRevenue),
       totalUsers,
-      occupancyRate: parseFloat(occupancyRate),
+      occupancyRate: parseFloat(currentOccupancyRate),
       openedTickets,
       monthlyGraphData: {
-        revenue: monthlyRevenueData,
-      roomOccupancy: monthlyOccupancyData,
-    },
-  });
-  await logApiCall(req, res, 200, "Viewed report data", "dashboard");
-} catch (error) {
-  console.error("Error fetching report:", error);
-  await logApiCall(req, res, 500, "Error occurred while fetching report", "dashboard");
-  res.status(500).json({
-    message: "Error occurred while fetching report",
-    error: error.message,
-  });
-}
+        revenue: graphRevenue,
+        roomOccupancy: graphOccupancy,
+      },
+    });
+    await logApiCall(req, res, 200, "Viewed report data with timeline: " + timeline, "dashboard");
+  } catch (error) {
+    console.error("Error fetching report:", error);
+    await logApiCall(req, res, 500, "Error occurred while fetching report", "dashboard");
+    res.status(500).json({
+      message: "Error occurred while fetching report",
+      error: error.message,
+    });
+  }
 };

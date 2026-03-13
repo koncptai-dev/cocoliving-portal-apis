@@ -11,5 +11,6 @@ router.post('/:id/checkout', auth, GuestVisitController.checkOutGuest);
 router.get('/user', auth, GuestVisitController.getUserGuestVisits);
 router.get('/property', auth, GuestVisitController.getPropertyGuestVisits);
 router.get('/admin', auth, GuestVisitController.getAdminGuestVisits);
+router.get('/export-csv', auth, GuestVisitController.exportVisitsCsv);
 
 module.exports = router;
