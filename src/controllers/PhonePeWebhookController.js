@@ -14,6 +14,7 @@ const phonepeConfig = require('../utils/phonepe/phonepeConfig');
 const { logActivity } = require('../helpers/activityLogger');
 const { refundCompletedEmail } = require('../utils/emailTemplates/emailTemplates');
 const { mailsender } = require('../utils/emailService');
+const { generateInvoice, generateAndSendInvoice } = require('../utils/invoiceService');
 
 function computeExpectedWebhookHex() {
   const u = (phonepeConfig.WEBHOOK_USERNAME || '').trim();
@@ -371,7 +372,7 @@ exports.phonePeWebhook = async (req, res) => {
     }
 
     const tx = await PaymentTransaction.findOne({
-      where: { merchantOrderId: ctx.merchantOrderId }
+      where: { merchantOrderId: ctx.merchantOrderId },
     });
 
     if (!tx) {
@@ -380,6 +381,7 @@ exports.phonePeWebhook = async (req, res) => {
 
     if (isOrderSuccess(ctx)) {
       await handleOrderSuccess(ctx, tx);
+      await generateAndSendInvoice(tx);
       return res.status(200).json({ message: 'Webhook processed (SUCCESS)' });
     }
 

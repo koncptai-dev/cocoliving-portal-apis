@@ -47,6 +47,10 @@ const Inventory = sequelize.define(
       onUpdate: "CASCADE",
       onDelete: "SET NULL",
     },
+    setNumber: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
     isCommonAsset: {
       type: DataTypes.BOOLEAN,
       allowNull: false,

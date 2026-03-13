@@ -13,6 +13,7 @@ const Property = require('../models/property');
 const PropertyRateCard = require('../models/propertyRateCard');
 const BookingExtension = require('../models/bookingExtension');
 const UserKYC = require('../models/userKYC');
+const Coupon = require('../models/coupon');
 
 const { logApiCall } = require("../helpers/auditLog");
 
@@ -141,7 +142,7 @@ exports.initiate = async (req, res) => {
     // await assertUserKycVerified(userId);
     await assertProfileDetailsComplete(userId);
 
-    const { bookingType, metadata = {} } = req.body;
+    const { bookingType, couponCode, metadata = {} } = req.body;
     const {
       preferredFloor = null,
       preferredRoomNumber = null,
@@ -224,9 +225,78 @@ exports.initiate = async (req, res) => {
 
     const totalAmountRupees = rebuiltMeta.monthlyRent * rebuiltMeta.duration + rebuiltMeta.securityDeposit;
 
-    let payableAmountRupees = totalAmountRupees;
+    let baseAmountRupees =
+      rebuiltMeta.bookingType === "PREBOOK"
+        ? 5000
+        : totalAmountRupees;
 
-    if (rebuiltMeta.bookingType === "PREBOOK") { payableAmountRupees = 5000;}
+    let discountApplied = 0;
+    let appliedCoupon = null;
+
+    if (couponCode) {
+
+      const coupon = await Coupon.findOne({ where: { code: couponCode } });
+
+      if (!coupon) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid coupon code"
+        });
+      }
+
+      if (coupon.isDisabled || coupon.status !== "Active") {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid coupon code"
+        });
+      }
+
+      const today = moment().format("YYYY-MM-DD");
+
+      if (today < coupon.startDate) {
+        return res.status(400).json({
+          success: false,
+          message: "Coupon not active yet"
+        });
+      }
+
+      if (today > coupon.endDate) {
+        return res.status(400).json({
+          success: false,
+          message: "Coupon expired"
+        });
+      }
+
+      if (
+        coupon.shareTarget === "Specific Property" &&
+        coupon.propertyId !== rebuiltMeta.propertyId
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "This coupon is not valid for this property"
+        });
+      }
+
+      if (coupon.discountType === "percentage") {
+        discountApplied =
+          (baseAmountRupees * Number(coupon.discountValue)) / 100;
+      } else {
+        discountApplied = Number(coupon.discountValue);
+      }
+
+      discountApplied = Math.round(discountApplied);
+
+      if (discountApplied >= baseAmountRupees) {
+        return res.status(400).json({
+          success: false,
+          message: "Discount cannot be applied"
+        });
+      }
+
+      appliedCoupon = coupon;
+    }
+
+    let payableAmountRupees = baseAmountRupees - discountApplied;
     const amountPaise = paiseFromRupees(payableAmountRupees);
 
     const tx = await PaymentTransaction.create({
@@ -247,6 +317,12 @@ exports.initiate = async (req, res) => {
         payableAmount: payableAmountRupees,
         propertyId: rebuiltMeta.propertyId,
         roomType: rebuiltMeta.roomType,
+        coupon: appliedCoupon ? {
+          code: appliedCoupon.code,
+          discountType: appliedCoupon.discountType,
+          discountValue: appliedCoupon.discountValue,
+          discountApplied
+        } : null,
         meta: {
           bookingPreferences: {
             preferredFloor,
@@ -653,7 +729,26 @@ exports.initiateMonthlyRent = async (req,res)=>{
     return res.json({success:false,message:'No pending installments'});
   }
 
-  const rentAmount = booking.monthlyInstallment * unpaidMonths;
+  let rentAmount = 0;
+  if (booking.installmentsPaid === 0) {
+    const daysInMonth = checkInDate.daysInMonth();
+    const checkInDay = checkInDate.date();
+    const remainingDays = daysInMonth - checkInDay + 1;
+    const dailyRent = booking.monthlyInstallment / daysInMonth;
+    const proratedRent = dailyRent * remainingDays;
+    const prebookTx = await PaymentTransaction.findOne({
+      where: {
+        bookingId,
+        type: 'PREBOOK',
+        status: 'SUCCESS'
+      }
+    });
+
+    const prebookPaid = prebookTx ? Number(prebookTx.amount) / 100 : 0;
+    rentAmount = Math.max(proratedRent - prebookPaid, 0);
+  } else {
+    rentAmount = booking.monthlyInstallment * unpaidMonths;
+  }
 
   let lateFee = 0;
 

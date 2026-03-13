@@ -464,21 +464,22 @@ function scheduledVisitEmail({ name, visitDate }) {
 <div style="background:#f3efe9;border-radius:80px 80px 0 0;padding:40px 24px 0;max-width:520px;margin:-60px auto 0;">
 
 <h1 style="margin:0 0 16px;font-size:32px;font-weight:700;">
-Visit Request Received 📩
+Visit Request Approved 📩
 </h1>
 
 <p style="max-width:420px;margin:0 auto 28px;font-size:15px;line-height:1.6;">
 Hi <strong>${name}</strong>,<br/><br/>
 Thank you for scheduling a visit with Coco Living.
-Your request has been successfully received and is currently under review.
+Your request to visit our property has been approved.
 </p>
 
-<div style="background:#ffffff;padding:20px;border-radius:12px;margin:24px 0;text-align:left;font-size:15px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-<strong>Requested Visit Date:</strong> ${new Date(visitDate).toLocaleDateString('en-IN')}
+<div style="background:#ffffff;padding:20px;border-radius:12px;margin:24px 0;text-align:centre;font-size:15px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+Please visit during working hours on 
+<strong>${new Date(visitDate).toLocaleDateString('en-IN')}</strong>.
 </div>
 
 <p style="font-size:15px;margin:20px 0;">
-Our team will review your request and notify you once it is approved.
+We look forward to welcoming you.
 </p>
 
 </div>
@@ -840,6 +841,7 @@ Apply this code at checkout to enjoy your discount. Don't wait, book your stay n
     `,
   };
 }
+
 module.exports = {
   welcomeEmail,
   otpEmail,
