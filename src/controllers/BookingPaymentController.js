@@ -763,9 +763,14 @@ exports.initiateMonthlyRent = async (req,res)=>{
 
     const lastPaidMonth = booking.installmentsPaid;
 
-    const dueDate = moment(checkInDate)
-      .add(lastPaidMonth, 'months')
-      .date(7);
+    let dueDate;
+    if(lastPaidMonth === 0){
+      dueDate = moment(checkInDate);
+    }else{
+      dueDate = moment(checkInDate)
+        .add(lastPaidMonth,'months')
+        .date(7);
+    }
 
     if(today.isAfter(dueDate)){
       const lateDays = today.diff(dueDate,'days');
