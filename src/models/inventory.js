@@ -70,7 +70,7 @@ const Inventory = sequelize.define(
       defaultValue: "New",
     },
     status: {
-      type: DataTypes.ENUM("Available", "Allocated", "Under Repair", "Retired"),
+      type: DataTypes.ENUM("Available", "Allocated", "Under Repair", "Discarded"),
       defaultValue: "Available",
     },
   },
