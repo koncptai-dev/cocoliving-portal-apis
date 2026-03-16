@@ -759,25 +759,48 @@ exports.initiateMonthlyRent = async (req,res)=>{
   }
   let lateFee = 0;
 
+  console.log("---- LATE FEE DEBUG START ----");
+  console.log("today:", today.format("YYYY-MM-DD"));
+  console.log("checkInDate:", checkInDate.format("YYYY-MM-DD"));
+  console.log("installmentsPaid:", booking.installmentsPaid);
+  console.log("unpaidMonths:", unpaidMonths);
+
   if(unpaidMonths > 0){
 
     const lastPaidMonth = booking.installmentsPaid;
+    console.log("lastPaidMonth:", lastPaidMonth);
 
     let dueDate;
+
     if(lastPaidMonth === 0){
       dueDate = moment(checkInDate);
+      console.log("FIRST INSTALLMENT PATH");
     }else{
       dueDate = moment(checkInDate)
         .add(lastPaidMonth,'months')
         .date(7);
+      console.log("NORMAL INSTALLMENT PATH");
     }
+
+    console.log("dueDate:", dueDate.format("YYYY-MM-DD"));
+    console.log("today > dueDate:", today.isAfter(dueDate));
 
     if(today.isAfter(dueDate)){
       const lateDays = today.diff(dueDate,'days');
+      console.log("lateDays:", lateDays);
+      console.log("lateFeePerDay:", property.lateFeePerDay);
+
       lateFee = lateDays * property.lateFeePerDay;
+
+      console.log("calculatedLateFee:", lateFee);
+    }else{
+      console.log("NO LATE FEE APPLIED");
     }
 
   }
+
+  console.log("finalLateFee:", lateFee);
+  console.log("---- LATE FEE DEBUG END ----");
   const rentAmount = payableAmount;
   const totalAmount = rentAmount + lateFee;
   const amountPaise = Math.round(totalAmount * 100);
