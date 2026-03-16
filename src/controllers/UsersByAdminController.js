@@ -58,18 +58,37 @@ exports.getAllUser = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
+        const search = req.query.search || "";
         const offset = (page - 1) * limit;
 
-        //fetch users with count
+        const where = {
+            userType: { [Op.notIn]: ["super-admin", "admin"] }
+        };
+
+        if (search) {
+            where[Op.or] = [
+                { fullName: { [Op.iLike]: `%${search}%` } },
+                { email: { [Op.iLike]: `%${search}%` } },
+                { phone: { [Op.iLike]: `%${search}%` } }
+            ];
+        }
+
         const { rows: users, count } = await User.findAndCountAll({
-            where: { userType: { [Op.notIn]: ["super-admin", "admin"] } },
+            where,
             order: [['createdAt', 'DESC']],
             limit,
             offset
         });
 
         await logApiCall(req, res, 200, "Viewed all users list", "user");
-        res.json({ users, curretnPage: page, totalPages: Math.ceil(count / limit), totalUsers: count });
+
+        res.json({
+            users,
+            currentPage: page,
+            totalPages: Math.ceil(count / limit),
+            totalUsers: count
+        });
+
     } catch (error) {
         await logApiCall(req, res, 500, "Error occurred while fetching all users", "user");
         res.status(500).json({ message: "Failed to fetch Users" });
@@ -222,15 +241,27 @@ exports.getAllAdminUsers = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
+        const search = req.query.search || "";
+
         const offset = (page - 1) * limit;
 
+        const where = {
+            [Op.or]: [
+                { userType: "admin" },
+                { role: 3 }
+            ]
+        };
+
+        if (search) {
+            where[Op.and] = [{[Op.or]: [
+                { fullName: { [Op.iLike]: `%${search}%` } },
+                { email: { [Op.iLike]: `%${search}%` } },
+                { phone: { [Op.iLike]: `%${search}%` } },
+                { roleName: { [Op.iLike]: `%${search}%` } }
+            ]}];
+        }
         const { rows: adminUsers, count } = await User.findAndCountAll({
-            where: {
-                [Op.or]: [
-                    { userType: "admin" },
-                    { role: 3 }
-                ]
-            },
+            where,
             include: {
                 model: UserPermission,
                 as: 'permission'
@@ -251,7 +282,7 @@ exports.getAllAdminUsers = async (req, res) => {
         await logApiCall(req, res, 500, "Error occurred while fetching all admin users", "user");
         res.status(500).json({ message: "Server error", error: error.message });
     }
-}
+};
 
 exports.getAdminById = async (req, res) => {
     try {
