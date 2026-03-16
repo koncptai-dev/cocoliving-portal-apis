@@ -45,7 +45,7 @@ const ScheduledVisitRoutes = require("./routes/ScheduledVisitRoutes");
 const ContractRoutes = require('./routes/ContractsRoutes');
 const ExportRoutes = require("./routes/ExportRoutes");
 const CouponRoute = require('./routes/CouponRoute');
-
+const BlogRoutes = require("./routes/blogRoutes");   // ← add this
 require('./utils/rentDetailsCron');
 
 app.use(
@@ -82,6 +82,7 @@ app.use("/api/property", PropertyRoute);
 app.use("/api/admin-booking", AdminBooking);
 app.use("/api/user-and-booking", UserAndBookingDetails);
 app.use("/api/pages", PagesRoute);
+app.use("/api/admin/blogs", BlogRoutes);
 app.use("/api/inventory", InventoryRoutes);
 app.use("/api/service-history", ServiceHistoryRoutes);
 app.use("/api/food-menu", FoodMenuRoute);

@@ -32,6 +32,7 @@ const Contract = require("./contract");
 const PropertyFloorLayout = require("./floorLayout");
 const Coupon = require("./coupon");
 const GuestVisit = require("./guestVisit");
+const Blog = require("./Blog");     // ← ADD THIS LINE
 
 User.hasOne(UserKYC, {
   foreignKey: "userId",
@@ -284,5 +285,6 @@ module.exports = {
   Contract,
   PropertyFloorLayout,
   Coupon,
-  GuestVisit
+  GuestVisit,
+  Blog
 }
