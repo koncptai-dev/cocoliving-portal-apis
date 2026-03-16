@@ -30,6 +30,8 @@ const UserKYC = require("./userKYC");
 const Notification = require("./notifications");
 const Contract = require("./contract");
 const PropertyFloorLayout = require("./floorLayout");
+const Coupon = require("./coupon");
+const GuestVisit = require("./guestVisit");
 
 User.hasOne(UserKYC, {
   foreignKey: "userId",
@@ -42,7 +44,7 @@ UserKYC.belongsTo(User, {
   as: "user",
 });
 
-User.hasMany(SupportTicket, { foreignKey: "userId", as: "tickets" , onDelete: "CASCADE" });
+User.hasMany(SupportTicket, { foreignKey: "userId", as: "tickets", onDelete: "CASCADE" });
 SupportTicket.belongsTo(User, { foreignKey: "userId", as: "user" });
 User.hasMany(Notification, {
   foreignKey: "userId",
@@ -76,7 +78,7 @@ Booking.belongsTo(User, { foreignKey: "userId", as: "user" });
 Event.hasMany(EventParticipation, { foreignKey: "eventId" });
 EventParticipation.belongsTo(Event, { foreignKey: "eventId" });
 
-User.hasMany(EventParticipation, { foreignKey: "userId",onDelete: "CASCADE" });
+User.hasMany(EventParticipation, { foreignKey: "userId", onDelete: "CASCADE" });
 EventParticipation.belongsTo(User, { foreignKey: "userId" });
 
 Property.hasMany(Rooms, { foreignKey: "propertyId", as: "rooms" });
@@ -112,10 +114,10 @@ Booking.belongsTo(PropertyRateCard, { foreignKey: "rateCardId", as: "rateCard", 
 
 // Inventory and Service History
 Inventory.belongsTo(Property, { foreignKey: "propertyId", as: "property" });
-Property.hasMany(Inventory, { foreignKey: "propertyId", as: "inventories" }); 
+Property.hasMany(Inventory, { foreignKey: "propertyId", as: "inventories" });
 
 Inventory.belongsTo(Rooms, { foreignKey: "roomId", as: "room" });
-Rooms.hasMany(Inventory, { foreignKey: "roomId", as: "roomInventories" }); 
+Rooms.hasMany(Inventory, { foreignKey: "roomId", as: "roomInventories" });
 
 Inventory.hasMany(ServiceHistory, {
   foreignKey: "inventoryId",
@@ -133,7 +135,8 @@ ServiceHistory.belongsTo(SupportTicket, {
 // ServiceHistory → Assigned Admin
 User.hasMany(ServiceHistory, {
   foreignKey: "assignedTo",
-  as: "assignedServiceHistory",onDelete: "CASCADE" });
+  as: "assignedServiceHistory", onDelete: "CASCADE"
+});
 ServiceHistory.belongsTo(User, {
   foreignKey: "assignedTo",
   as: "assignedAdmin",
@@ -142,7 +145,7 @@ ServiceHistory.belongsTo(User, {
 // Payment ↔ Booking
 Booking.hasMany(PaymentTransaction, {
   foreignKey: "bookingId",
-  as: "transactions",onDelete: "CASCADE"
+  as: "transactions", onDelete: "CASCADE"
 });
 PaymentTransaction.belongsTo(Booking, {
   foreignKey: "bookingId",
@@ -150,36 +153,36 @@ PaymentTransaction.belongsTo(Booking, {
 });
 
 // Payment ↔ User
-User.hasMany(PaymentTransaction, { foreignKey: "userId", as: "transactions",onDelete: "CASCADE" });
+User.hasMany(PaymentTransaction, { foreignKey: "userId", as: "transactions", onDelete: "CASCADE" });
 PaymentTransaction.belongsTo(User, { foreignKey: "userId", as: "user" });
 
 SupportTicket.hasMany(TicketLog, { foreignKey: "ticketId", as: "logs" });
 TicketLog.belongsTo(SupportTicket, { foreignKey: "ticketId", as: "ticket" });
 
-User.hasMany(TicketLog, { foreignKey: "performedBy", as: "performedLogs",onDelete: "CASCADE" });
+User.hasMany(TicketLog, { foreignKey: "performedBy", as: "performedLogs", onDelete: "CASCADE" });
 TicketLog.belongsTo(User, { foreignKey: "performedBy", as: "actor" });
 
 // Gate Pass associations
-User.hasMany(GatePass, { foreignKey: "userId", as: "gatePasses",onDelete: "CASCADE" });
+User.hasMany(GatePass, { foreignKey: "userId", as: "gatePasses", onDelete: "CASCADE" });
 GatePass.belongsTo(User, { foreignKey: "userId", as: "user" });
 
 // Booking ↔ Onboarding
-Booking.hasOne(BookingOnboarding, { foreignKey: 'bookingId', as: 'onboarding',onDelete: "CASCADE" });
+Booking.hasOne(BookingOnboarding, { foreignKey: 'bookingId', as: 'onboarding', onDelete: "CASCADE" });
 BookingOnboarding.belongsTo(Booking, { foreignKey: 'bookingId', as: 'booking' });
 
 // Admin who started onboarding
-User.hasMany(BookingOnboarding, { foreignKey: 'startedBy', as: 'startedOnboardings',onDelete: "CASCADE" });
+User.hasMany(BookingOnboarding, { foreignKey: 'startedBy', as: 'startedOnboardings', onDelete: "CASCADE" });
 BookingOnboarding.belongsTo(User, { foreignKey: 'startedBy', as: 'admin' });
 
-User.hasOne(UserNotificationSetting, {foreignKey: "userId",as: "notificationSettings", onDelete: "CASCADE",});
-UserNotificationSetting.belongsTo(User, {foreignKey: "userId", as: "user",});
+User.hasOne(UserNotificationSetting, { foreignKey: "userId", as: "notificationSettings", onDelete: "CASCADE", });
+UserNotificationSetting.belongsTo(User, { foreignKey: "userId", as: "user", });
 
 // Bookings <-> Booking Extension
 Booking.hasMany(BookingExtension, { foreignKey: 'bookingId', as: 'extensions', onDelete: "CASCADE" });
 BookingExtension.belongsTo(Booking, { foreignKey: 'bookingId', as: 'booking' });
 
 // User <-> Booking Extension
-User.hasMany(BookingExtension, { foreignKey: 'userId', as: 'bookingExtensions',onDelete: "CASCADE" });
+User.hasMany(BookingExtension, { foreignKey: 'userId', as: 'bookingExtensions', onDelete: "CASCADE" });
 BookingExtension.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
 // PaymentTransaction <-> Booking Extension
@@ -187,7 +190,7 @@ PaymentTransaction.hasOne(BookingExtension, { foreignKey: 'paymentTransactionId'
 BookingExtension.belongsTo(PaymentTransaction, { foreignKey: 'paymentTransactionId', as: 'paymentTransaction' });
 
 // User <-> Service Team
-User.hasMany(ServiceTeam, { foreignKey: "userId", as: "serviceAssignments" ,onDelete: "CASCADE" });
+User.hasMany(ServiceTeam, { foreignKey: "userId", as: "serviceAssignments", onDelete: "CASCADE" });
 ServiceTeam.belongsTo(User, { foreignKey: "userId", as: "user" });
 
 // Property <-> Service Team
@@ -208,14 +211,14 @@ ServiceTeamRoom.belongsTo(Rooms, { foreignKey: "roomId", as: "teamroom" });
 
 // DailyCleaning → Tasks
 DailyCleaning.hasMany(DailyCleaningTask, { foreignKey: "dailyCleaningId", as: "tasks" });
-DailyCleaningTask.belongsTo(DailyCleaning, {foreignKey: "dailyCleaningId",as: "dailyCleaning"});
+DailyCleaningTask.belongsTo(DailyCleaning, { foreignKey: "dailyCleaningId", as: "dailyCleaning" });
 
 //  DailyCleaning → Room
 Rooms.hasMany(DailyCleaning, { foreignKey: "roomId", as: "dailyCleanings" });
 DailyCleaning.belongsTo(Rooms, { foreignKey: "roomId", as: "room" });
 
 // DailyCleaning → Cleaner(User)
-User.hasMany(DailyCleaning, { foreignKey: "cleanerId", as: "dailyCleanings",onDelete: "CASCADE" });
+User.hasMany(DailyCleaning, { foreignKey: "cleanerId", as: "dailyCleanings", onDelete: "CASCADE" });
 DailyCleaning.belongsTo(User, { foreignKey: "cleanerId", as: "cleaner" });
 
 // Property.hasMany(ScheduledVisit, { foreignKey: "propertyId", as: "scheduledVisits" });
@@ -228,11 +231,28 @@ Booking.hasOne(Contract, { foreignKey: "bookingId", as: "contract", onDelete: "C
 Contract.belongsTo(Booking, { foreignKey: "bookingId", as: "booking" });
 
 // Property ↔ Floor Layout
-Property.hasMany(PropertyFloorLayout, {foreignKey: "propertyId",as: "floorLayout",onDelete: "CASCADE", });
+Property.hasMany(PropertyFloorLayout, { foreignKey: "propertyId", as: "floorLayout", onDelete: "CASCADE", });
 
-PropertyFloorLayout.belongsTo(Property, { foreignKey: "propertyId",as: "property",});
+PropertyFloorLayout.belongsTo(Property, { foreignKey: "propertyId", as: "property", });
 
-module.exports={
+// Property ↔ Coupon
+Property.hasMany(Coupon, { foreignKey: "propertyId", as: "coupons", onDelete: "CASCADE" });
+Coupon.belongsTo(Property, { foreignKey: "propertyId", as: "property" });
+
+// Guest Visit Associations
+User.hasMany(GuestVisit, { foreignKey: "residentUserId", as: "residentVisits", onDelete: "CASCADE" });
+GuestVisit.belongsTo(User, { foreignKey: "residentUserId", as: "resident" });
+
+User.hasMany(GuestVisit, { foreignKey: "createdByUserId", as: "createdVisits", onDelete: "CASCADE" });
+GuestVisit.belongsTo(User, { foreignKey: "createdByUserId", as: "creator" });
+
+Booking.hasMany(GuestVisit, { foreignKey: "bookingId", as: "guestVisits", onDelete: "CASCADE" });
+GuestVisit.belongsTo(Booking, { foreignKey: "bookingId", as: "booking" });
+
+Rooms.hasMany(GuestVisit, { foreignKey: "roomId", as: "roomGuestVisits", onDelete: "CASCADE" });
+GuestVisit.belongsTo(Rooms, { foreignKey: "roomId", as: "room" });
+
+module.exports = {
   sequelize,
   SupportTicket,
   AuditLog,
@@ -262,5 +282,7 @@ module.exports={
   // ScheduledVisit,
   Notification,
   Contract,
-  PropertyFloorLayout
+  PropertyFloorLayout,
+  Coupon,
+  GuestVisit
 }

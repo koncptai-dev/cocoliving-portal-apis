@@ -47,6 +47,10 @@ const Inventory = sequelize.define(
       onUpdate: "CASCADE",
       onDelete: "SET NULL",
     },
+    setNumber: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
     isCommonAsset: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
@@ -66,7 +70,7 @@ const Inventory = sequelize.define(
       defaultValue: "New",
     },
     status: {
-      type: DataTypes.ENUM("Available", "Allocated", "Under Repair", "Retired"),
+      type: DataTypes.ENUM("Available", "Allocated", "Under Repair", "Discarded"),
       defaultValue: "Available",
     },
   },

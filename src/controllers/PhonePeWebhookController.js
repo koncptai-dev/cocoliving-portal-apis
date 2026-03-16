@@ -334,7 +334,7 @@ async function handleOrderSuccess(ctx, tx) {
           booking.securityDepositPaid = true;
         }
         if(tx.type === 'MONTHLY_RENT'){
-          const months = tx.meta?.unpaidMonths || 1;
+          const months = tx.meta?.installments || 1;
           booking.installmentsPaid += months;
         }
         await booking.save({transaction:t});
@@ -373,12 +373,6 @@ exports.phonePeWebhook = async (req, res) => {
 
     const tx = await PaymentTransaction.findOne({
       where: { merchantOrderId: ctx.merchantOrderId },
-      include: [
-        {
-          model: Booking,
-          include: [{ model: User }]
-        }
-      ]
     });
 
     if (!tx) {
