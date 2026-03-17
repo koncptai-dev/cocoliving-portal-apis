@@ -262,6 +262,7 @@ exports.getUserMenus = async (req, res) => {
       propertyId: menu.propertyId,
       propertyName: menu.property?.name,
       weekMenu: menu.menu, // Monday → Sunday
+      photos: menu.photos || []
     }));
 
     await logApiCall(req, res, 200, "Viewed user menus", "foodMenu", userId);
