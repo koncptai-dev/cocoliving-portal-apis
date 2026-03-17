@@ -26,7 +26,7 @@ const FoodMenu = sequelize.define('FoodMenu', {
     photos: {
         type: DataTypes.JSON,
         allowNull: true,
-        defaultValue: {}
+        defaultValue: []
     }
     
 }, {
