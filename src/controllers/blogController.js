@@ -173,3 +173,57 @@ exports.deleteBlog = async (req, res) => {
     });
   }
 };
+
+exports.getPublicBlogs = async (req, res) => {
+  try {
+    const blogs = await Blog.findAll({
+      where: { status: 'published' },
+      order: [['createdAt', 'DESC']],
+      attributes: ['id', 'title', 'url', 'thumbnail', 'createdAt'], // no full content needed here
+    });
+
+    return res.json({
+      success: true,
+      count: blogs.length,
+      data: blogs,
+    });
+  } catch (error) {
+    console.error('Public blogs error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch public blogs',
+    });
+  }
+};
+
+// ────────────────────────────────────────────────
+// PUBLIC: Get single blog by URL/slug (no auth needed)
+// ────────────────────────────────────────────────
+exports.getBlogBySlug = async (req, res) => {
+  try {
+    const blog = await Blog.findOne({
+      where: {
+        url: req.params.url,
+        status: 'published',
+      },
+    });
+
+    if (!blog) {
+      return res.status(404).json({
+        success: false,
+        message: 'Blog not found or not published',
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: blog,
+    });
+  } catch (error) {
+    console.error('Public blog by slug error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error',
+    });
+  }
+};
