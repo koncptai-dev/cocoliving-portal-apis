@@ -53,8 +53,6 @@ const upload = require('../middleware/upload');
 const blogController = require('../controllers/blogController');
 const { body } = require('express-validator');
 
-<<<<<<< Updated upstream
-=======
 // ────────────────────────────────────────────────
 // PUBLIC ROUTES – NO AUTH REQUIRED – MUST BE FIRST
 // ────────────────────────────────────────────────
@@ -66,7 +64,6 @@ router.get('/public/:url', blogController.getBlogBySlug);
 // ────────────────────────────────────────────────
 router.use(authenticateToken);   // ← this now only applies to routes BELOW it
 
->>>>>>> Stashed changes
 // CREATE
 router.post(
   '/',
