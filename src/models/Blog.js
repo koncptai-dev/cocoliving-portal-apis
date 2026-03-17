@@ -24,10 +24,14 @@ const Blog = sequelize.define('Blog', {
   type: DataTypes.TEXT,
   allowNull: false,
 },
+    // status: {
+    //     type: DataTypes.ENUM('draft', 'published', 'live', 'inactive'),
+    //     defaultValue: 'draft',
+    // },
     status: {
-        type: DataTypes.ENUM('draft', 'published', 'live', 'inactive'),
-        defaultValue: 'draft',
-    },
+  type: DataTypes.ENUM('draft', 'published', 'inactive'),
+  defaultValue: 'draft',
+},
 }, {
     tableName: 'blogs',
     timestamps: true,

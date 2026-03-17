@@ -19,14 +19,14 @@ const storage = multer.diskStorage({
         else if (file.fieldname === 'tenantSignature' || file.fieldname === 'guardianSignature') folder = 'contracts';
         else if (file.fieldname === 'proofOfWork') folder = 'proofOfWork';
 else if (file.fieldname === 'thumbnail')              folder = 'blogs';
+  const uploadDir = path.join(__dirname, '..', 'uploads', folder);
 
-
-const uploadDir = path.join(__dirname, '..', '..', 'uploads', folder);  // go up two levels to project root
+// const uploadDir = path.join(__dirname, '..', '..', 'uploads', folder);  // go up two levels to project root
     console.log('MULTER destination folder:', uploadDir);
     console.log('MULTER fieldname:', file.fieldname);
     console.log('MULTER original filename:', file.originalname);
 
-        // const uploadDir = path.join(__dirname, '..', 'uploads', folder);
+       
         if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
         cb(null, uploadDir);   //imgs stores in upload directory /upload/profilePicture
