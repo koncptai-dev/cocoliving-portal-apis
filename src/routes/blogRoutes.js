@@ -4,10 +4,7 @@ const router = express.Router();
 const upload = require('../middleware/upload');
 const blogController = require('../controllers/blogController');
 const { body } = require('express-validator');
-const authenticateToken = require('../middleware/auth');
 
-
-router.use(authenticateToken);
 // CREATE
 router.post(
   '/',
