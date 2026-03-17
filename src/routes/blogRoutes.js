@@ -48,7 +48,7 @@
 
 const express = require('express');
 const router = express.Router();
-
+const authenticateToken = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const blogController = require('../controllers/blogController');
 const { body } = require('express-validator');
