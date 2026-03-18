@@ -7,22 +7,22 @@ const validate=require('../middleware/validateResult');
 const { joinEvent, getEvents } = require("../controllers/participationController");
 const upload = require('../middleware/upload');
 const authorizeRole = require("../middleware/authorizeRole");
-
+const authorizePage = require("../middleware/authorizePage");
 
 //add event by admin
-router.post('/add',upload.single('eventImage'),validateEvent, validate, authMiddleware, authorizeRole(1,3), EventController.createEvent);
+router.post('/add',upload.single('eventImage'),validateEvent, validate, authMiddleware, authorizeRole(1,3), authorizePage("Event Management", "write"), EventController.createEvent);
 
 //edit event by admin
-router.put('/edit/:eventId',upload.single('eventImage'), authMiddleware,authorizeRole(1,3), EventController.updateEvents);
+router.put('/edit/:eventId',upload.single('eventImage'), authMiddleware,authorizeRole(1,3), authorizePage("Event Management", "write"), EventController.updateEvents);
 
 //patch request to update event status
 router.patch('/:id/toggle-status', EventController.toggleEventStatus);
 
 //get Events by admin
-router.get('/admin/getAllEvents', authMiddleware, authorizeRole(1,3), EventController.getAllEvents);
+router.get('/admin/getAllEvents', authMiddleware, authorizeRole(1,3), authorizePage("Event Management", "read"), EventController.getAllEvents);
 
 //delete event by admin
-router.delete('/delete/:eventId', authMiddleware, authorizeRole(1,3), EventController.deleteEvent);
+router.delete('/delete/:eventId', authMiddleware, authorizeRole(1,3), authorizePage("Event Management", "write"), EventController.deleteEvent);
 
 // admin list dekhega
 // router.get("/admin/eventparticipants", EventController.getEventParticipants);
