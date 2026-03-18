@@ -3,15 +3,12 @@ require('dotenv').config();
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
-  port: 587,
-  secure: false,
+  port: process.env.SMTP_PORT,
+  secure: true,
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
-  tls: {
-    rejectUnauthorized: false
-  }
 });
 
 //forgot password
@@ -45,7 +42,7 @@ const mailsender = async (email, title, body, attachments = []) => {
       }
     })
     let info = await transporter.sendMail({
-      from: 'COCO_LIVING',
+      from: `"COCO_LIVING" <${process.env.SMTP_USER}>`,
       to: `${email}`,
       subject: `${title}`,
       html: `${body}`,
@@ -98,7 +95,7 @@ const sendContactEmail = async (name, email, phone, message) => {
     `;
 
     const info = await transporter.sendMail({
-      from: `"CocoLiving Website" <info@cocoliving.in>`,
+      from: `"CocoLiving Website" <${process.env.SMTP_USER}>`,
       replyTo: `"${name}" <${email}>`,
       to: `<${process.env.SMTP_USER}>`,
       subject: "Website Contact Inquiry",
