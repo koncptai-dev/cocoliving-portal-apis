@@ -6,9 +6,7 @@ const Booking = require('../models/bookRoom');
 const Room = require('../models/rooms');
 const PropertyRateCard = require('../models/propertyRateCard');
 const { logApiCall } = require("../helpers/auditLog");
-const sharp = require("sharp");
 const path = require("path");
-const fs = require("fs");
 
 // exports.createFoodMenu = async (req, res) => {
 //   try {
@@ -80,8 +78,11 @@ const fs = require("fs");
 
 exports.upsertFoodMenu = async (req, res) => {
   try {
-    const { propertyId, menu } = req.body;
-
+    const { propertyId } = req.body;
+    let { menu } = req.body;
+    if (typeof menu === "string") {
+      menu = JSON.parse(menu);
+    }
     if (!menu || !propertyId) {
       await logApiCall(req, res, 400, "Upserted food menu - property ID and menu required", "foodMenu");
       return res.status(400).json({ message: "Property ID & menu are required" });
@@ -100,34 +101,19 @@ exports.upsertFoodMenu = async (req, res) => {
     let imagePaths = [];
 
     if (req.files && req.files.length) {
-
       for (const file of req.files) {
-
-        const baseName = path.parse(file.filename).name;
-        const dir = path.dirname(file.path);
-
-        const formats = ["jpg", "jpeg", "png", "bmp"];
-
-        for (const format of formats) {
-
-          const newPath = path.join(dir, `${baseName}.${format}`);
-
-          await sharp(file.path)
-           .toFormat(format)
-           .toFile(newPath);
-
-          imagePaths.push(newPath);
-        }
-
-        // remove original uploaded file
-        fs.unlinkSync(file.path);
+        imagePaths.push(`/uploads/foodMenus/${file.filename}`);
       }
     }
 
     if (existingMenu) {
       // Update existing menu
       existingMenu.menu = menu;
-      existingMenu.photos = imagePaths;
+      existingMenu.photos = [
+        ...(existingMenu.photos || []),
+        ...imagePaths
+      ];
+
       await existingMenu.save();
       await logApiCall(req, res, 200, `Updated food menu (Property ID: ${propertyId}, Menu ID: ${existingMenu.id})`, "foodMenu", existingMenu.id);
       return res.status(200).json({ message: "Food menu updated successfully", menu: existingMenu });
