@@ -578,7 +578,10 @@ function invoiceEmail({
   paymentDate
 }) {
   return {
-    attachments: baseAttachments,
+    attachments: [
+      { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
+      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' }
+    ],
     html: `
 <!DOCTYPE html>
 <html>
@@ -669,6 +672,110 @@ If you have any questions regarding this invoice, feel free to contact our suppo
   };
 }
 
+function rentDueAdminEmail({ reportMonth, tableRows, hasOverdue }) {
+  const showTable = Boolean(hasOverdue);
+  return {
+    attachments: [
+      { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
+      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' },
+      { filename: 'phone.png', path: path.join(__dirname, 'assets/phone-icon.png'), cid: 'phone' },
+      { filename: 'mail.png', path: path.join(__dirname, 'assets/mail-icon.png'), cid: 'mail' },
+      { filename: 'instagram.png', path: path.join(__dirname, 'assets/instagram.png'), cid: 'instagram' },
+      { filename: 'facebook.png', path: path.join(__dirname, 'assets/facebook.png'), cid: 'facebook' },
+      { filename: 'linkedin.png', path: path.join(__dirname, 'assets/linkedin.png'), cid: 'linkedin' }
+    ],
+    html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8" /></head>
+
+<body style="margin:0;background:#f3efe9;font-family:'Rethink Sans','Inter','Segoe UI',Arial,sans-serif;">
+<table width="100%" align="center">
+<tr><td align="center">
+
+<table width="600" style="max-width:600px;">
+
+<tr>
+<td align="center"
+style="background-color:#4F3421;
+background-image:url(cid:bg);
+background-repeat:repeat;
+background-size:400px 400px;
+padding:28px 28px 90px;">
+<img src="cid:logo" width="140" />
+</td>
+</tr>
+
+<tr>
+<td align="center" style="background:#f3efe9;padding:0 24px 40px;">
+<div style="background:#f3efe9;border-radius:80px 80px 0 0;padding:40px 24px 0;max-width:520px;margin:-60px auto 0;">
+
+<h1 style="margin:0 0 16px;font-size:32px;font-weight:700;">
+Rent Due Report - ${reportMonth}
+</h1>
+
+<p style="font-size:15px;line-height:1.6;">
+${showTable
+  ? "The following users have unpaid installments as of the 8th of this month:"
+  : "No overdue payments found as of the 8th of this month."}
+</p>
+
+${showTable ? `
+<table style="width:100%;border-collapse:collapse;margin-top:16px;font-size:13px;">
+  <thead>
+    <tr style="background:#f8f9fa;text-align:left;">
+      <th style="border:1px solid #ddd;padding:8px;">User Name</th>
+      <th style="border:1px solid #ddd;padding:8px;">Email</th>
+      <th style="border:1px solid #ddd;padding:8px;">Phone</th>
+      <th style="border:1px solid #ddd;padding:8px;">Installments (Paid/Total)</th>
+      <th style="border:1px solid #ddd;padding:8px;">Rent/Month</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${tableRows}
+  </tbody>
+</table>
+` : ""}
+
+<p style="margin-top:16px;font-size:12px;color:#777;">
+Generated automatically by Coco Living System.
+</p>
+
+</div>
+</td>
+</tr>
+
+<tr>
+<td align="center" style="background:#4a2f1b;color:#fff;padding:28px 20px;font-size:12px;line-height:1.6;">
+<div>© 2026 COCO LIVING</div>
+<div>The Spark Tower S.G. Highway, Ahmedabad</div>
+<div>
+<img src="cid:phone" width="9"/> +91-7041454455
+&nbsp;
+<img src="cid:mail" width="10"/> info@cocoliving.in
+</div>
+<div style="margin:10px 0;">
+<a href="https://cocoliving.in/privacy-policy" style="color:#fff;">Privacy Policy</a>
+&nbsp;&nbsp;
+<a href="https://cocoliving.in/terms-and-conditions" style="color:#fff;">Terms & Conditions</a>
+</div>
+<div>
+<img src="cid:instagram" width="18"/>
+<img src="cid:facebook" width="18"/>
+<img src="cid:linkedin" width="18"/>
+</div>
+</td>
+</tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>
+`,
+  };
+}
+
 function couponShareEmail({ title, code, discountValue, discountType, propertyName, endDate }) {
   const discountDisplay = discountType === 'percentage' ? `${discountValue}%` : `₹${discountValue}`;
   const propertyDisplay = propertyName ? propertyName : "All Coco Living Properties";
@@ -744,5 +851,6 @@ module.exports = {
   scheduledVisitEmail,
   securityDepositPaymentEmail,
   invoiceEmail,
+  rentDueAdminEmail,
   couponShareEmail
 };

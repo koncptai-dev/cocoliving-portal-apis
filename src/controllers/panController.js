@@ -5,98 +5,166 @@ const { logApiCall } = require("../helpers/auditLog");
 const { nameMatchService } = require('../helpers/nameMatchfunction');
 
 function normalizeName(name) {
-    return name.toUpperCase()            // convert to uppercase
-               .replace(/[^A-Z\s]/g, "") // remove dots, special characters
-               .replace(/\s+/g, " ")    // remove extra spaces
-               .trim();                 // trim leading/trailing spaces
+    console.log("normalizeName input:", name);
+
+    const result = name.toUpperCase()
+        .replace(/[^A-Z\s]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    console.log("normalizeName output:", result);
+    return result;
 }
 
-//pan verification and name match
 exports.verifyPAN = async (req, res) => {
+
+    console.log("========== PAN VERIFY START ==========");
+
     try {
+
+        console.log("Request body:", req.body);
+        console.log("User object:", req.user);
+
         const { panNumber } = req.body;
         const userId = req.user.id;
 
         const role = req.user.role;
+
+        console.log("PAN Number:", panNumber);
+        console.log("User ID:", userId);
+        console.log("Role:", role);
+
         if (![2, 3].includes(role)) {
+            console.log("Unauthorized role detected:", role);
+
             return res.status(403).json({
                 success: false,
                 message: "Unauthorized role for KYC"
             });
         }
 
-        //fetch users fullname
+        console.log("Fetching user from DB...");
         const user = await User.findByPk(userId);
+
+        console.log("User fetched:", user);
+
         const fullName = user?.fullName;
-        
+
+        console.log("User fullName:", fullName);
+
         const normalizedProfileName = normalizeName(fullName);
 
         if (!panNumber) {
+
+            console.log("PAN number missing");
+
             await logApiCall(req, res, 400, "Verified PAN - PAN number required", "userKYC", userId);
+
             return res.status(400).json({ message: "PAN number is required" });
         }
 
         if (!fullName) {
+
+            console.log("User fullName missing in profile");
+
             await logApiCall(req, res, 400, "Verified PAN - Full name missing in profile", "userKYC", userId);
+
             return res.status(400).json({ message: "Full name is missing in user profile" });
         }
 
-        //check if db has the pan verified for the userId
+        console.log("Checking existing PAN record...");
+
         let userPanRecord = await UserKYC.findOne({
-            where: { userId,role, panNumber }
+            where: { userId, role, panNumber }
         });
 
+        console.log("Existing PAN record:", userPanRecord);
+
         if (userPanRecord && userPanRecord.panStatus === "verified") {
+
+            console.log("PAN already verified in DB");
+
             await logApiCall(req, res, 200, `Verified PAN - already verified (User ID: ${userId})`, "userKYC", userId);
-            return res.status(200).json(
-                {
-                    success: true, message: "PAN already verified", data: {
-                        panNumber: userPanRecord.panNumber,
-                        status: userPanRecord.panStatus,
-                        verifiedAt: userPanRecord.verifiedAtPan
-                    }
-                });
+
+            return res.status(200).json({
+                success: true,
+                message: "PAN already verified",
+                data: {
+                    panNumber: userPanRecord.panNumber,
+                    status: userPanRecord.panStatus,
+                    verifiedAt: userPanRecord.verifiedAtPan
+                }
+            });
         }
 
-        //call IDTO service if not verified 
+        console.log("Calling verifyPANService...");
+
         const response = await verifyPANService(panNumber);
 
-        // extract status from API
+        console.log("PAN service response:", response);
+
         const panStatus = response?.status?.toLowerCase() === "success" ? "verified" : "not-verified";
 
-        //extract name from pan response for name match
+        console.log("PAN status interpreted:", panStatus);
+
         const panHolderName = response?.full_name || "";
-        
-        //call name match service
-        const nameMatchResult = await nameMatchService(normalizedProfileName, panHolderName)      
+
+        console.log("PAN holder name:", panHolderName);
+
+        console.log("Calling nameMatchService...");
+        console.log("Profile name:", normalizedProfileName);
+        console.log("PAN name:", panHolderName);
+
+        const nameMatchResult = await nameMatchService(normalizedProfileName, panHolderName);
+
+        console.log("Name match result:", nameMatchResult);
+
         const { matchScore, matched } = nameMatchResult;
 
-        //determinde decision based on match score
+        console.log("matchScore:", matchScore);
+        console.log("matched:", matched);
+
         const storeResult = panStatus === "verified" && matchScore >= 60;
 
-        //for frontend clear message 
+        console.log("storeResult decision:", storeResult);
+
         let failureReason = null;
+
         if (!storeResult && panStatus === "verified") {
             failureReason = "Profile FullName does not match PAN records";
         }
-        //  Save/update DB
-        let userKycRecord = await UserKYC.findOne({ where: { userId,role } });
+
+        console.log("failureReason:", failureReason);
+
+        console.log("Fetching KYC record for update...");
+
+        let userKycRecord = await UserKYC.findOne({ where: { userId, role } });
+
+        console.log("Existing KYC record:", userKycRecord);
 
         if (userKycRecord) {
-            // Update existing row (may already have Aadhaar info)
-            userKycRecord.panNumber = panNumber;
-            userKycRecord.panStatus = storeResult ? "verified" : "not-verified";;
-            userKycRecord.verifiedAtPan = storeResult ? new Date() : null;
-            if (storeResult) userKycRecord.panKycResponse = JSON.stringify(response);
 
-            //name match response
+            console.log("Updating existing KYC record...");
+
+            userKycRecord.panNumber = panNumber;
+            userKycRecord.panStatus = storeResult ? "verified" : "not-verified";
+            userKycRecord.verifiedAtPan = storeResult ? new Date() : null;
+
+            if (storeResult) {
+                userKycRecord.panKycResponse = JSON.stringify(response);
+            }
+
             userKycRecord.panNameMatchResponse = JSON.stringify(nameMatchResult);
             userKycRecord.panNameMatchScore = matchScore;
             userKycRecord.panNameMatched = matched;
 
             await userKycRecord.save();
+
+            console.log("KYC record updated");
         } else {
-            // Create new row if no record exists
+
+            console.log("Creating new KYC record...");
+
             await UserKYC.create({
                 userId,
                 role,
@@ -108,25 +176,46 @@ exports.verifyPAN = async (req, res) => {
                 panNameMatchScore: matchScore,
                 panNameMatched: matched
             });
+
+            console.log("New KYC record created");
         }
+
         if (req.file) {
+
+            console.log("PAN image uploaded:", req.file);
+
             await UserKYC.update(
                 { panFrontImage: `/uploads/kycDocuments/${req.file.filename}` },
                 { where: { userId } }
             );
+
+            console.log("PAN image path stored in DB");
         }
+
         await logApiCall(req, res, 200, `Verified PAN - ${storeResult ? "success" : "failed"} (User ID: ${userId})`, "userKYC", userId);
+
+        console.log("========== PAN VERIFY END ==========");
+
         return res.status(200).json({
-            success: storeResult, message: storeResult ? "PAN verified successfully" : "PAN verification failed",
+            success: storeResult,
+            message: storeResult ? "PAN verified successfully" : "PAN verification failed",
             panStatus: storeResult ? "verified" : "not-verified",
             panNameMatchScore: matchScore,
             failureReason
         });
+
     } catch (error) {
-        console.error("Controller Error:", error.message);
+
+        console.error("PAN Controller Error:", error);
+
         const statusCode = error.response?.status || 500;
         const message = error.response?.data?.message || error.message || "Internal Server Error during verification.";
+
         await logApiCall(req, res, statusCode, "Error occurred while verifying PAN", "userKYC", req.user?.id || 0);
-        res.status(statusCode).json({ success: false, message: message, });
+
+        res.status(statusCode).json({
+            success: false,
+            message: message
+        });
     }
 }

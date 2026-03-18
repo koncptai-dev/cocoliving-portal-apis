@@ -31,6 +31,8 @@ const Notification = require("./notifications");
 const Contract = require("./contract");
 const PropertyFloorLayout = require("./floorLayout");
 const Coupon = require("./coupon");
+const GuestVisit = require("./guestVisit");
+const Blog = require("./Blog");     // ← ADD THIS LINE
 
 User.hasOne(UserKYC, {
   foreignKey: "userId",
@@ -238,6 +240,19 @@ PropertyFloorLayout.belongsTo(Property, { foreignKey: "propertyId", as: "propert
 Property.hasMany(Coupon, { foreignKey: "propertyId", as: "coupons", onDelete: "CASCADE" });
 Coupon.belongsTo(Property, { foreignKey: "propertyId", as: "property" });
 
+// Guest Visit Associations
+User.hasMany(GuestVisit, { foreignKey: "residentUserId", as: "residentVisits", onDelete: "CASCADE" });
+GuestVisit.belongsTo(User, { foreignKey: "residentUserId", as: "resident" });
+
+User.hasMany(GuestVisit, { foreignKey: "createdByUserId", as: "createdVisits", onDelete: "CASCADE" });
+GuestVisit.belongsTo(User, { foreignKey: "createdByUserId", as: "creator" });
+
+Booking.hasMany(GuestVisit, { foreignKey: "bookingId", as: "guestVisits", onDelete: "CASCADE" });
+GuestVisit.belongsTo(Booking, { foreignKey: "bookingId", as: "booking" });
+
+Rooms.hasMany(GuestVisit, { foreignKey: "roomId", as: "roomGuestVisits", onDelete: "CASCADE" });
+GuestVisit.belongsTo(Rooms, { foreignKey: "roomId", as: "room" });
+
 module.exports = {
   sequelize,
   SupportTicket,
@@ -269,5 +284,7 @@ module.exports = {
   Notification,
   Contract,
   PropertyFloorLayout,
-  Coupon
+  Coupon,
+  GuestVisit,
+  Blog
 }

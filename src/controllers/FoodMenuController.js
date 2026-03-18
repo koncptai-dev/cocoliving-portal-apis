@@ -6,9 +6,7 @@ const Booking = require('../models/bookRoom');
 const Room = require('../models/rooms');
 const PropertyRateCard = require('../models/propertyRateCard');
 const { logApiCall } = require("../helpers/auditLog");
-const sharp = require("sharp");
 const path = require("path");
-const fs = require("fs");
 
 // exports.createFoodMenu = async (req, res) => {
 //   try {

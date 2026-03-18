@@ -20,4 +20,8 @@ router.put("/update-ticket-status/:id", authMiddleware,authorizeRole(1,3), Suppo
 router.get('/getroom', authMiddleware,authorizeRole(1,2,3),SupportTicketController.getRooms);
 router.get("/ticket-details/:id", authMiddleware, authorizeRole(1,2,3), SupportTicketController.getTicketDetails);
 
+// service team
+router.get( "/service/assigned-tickets", authMiddleware, authorizeRole(4), SupportTicketController.getAssignedTicketsForService );
+router.put( "/service/update-status/:id", authMiddleware, authorizeRole(4), SupportTicketController.updateTicketStatusByService );
+
 module.exports = router;

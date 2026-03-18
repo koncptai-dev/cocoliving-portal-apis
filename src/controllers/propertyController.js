@@ -622,7 +622,7 @@ exports.getPropertiesForUser = async (req, res) => {
         });
 
         // Filter available rooms
-        const availableRooms = rooms.filter(r => r.status === "available" && (r.capacity - (r.bookings?.length || 0) > 0));
+        const availableRooms = rooms.filter( r => (r.capacity - (r.bookings?.length || 0) > 0));
 
         return {
           ...rc.dataValues,

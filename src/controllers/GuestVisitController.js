@@ -13,6 +13,8 @@ const { generateQrBuffer } = require('../utils/qrGenerator');
 const generateQrToken = () =>
   crypto.randomBytes(32).toString('hex');
 
+require('../models/index');
+
 const getTodayDateOnly = () => {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -145,7 +147,7 @@ exports.createGuestVisit = async (req, res) => {
 
     if (guestEmail) {
       console.log(guestEmail);
-      
+
       const qrBuffer = await generateQrBuffer(qrToken);
       const body = `
         <p>Hello <b>${guestName}</b>,</p>
@@ -161,7 +163,7 @@ exports.createGuestVisit = async (req, res) => {
         <p>- COCO Living</p>
       `;
 
-      const info=await mailsender(
+      const info = await mailsender(
         guestEmail,
         'COCO Living - Guest Entry QR',
         body,
@@ -435,5 +437,91 @@ exports.getAdminGuestVisits = async (req, res) => {
     console.error(err);
     await logApiCall(req, res, 500, 'Failed admin visit report', 'guestVisit');
     res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+exports.exportVisitsCsv = async (req, res) => {
+  try {
+    const { propertyId, status, permitType, date } = req.query;
+
+    if (!propertyId) {
+      return res.status(400).json({ message: "propertyId is required" });
+    }
+
+    let where = { propertyId };
+
+    if (status) where.status = status;
+    if (permitType) where.permitType = permitType;
+    if (date) where.visitDate = date;
+
+    const visits = await GuestVisit.findAll({
+      where,
+      include: [
+        {
+          model: User,
+          as: 'resident',
+          attributes: ['id', 'fullName', 'email', 'phone'],
+        },
+      ],
+      order: [['createdAt', 'DESC']],
+    });
+
+    if (!visits || visits.length === 0) {
+      return res.status(404).json({ message: "No visits found for the selected filters." });
+    }
+
+    // CSV Headers
+    const headers = [
+      "ID",
+      "Type",
+      "Guest Name",
+      "Guest Phone",
+      "Guest Email",
+      "Visit Date",
+      "Status",
+      "Resident Name",
+      "Resident Phone",
+      "Purpose",
+      "Check-in At",
+      "Check-out At",
+      "Created At"
+    ];
+
+    // CSV Rows
+    const csvRows = visits.map((v) => {
+      const residentName = v.resident ? v.resident.fullName : "N/A";
+      const residentPhone = v.resident ? v.resident.phone : "N/A";
+
+      return [
+        v.id,
+        v.permitType,
+        v.guestName,
+        v.guestPhone,
+        v.guestEmail || "N/A",
+        v.visitDate,
+        v.status,
+        residentName,
+        residentPhone,
+        v.purpose || "N/A",
+        v.qrUsedAt || "N/A",
+        v.checkedOutAt || "N/A",
+        v.createdAt
+      ]
+        .map((val) => `"${String(val).replace(/"/g, '""')}"`)
+        .join(",");
+    });
+
+    const csvData = [headers.join(","), ...csvRows].join("\n");
+
+    const dateStr = new Date().toISOString().split('T')[0];
+    const fileName = `${permitType || 'all'}_visits_${dateStr}.csv`;
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename=${fileName}`);
+
+    return res.status(200).send(csvData);
+  } catch (err) {
+    console.error("Export Visits CSV Error:", err);
+    return res.status(500).json({ message: "Internal server error" });
   }
 };
