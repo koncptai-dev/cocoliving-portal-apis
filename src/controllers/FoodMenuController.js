@@ -79,6 +79,7 @@ const path = require("path");
 exports.upsertFoodMenu = async (req, res) => {
   try {
     const { propertyId } = req.body;
+    const { photoDay, mealType } = req.body;
     let { menu } = req.body;
     if (typeof menu === "string") {
       menu = JSON.parse(menu);
@@ -98,28 +99,73 @@ exports.upsertFoodMenu = async (req, res) => {
     // Check if menu already exists
     let existingMenu = await FoodMenu.findOne({ where: { propertyId } });
 
+    const allowedDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    const allowedMeals = ["breakfast", "lunch", "dinner"];
     let imagePaths = [];
 
     if (req.files && req.files.length) {
+      if (!photoDay || !mealType) {
+        await logApiCall(req, res, 400, "Upserted food menu - photoDay and mealType required for images", "foodMenu");
+        return res.status(400).json({ message: "photoDay and mealType are required when uploading images" });
+      }
+      if (!allowedDays.includes(photoDay)) {
+        await logApiCall(req, res, 400, "Upserted food menu - invalid photoDay", "foodMenu");
+        return res.status(400).json({ message: "photoDay must be a valid weekday (Monday-Sunday)" });
+      }
+      if (!allowedMeals.includes(mealType)) {
+        await logApiCall(req, res, 400, "Upserted food menu - invalid mealType", "foodMenu");
+        return res.status(400).json({ message: "mealType must be one of: breakfast, lunch, dinner" });
+      }
       for (const file of req.files) {
-        imagePaths.push(`/uploads/foodMenus/${file.filename}`);
+
+        const baseName = path.parse(file.filename).name;
+        const dir = path.dirname(file.path);
+
+        const formats = ["jpg", "jpeg", "png", "bmp"];
+
+        for (const format of formats) {
+
+          const newPath = path.join(dir, `${baseName}.${format}`);
+
+          await sharp(file.path)
+           .toFormat(format)
+           .toFile(newPath);
+
+          imagePaths.push(`/uploads/foodMenus/${baseName}.${format}`);
+        }
+
+        // remove original uploaded file
+        fs.unlinkSync(file.path);
       }
     }
 
     if (existingMenu) {
       // Update existing menu
       existingMenu.menu = menu;
-      existingMenu.photos = [
-        ...(existingMenu.photos || []),
-        ...imagePaths
-      ];
-
+      const currentPhotos = (existingMenu.photos && typeof existingMenu.photos === "object" && !Array.isArray(existingMenu.photos))
+        ? existingMenu.photos
+        : {};
+      if (imagePaths.length) {
+        if (!currentPhotos[photoDay]) {
+          currentPhotos[photoDay] = { breakfast: [], lunch: [], dinner: [] };
+        }
+        if (!currentPhotos[photoDay][mealType]) {
+          currentPhotos[photoDay][mealType] = [];
+        }
+        currentPhotos[photoDay][mealType].push(...imagePaths);
+      }
+      existingMenu.photos = currentPhotos;
       await existingMenu.save();
       await logApiCall(req, res, 200, `Updated food menu (Property ID: ${propertyId}, Menu ID: ${existingMenu.id})`, "foodMenu", existingMenu.id);
       return res.status(200).json({ message: "Food menu updated successfully", menu: existingMenu });
     } else {
       // Create new menu
-      const newMenu = await FoodMenu.create({ propertyId, menu, photos: imagePaths });
+      const photos = {};
+      if (imagePaths.length) {
+        photos[photoDay] = { breakfast: [], lunch: [], dinner: [] };
+        photos[photoDay][mealType].push(...imagePaths);
+      }
+      const newMenu = await FoodMenu.create({ propertyId, menu, photos });
       await logApiCall(req, res, 201, `Created new food menu (Property ID: ${propertyId}, Menu ID: ${newMenu.id})`, "foodMenu", newMenu.id);
       return res.status(201).json({ message: "Food menu created successfully", menu: newMenu });
     }
@@ -248,7 +294,7 @@ exports.getUserMenus = async (req, res) => {
       propertyId: menu.propertyId,
       propertyName: menu.property?.name,
       weekMenu: menu.menu, // Monday → Sunday
-      photos: menu.photos || []
+      photos: menu.photos || {}
     }));
 
     await logApiCall(req, res, 200, "Viewed user menus", "foodMenu", userId);
