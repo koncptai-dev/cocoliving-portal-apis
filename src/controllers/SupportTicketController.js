@@ -9,6 +9,7 @@ const { Op } = require('sequelize');
 const { logTicketEvent } = require("../utils/ticketLog");
 const { generateSupportTicketCode } = require('../helpers/SupportTicketCode');
 const { logApiCall } = require("../helpers/auditLog");
+const { createFromTicket } = require("./serviceHistoryController");
 
 //create tickets
 exports.createTicket = async (req, res) => {
@@ -245,12 +246,22 @@ exports.updateTicketStatus = async (req, res) => {
             // ASSIGNMENT CHANGE
             if (typeof assignedTo !== "undefined" && assignedTo !== ticket.assignedTo) {
 
-            const normalizedAssignedTo =
-                assignedTo === "" || assignedTo === null
-                    ? null
-                    : Number.isNaN(Number(assignedTo))
-                    ? null
-                    : Number(assignedTo);
+            let normalizedAssignedTo = null;
+
+            if (assignedTo !== "" && assignedTo !== null) {
+                const assignedUser = await User.findByPk(assignedTo);
+
+                if (!assignedUser) {
+                return res.status(404).json({ message: "User not found" });
+                }
+
+                if (![3, 4].includes(assignedUser.role)) {
+                return res.status(400).json({
+                    message: "Can only assign to admin or service team",
+                });
+                }
+                normalizedAssignedTo = assignedUser.id;
+            }
 
             await logTicketEvent({
                 ticketId: ticket.id,
@@ -446,5 +457,91 @@ exports.getTicketDetails = async (req, res) => {
     console.log("getTicketDetails error:", error);
     await logApiCall(req, res, 500, "Error occurred while fetching support ticket details", "supportTicket", parseInt(req.params.id) || 0);
     return res.status(500).json({ message: error.message });
+  }
+};
+
+exports.getAssignedTicketsForService = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const tickets = await SupportTicket.findAll({
+      where: {
+        assignedTo: userId
+      },
+      include: [
+        {
+          model: Rooms,
+          as: "room",
+          attributes: ["roomNumber"],
+          include: [{
+            model: Property,
+            as: "property",
+            attributes: ["name"]
+          }]
+        },
+        {
+          model: User,
+          as: "user",
+          attributes: ["fullName"]
+        }
+      ],
+      order: [["createdAt", "DESC"]]
+    });
+
+    return res.json({ tickets });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to fetch assigned tickets" });
+  }
+};
+
+exports.updateTicketStatusByService = async (req, res) => {
+  try {
+    const ticketId = req.params.id;
+    const { status } = req.body;
+    const userId = req.user.id;
+
+    const ticket = await SupportTicket.findByPk(ticketId);
+
+    if (!ticket) {
+      return res.status(404).json({ message: "Ticket not found" });
+    }
+
+    if (ticket.assignedTo !== userId) {
+      return res.status(403).json({ message: "Not your ticket" });
+    }
+    const allowedStatuses = ["open", "in-progress", "resolved"];
+
+    if (!allowedStatuses.includes(status.toLowerCase())) {
+    return res.status(400).json({ message: "Invalid status" });
+    }
+
+    if (status.toLowerCase() === "closed") {
+      return res.status(403).json({
+        message: "Service team cannot close tickets"
+      });
+    }
+
+    await logTicketEvent({
+      ticketId: ticket.id,
+      actionType: "STATUS_UPDATE",
+      oldValue: { status: ticket.status },
+      newValue: { status },
+      actorId: userId,
+    });
+
+    ticket.status = status;
+    await ticket.save();
+
+    if (["in-progress", "resolved"].includes(status.toLowerCase())) {
+    await createFromTicket(ticket);
+    }
+
+    return res.json({ message: "Status updated", ticket });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to update status" });
   }
 };

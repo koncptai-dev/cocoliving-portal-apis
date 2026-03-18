@@ -1,59 +1,57 @@
-const { ServiceTeam, ServiceTeamRoom, Rooms, Property, DailyCleaning } = require("../models");
+const { ServiceTeam, ServiceTeamRoom, SupportTicket, Rooms, Property, DailyCleaning } = require("../models");
 const { Op } = require("sequelize");
 
 exports.getServiceDashboard = async (req, res) => {
   try {
-    const cleanerId = req.user.id;
+    const userId = req.user.id;
 
-    const today = new Date().toISOString().split("T")[0];
+    const serviceTeam = await ServiceTeam.findOne({
+      where: { userId }
+    });
 
-    //  ONLY TODAY CLEANING RECORDS
-    const todayCleanings = await DailyCleaning.findAll({
-      where: {
-        cleanerId,
-        cleaningDate: today,
-      },
-      include: [
-        {
-          model: Rooms,
-          as: "room",
-          include: [
-            {
+    if(!serviceTeam ){
+      return res.status(403).json({ message: "Service team not found" });
+    }
+    const roleType = serviceTeam?.serviceRoleType?.toLowerCase();
+
+    let response = {
+      roleType,
+      cleaning: [],
+      tickets: []
+    };
+    if (["cleaner", "housekeeping"].includes(roleType)) {
+
+      const today = new Date().toISOString().split("T")[0];
+
+      const todayCleanings = await DailyCleaning.findAll({
+        where: { cleanerId: userId, cleaningDate: today },
+        include: [
+          {
+            model: Rooms,
+            as: "room",
+            include: [{
               model: Property,
               as: "property",
-              attributes: ["id", "name", "address"],
-            },
-          ],
-        },
-      ],
-    });
-
-    // no work today
-    if (!todayCleanings.length) {
-      return res.json({
-        property: null,
-        rooms: [],
+              attributes: ["id", "name"]
+            }]
+          }
+        ]
       });
+
+      response.cleaning = todayCleanings;
     }
 
-    // property for all rooms
-    const property = todayCleanings[0].room.property;
-
-    const rooms = todayCleanings.map(cleaning => ({
-      id: cleaning.room.id,
-      roomNumber: cleaning.room.roomNumber,
-      status: cleaning.status?.toLowerCase() === "completed"
-        ? "completed"
-        : "pending",
-    }));
-
-    return res.json({
-      property,
-      rooms,
+    const tickets = await SupportTicket.findAll({
+      where: { assignedTo: userId },
+      order: [["createdAt", "DESC"]],
     });
 
-  } catch (error) {
-    console.error("Dashboard error:", error);
-    res.status(500).json({ message: "Dashboard load failed" });
+    response.tickets = tickets;
+
+    return res.json(response);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Dashboard failed" });
   }
 };
