@@ -250,7 +250,7 @@ exports.getAllServiceTeamMembers = async (req, res) => {
             }));
 
             return {
-                id: st.id,
+                id: st.userId,
                 userId: st.userId,
                 fullName: st.user.fullName,
                 email: st.user.email,
