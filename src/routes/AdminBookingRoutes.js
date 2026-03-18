@@ -1,20 +1,22 @@
 const AdminBooking=require('../controllers/AdminBooking');
 const express = require('express');
 const router = express.Router();
-
+const authMiddleware = require('../middleware/auth');
+const authorizeRole = require('../middleware/authorizeRole');
+const authorizePage = require('../middleware/authorizePage');
 
 // Booking Actions
-router.get('/getallBookings', AdminBooking.getAllBookings);
-router.patch('/approveBooking/:bookingId', AdminBooking.approveBooking);
-router.patch('/rejectBooking/:bookingId', AdminBooking.rejectBooking);
-router.patch('/cancelBooking/:bookingId', AdminBooking.cancelBooking);
-router.patch('/approveCancellation/:bookingId',AdminBooking.approveCancellation);
-router.patch('/rejectCancellation/:bookingId',AdminBooking.rejectCancellation);
-router.patch('/:bookingId/assign-room', AdminBooking.assignRoom);
-router.post("/:bookingId/assign-inventory", AdminBooking.assignInventory);
+router.get('/getallBookings',authMiddleware, AdminBooking.getAllBookings);
+router.patch('/approveBooking/:bookingId', authMiddleware, authorizeRole(1,3),authorizePage("Bookings", "write"), AdminBooking.approveBooking);
+router.patch('/rejectBooking/:bookingId', authMiddleware, authorizeRole(1,3),authorizePage("Bookings", "write"), AdminBooking.rejectBooking);
+router.patch('/cancelBooking/:bookingId', authMiddleware, authorizeRole(1,3),authorizePage("Bookings", "write"), AdminBooking.cancelBooking);
+router.patch('/approveCancellation/:bookingId',authMiddleware,authorizeRole(1,3),authorizePage("Bookings", "write"),AdminBooking.approveCancellation);
+router.patch('/rejectCancellation/:bookingId',authMiddleware,authorizeRole(1,3),authorizePage("Bookings", "write"),AdminBooking.rejectCancellation);
+router.patch('/:bookingId/assign-room', authMiddleware, authorizeRole(1,3),authorizePage("Bookings", "write"), AdminBooking.assignRoom);
+router.post("/:bookingId/assign-inventory", authMiddleware, authorizeRole(1,3),authorizePage("Bookings", "write"), AdminBooking.assignInventory);
 // Booking Extension Actions
-router.get('/getExtension/:bookingId',AdminBooking.getPendingBookingExtension);
-router.patch('/approveExtension/:extensionId', AdminBooking.approveExtension);
-router.patch('/rejectExtension/:extensionId', AdminBooking.rejectExtension);
+router.get('/getExtension/:bookingId',authMiddleware, AdminBooking.getPendingBookingExtension);
+router.patch('/approveExtension/:extensionId', authMiddleware, authorizeRole(1,3),authorizePage("Bookings", "write"), AdminBooking.approveExtension);
+router.patch('/rejectExtension/:extensionId', authMiddleware, authorizeRole(1,3),authorizePage("Bookings", "write"), AdminBooking.rejectExtension);
 
 module.exports=router

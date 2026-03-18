@@ -1,16 +1,18 @@
 const express = require('express');
 const router = express.Router();
-const auth = require('../middleware/auth');
+const authMiddleware = require('../middleware/auth');
 
 const GuestVisitController = require('../controllers/GuestVisitController');
+const authorizeRole = require('../middleware/authorizeRole');
+const authorizePage = require('../middleware/authorizePage');
 
-router.post('/', auth, GuestVisitController.createGuestVisit);
-router.post('/scan', auth, GuestVisitController.scanQrAndCheckIn);
-router.post('/:id/checkout', auth, GuestVisitController.checkOutGuest);
+router.post('/', authMiddleware, GuestVisitController.createGuestVisit);
+router.post('/scan', authMiddleware, GuestVisitController.scanQrAndCheckIn);
+router.post('/:id/checkout', authMiddleware, GuestVisitController.checkOutGuest);
 
-router.get('/user', auth, GuestVisitController.getUserGuestVisits);
-router.get('/property', auth, GuestVisitController.getPropertyGuestVisits);
-router.get('/admin', auth, GuestVisitController.getAdminGuestVisits);
-router.get('/export-csv', auth, GuestVisitController.exportVisitsCsv);
+router.get('/user', authMiddleware, authorizeRole(1,3), authorizePage("GuestVisit Management", "read"), GuestVisitController.getUserGuestVisits);
+router.get('/property', authMiddleware, authorizeRole(1,3), authorizePage("GuestVisit Management", "read"), GuestVisitController.getPropertyGuestVisits);
+router.get('/admin', authMiddleware, authorizeRole(1,3), authorizePage("GuestVisit Management", "read"), GuestVisitController.getAdminGuestVisits);
+router.get('/export-csv', authMiddleware, authorizeRole(1,3), authorizePage("GuestVisit Management", "read"), GuestVisitController.exportVisitsCsv);
 
 module.exports = router;
