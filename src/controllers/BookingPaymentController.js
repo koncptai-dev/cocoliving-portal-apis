@@ -1,7 +1,7 @@
 const { Op } = require('sequelize');
 const moment = require('moment');
 
-const { createPayment , initiateRefund , refundStatus , createMobileOrder } = require('../utils/phonepe/phonepeApi');
+const { createPayment, initiateRefund, refundStatus, createMobileOrder } = require('../utils/phonepe/phonepeApi');
 const phonepeConfig = require('../utils/phonepe/phonepeConfig');
 const { refundInitiatedEmail } = require('../utils/emailTemplates/emailTemplates');
 const { mailsender } = require('../utils/emailService');
@@ -76,7 +76,7 @@ async function assertProfileDetailsComplete(userId) {
   }
 
   // Parent Details
-  if ((!user.parentName || !user.parentMobile || !user.parentEmail ) && ( user.userType == "student" )) {
+  if ((!user.parentName || !user.parentMobile || !user.parentEmail) && (user.userType == "student")) {
     const err = new Error("Parent details are mandatory before booking");
     err.code = "PROFILE_INCOMPLETE";
     throw err;
@@ -148,7 +148,7 @@ exports.initiate = async (req, res) => {
       preferredRoomNumber = null,
       preferredBed = null,
     } = metadata;
-    if (!metadata.duration || ![6,12].includes(Number(metadata.duration))) {
+    if (!metadata.duration || ![6, 12].includes(Number(metadata.duration))) {
       await logApiCall(req, res, 400, "Initiated booking payment - invalid duration", "payment", userId);
       return res.status(400).json({ success: false, message: 'duration must be either 6 or 12 months only' });
     }
@@ -164,8 +164,8 @@ exports.initiate = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid rateCardId' });
     }
 
-    const normalizedCheckIn = moment(metadata.checkInDate, ['YYYY-MM-DD','DD-MM-YYYY']).format('YYYY-MM-DD');
-    const normalizedCheckOut = moment(normalizedCheckIn).add(Number(metadata.duration || 0), 'months').subtract(1,'day').format('YYYY-MM-DD');
+    const normalizedCheckIn = moment(metadata.checkInDate, ['YYYY-MM-DD', 'DD-MM-YYYY']).format('YYYY-MM-DD');
+    const normalizedCheckOut = moment(normalizedCheckIn).add(Number(metadata.duration || 0), 'months').subtract(1, 'day').format('YYYY-MM-DD');
 
     const rebuiltMeta = {
       bookingType: bookingType.toUpperCase() === 'PREBOOK' ? 'PREBOOK' : 'BOOK',
@@ -205,10 +205,11 @@ exports.initiate = async (req, res) => {
     for (const oldTx of existingPendingTxs) {
       try {
         const oldCanon = oldTx.pendingBookingData ? canonicalizeMetadata({
-          bookingType:oldTx.pendingBookingData.bookingType,
-          rateCardId:oldTx.pendingBookingData.rateCardId,
-          checkInDate:oldTx.pendingBookingData.checkInDate,
-          duration:oldTx.pendingBookingData.duration,}) : null;
+          bookingType: oldTx.pendingBookingData.bookingType,
+          rateCardId: oldTx.pendingBookingData.rateCardId,
+          checkInDate: oldTx.pendingBookingData.checkInDate,
+          duration: oldTx.pendingBookingData.duration,
+        }) : null;
         if (oldCanon && oldCanon === canonical) {
           oldTx.status = 'EXPIRED';
           oldTx.rawResponse = Object.assign({}, oldTx.rawResponse || {}, {
@@ -317,19 +318,23 @@ exports.initiate = async (req, res) => {
         payableAmount: payableAmountRupees,
         propertyId: rebuiltMeta.propertyId,
         roomType: rebuiltMeta.roomType,
+
+        meta: {
+          bookingPreferences: {
+            preferredFloor,
+            preferredRoomNumber,
+            preferredBed,
+          },
+
+        }
+      },
+      meta: {
         coupon: appliedCoupon ? {
           code: appliedCoupon.code,
           discountType: appliedCoupon.discountType,
           discountValue: appliedCoupon.discountValue,
           discountApplied
         } : null,
-        meta: {
-          bookingPreferences: {
-            preferredFloor,
-            preferredRoomNumber,
-            preferredBed,
-          }
-        }
       },
       rawResponse: { note: 'pending transaction created' }
     });
@@ -339,7 +344,7 @@ exports.initiate = async (req, res) => {
     tx.merchantOrderId = merchantOrderId;
     await tx.save();
 
-    
+
     tx.rawResponse = Object.assign({}, tx.rawResponse || {}, {
       calculated: { totalAmountRupees, payableAmountRupees }
     });
@@ -347,26 +352,26 @@ exports.initiate = async (req, res) => {
     const phonepePayload = {
       merchantOrderId: tx.merchantOrderId,
       metaInfo: {
-        udf1: tx.type, 
+        udf1: tx.type,
         udf2: String(rebuiltMeta.rateCardId),
         udf3: String(rebuiltMeta.propertyId),
         udf4: rebuiltMeta.roomType,
         udf5: String(userId),
-        udf6: isMobile?"mobile-app":"web-app",
+        udf6: isMobile ? "mobile-app" : "web-app",
         udf7: tx.merchantOrderId,
         udf8: rebuiltMeta.checkInDate,
         udf9: String(rebuiltMeta.duration)
       },
-      amount:amountPaise,
+      amount: amountPaise,
       paymentFlow: isMobile
         ? { type: 'PG_CHECKOUT' }
         : {
-            type: 'PG_CHECKOUT',
-            message: `Coco Living - ${rebuiltMeta.roomType} Booking (Do Not Refresh)`,
-            merchantUrls: {
-              redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${merchantOrderId}`,
-            },
+          type: 'PG_CHECKOUT',
+          message: `Coco Living - ${rebuiltMeta.roomType} Booking (Do Not Refresh)`,
+          merchantUrls: {
+            redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${merchantOrderId}`,
           },
+        },
     };
     if (isMobile) {
       const mobResp = await createMobileOrder({
@@ -465,16 +470,16 @@ exports.initiateRemaining = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Unauthorized booking access' });
     }
 
-    if(booking.status !== 'approved'){
-      return res.status(422).json({ success: false, message: 'Can Only pay remaining after Booking gets Approved'})
+    if (booking.status !== 'approved') {
+      return res.status(422).json({ success: false, message: 'Can Only pay remaining after Booking gets Approved' })
     }
 
     if (paymentMode === 'MONTHLY') {
 
       if (booking.monthlyPlanSelected) {
         return res.status(400).json({
-          success:false,
-          message:'Monthly plan already selected'
+          success: false,
+          message: 'Monthly plan already selected'
         });
       }
 
@@ -483,8 +488,8 @@ exports.initiateRemaining = async (req, res) => {
       await booking.save();
 
       return res.json({
-        success:true,
-        message:'Monthly payment plan activated',
+        success: true,
+        message: 'Monthly payment plan activated',
         monthlyInstallment: booking.monthlyInstallment
       });
     }
@@ -501,7 +506,7 @@ exports.initiateRemaining = async (req, res) => {
       await logApiCall(req, res, 200, `Initiated remaining payment - no remaining amount (Booking ID: ${bookingId})`, "payment", userId);
       return res.json({ success: false, message: 'No remaining amount to pay' });
     }
-    const tempOrderId = `remaining-tmp-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+    const tempOrderId = `remaining-tmp-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
     const draftTx = await PaymentTransaction.create({
       userId,
@@ -520,7 +525,7 @@ exports.initiateRemaining = async (req, res) => {
 
 
     const phonepePayload = {
-      merchantOrderId:finalOrderId,
+      merchantOrderId: finalOrderId,
       amount: remainingPaise,
       metaInfo: {
         udf1: 'REMAINING',
@@ -536,12 +541,12 @@ exports.initiateRemaining = async (req, res) => {
       paymentFlow: isMobile
         ? { type: 'PG_CHECKOUT' }
         : {
-            type: 'PG_CHECKOUT',
-            message: `Coco Living - Remaining Payment`,
-            merchantUrls: {
-              redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${finalOrderId}`,
-            },
+          type: 'PG_CHECKOUT',
+          message: `Coco Living - Remaining Payment`,
+          merchantUrls: {
+            redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${finalOrderId}`,
           },
+        },
     };
 
     if (isMobile) {
@@ -606,33 +611,33 @@ exports.initiateRemaining = async (req, res) => {
   }
 };
 
-exports.initiateSecurityDeposit = async (req,res) => {
-  try{
+exports.initiateSecurityDeposit = async (req, res) => {
+  try {
 
     const userId = req.user?.id;
     const { bookingId } = req.body;
 
     const booking = await Booking.findByPk(bookingId);
 
-    if(!booking) {
-      return res.status(404).json({success:false,message:'Booking not found'});
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
     }
 
-    if(booking.userId !== userId) {
-      return res.status(403).json({success:false,message:'Unauthorized'});
+    if (booking.userId !== userId) {
+      return res.status(403).json({ success: false, message: 'Unauthorized' });
     }
 
-    if(booking.contractStatus !== 'SIGNED'){
+    if (booking.contractStatus !== 'SIGNED') {
       return res.status(422).json({
-        success:false,
-        message:'Contract must be signed before security deposit payment'
+        success: false,
+        message: 'Contract must be signed before security deposit payment'
       });
     }
 
-    if(booking.securityDepositPaid){
+    if (booking.securityDepositPaid) {
       return res.status(422).json({
-        success:false,
-        message:'Security deposit already paid'
+        success: false,
+        message: 'Security deposit already paid'
       });
     }
 
@@ -643,8 +648,8 @@ exports.initiateSecurityDeposit = async (req,res) => {
       bookingId,
       amount: amountPaise,
       type: 'SECURITY_DEPOSIT',
-      status:'PENDING',
-      merchantOrderId:`tmp-sec-${Date.now()}`
+      status: 'PENDING',
+      merchantOrderId: `tmp-sec-${Date.now()}`
     });
 
     const finalOrderId = `SECURITY-${draftTx.id}`;
@@ -654,198 +659,198 @@ exports.initiateSecurityDeposit = async (req,res) => {
     const phonepeResp = await createPayment({
       merchantOrderId: finalOrderId,
       amount: amountPaise,
-      paymentFlow:{
-        type:'PG_CHECKOUT',
-        message:'Security Deposit Payment',
-        merchantUrls:{
-          redirectUrl:`${phonepeConfig.REDIRECT_URL}?merchantOrderId=${finalOrderId}`
+      paymentFlow: {
+        type: 'PG_CHECKOUT',
+        message: 'Security Deposit Payment',
+        merchantUrls: {
+          redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${finalOrderId}`
         }
       }
     });
 
-    draftTx.rawResponse = {phonepeCreateResponse:phonepeResp};
+    draftTx.rawResponse = { phonepeCreateResponse: phonepeResp };
     await draftTx.save();
 
     return res.json({
-      success:true,
+      success: true,
       redirectUrl: phonepeResp.body?.redirectUrl
     });
 
-  }catch(err){
-    return res.status(500).json({success:false,message:err.message});
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
   }
 };
 
-exports.initiateMonthlyRent = async (req,res)=>{
- try{
+exports.initiateMonthlyRent = async (req, res) => {
+  try {
 
-  const userId = req.user?.id;
-  const { bookingId } = req.body;
+    const userId = req.user?.id;
+    const { bookingId } = req.body;
 
-  const booking = await Booking.findByPk(bookingId);
+    const booking = await Booking.findByPk(bookingId);
 
-  if(!booking){
-    return res.status(404).json({success:false,message:'Booking not found'});
-  }
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
 
-  if(!booking.monthlyPlanSelected){
-    return res.status(400).json({success:false,message:'Monthly plan not selected'});
-  }
-  if(!booking.securityDepositPaid){
-    return res.status(422).json({
-      success:false,
-      message:'Security deposit must be paid before rent payments'
-    });
-  }
-  const property = await Property.findByPk(booking.propertyId);
+    if (!booking.monthlyPlanSelected) {
+      return res.status(400).json({ success: false, message: 'Monthly plan not selected' });
+    }
+    if (!booking.securityDepositPaid) {
+      return res.status(422).json({
+        success: false,
+        message: 'Security deposit must be paid before rent payments'
+      });
+    }
+    const property = await Property.findByPk(booking.propertyId);
 
-  const today = moment();
-  const checkInDate = moment(booking.checkInDate);
+    const today = moment();
+    const checkInDate = moment(booking.checkInDate);
 
-  const monthsElapsed = today.year() * 12 + today.month() - (checkInDate.year() * 12 + checkInDate.month()) + 1;
-  const unpaidMonths = monthsElapsed - booking.installmentsPaid;
+    const monthsElapsed = today.year() * 12 + today.month() - (checkInDate.year() * 12 + checkInDate.month()) + 1;
+    const unpaidMonths = monthsElapsed - booking.installmentsPaid;
 
-  if(unpaidMonths <= 0){
-    return res.json({success:false,message:'No pending installments'});
-  }
+    if (unpaidMonths <= 0) {
+      return res.json({ success: false, message: 'No pending installments' });
+    }
 
-  let payableAmount = 0;
-  let installments = 0;
-  let remainingMonths = unpaidMonths;
-  if(booking.installmentsPaid === 0){
-    const daysInMonth = checkInDate.daysInMonth();
-    const checkInDay = checkInDate.date();
-    const remainingDays = daysInMonth - checkInDay + 1;
-    const dailyRent = booking.monthlyInstallment / daysInMonth;
-    const proratedRent = dailyRent * remainingDays;
-    payableAmount += proratedRent;
-    installments += 1;
-    remainingMonths -= 1;
-  }
-  if(remainingMonths > 0){
-    const checkoutDate = moment(booking.checkOutDate);
-    for(let i=0;i<remainingMonths;i++){
-      const monthStart = moment(checkInDate).add(booking.installmentsPaid + installments,'months').startOf('month');
-      if(monthStart.isSame(checkoutDate,'month')){
-        const daysInMonth = monthStart.daysInMonth();
-        const checkoutDay = checkoutDate.date();
-        const dailyRent = booking.monthlyInstallment / daysInMonth;
-        const proratedLastMonth = dailyRent * checkoutDay;
-        payableAmount += proratedLastMonth;
-      }else{
-        payableAmount += booking.monthlyInstallment;
-      }
+    let payableAmount = 0;
+    let installments = 0;
+    let remainingMonths = unpaidMonths;
+    if (booking.installmentsPaid === 0) {
+      const daysInMonth = checkInDate.daysInMonth();
+      const checkInDay = checkInDate.date();
+      const remainingDays = daysInMonth - checkInDay + 1;
+      const dailyRent = booking.monthlyInstallment / daysInMonth;
+      const proratedRent = dailyRent * remainingDays;
+      payableAmount += proratedRent;
       installments += 1;
+      remainingMonths -= 1;
     }
-  }
-  booking.meta = booking.meta || {};
-  if(!booking.meta.prebookAdjusted){
-    const prebookTx = await PaymentTransaction.findOne({
-      where:{
-        bookingId,
-        type:'PREBOOK',
-        status:'SUCCESS'
+    if (remainingMonths > 0) {
+      const checkoutDate = moment(booking.checkOutDate);
+      for (let i = 0; i < remainingMonths; i++) {
+        const monthStart = moment(checkInDate).add(booking.installmentsPaid + installments, 'months').startOf('month');
+        if (monthStart.isSame(checkoutDate, 'month')) {
+          const daysInMonth = monthStart.daysInMonth();
+          const checkoutDay = checkoutDate.date();
+          const dailyRent = booking.monthlyInstallment / daysInMonth;
+          const proratedLastMonth = dailyRent * checkoutDay;
+          payableAmount += proratedLastMonth;
+        } else {
+          payableAmount += booking.monthlyInstallment;
+        }
+        installments += 1;
+      }
+    }
+    booking.meta = booking.meta || {};
+    if (!booking.meta.prebookAdjusted) {
+      const prebookTx = await PaymentTransaction.findOne({
+        where: {
+          bookingId,
+          type: 'PREBOOK',
+          status: 'SUCCESS'
+        }
+      });
+
+      const prebookPaid = prebookTx ? Number(prebookTx.amount) / 100 : 0;
+      if (prebookPaid > 0) {
+        if (payableAmount >= prebookPaid) {
+          payableAmount -= prebookPaid;
+          booking.meta.prebookAdjusted = true;
+          await booking.save();
+        }
+      }
+    }
+    let lateFee = 0;
+
+    console.log("---- LATE FEE DEBUG START ----");
+    console.log("today:", today.format("YYYY-MM-DD"));
+    console.log("checkInDate:", checkInDate.format("YYYY-MM-DD"));
+    console.log("installmentsPaid:", booking.installmentsPaid);
+    console.log("unpaidMonths:", unpaidMonths);
+
+    if (unpaidMonths > 0) {
+
+      const lastPaidMonth = booking.installmentsPaid;
+      console.log("lastPaidMonth:", lastPaidMonth);
+
+      let dueDate;
+
+      if (lastPaidMonth === 0) {
+        dueDate = moment(checkInDate);
+        console.log("FIRST INSTALLMENT PATH");
+      } else {
+        dueDate = moment(checkInDate)
+          .add(lastPaidMonth, 'months')
+          .date(7);
+        console.log("NORMAL INSTALLMENT PATH");
+      }
+
+      console.log("dueDate:", dueDate.format("YYYY-MM-DD"));
+      console.log("today > dueDate:", today.isAfter(dueDate));
+
+      if (today.isAfter(dueDate)) {
+        const lateDays = today.diff(dueDate, 'days');
+        console.log("lateDays:", lateDays);
+        console.log("lateFeePerDay:", property.lateFeePerDay);
+
+        lateFee = lateDays * property.lateFeePerDay;
+
+        console.log("calculatedLateFee:", lateFee);
+      } else {
+        console.log("NO LATE FEE APPLIED");
+      }
+
+    }
+
+    console.log("finalLateFee:", lateFee);
+    console.log("---- LATE FEE DEBUG END ----");
+    const rentAmount = payableAmount;
+    const totalAmount = rentAmount + lateFee;
+    const amountPaise = Math.round(totalAmount * 100);
+
+    const draftTx = await PaymentTransaction.create({
+      userId,
+      bookingId,
+      amount: amountPaise,
+      type: 'MONTHLY_RENT',
+      status: 'PENDING',
+      merchantOrderId: `tmp-month-${Date.now()}`,
+      meta: {
+        installments,
+        unpaidMonths,
+        lateFee
       }
     });
 
-    const prebookPaid = prebookTx ? Number(prebookTx.amount)/100 : 0;
-    if(prebookPaid > 0){
-      if(payableAmount >= prebookPaid){
-        payableAmount -= prebookPaid;
-        booking.meta.prebookAdjusted = true;
-        await booking.save();
+    const finalOrderId = `MONTHLY-${draftTx.id}`;
+    draftTx.merchantOrderId = finalOrderId;
+    await draftTx.save();
+
+    const phonepeResp = await createPayment({
+      merchantOrderId: finalOrderId,
+      amount: amountPaise,
+      paymentFlow: {
+        type: 'PG_CHECKOUT',
+        message: 'Monthly Rent Payment',
+        merchantUrls: {
+          redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${finalOrderId}`
+        }
       }
-    }
+    });
+
+    draftTx.rawResponse = { phonepeCreateResponse: phonepeResp };
+    await draftTx.save();
+
+    return res.json({
+      success: true,
+      redirectUrl: phonepeResp.body?.redirectUrl
+    });
+
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
   }
-  let lateFee = 0;
-
-  console.log("---- LATE FEE DEBUG START ----");
-  console.log("today:", today.format("YYYY-MM-DD"));
-  console.log("checkInDate:", checkInDate.format("YYYY-MM-DD"));
-  console.log("installmentsPaid:", booking.installmentsPaid);
-  console.log("unpaidMonths:", unpaidMonths);
-
-  if(unpaidMonths > 0){
-
-    const lastPaidMonth = booking.installmentsPaid;
-    console.log("lastPaidMonth:", lastPaidMonth);
-
-    let dueDate;
-
-    if(lastPaidMonth === 0){
-      dueDate = moment(checkInDate);
-      console.log("FIRST INSTALLMENT PATH");
-    }else{
-      dueDate = moment(checkInDate)
-        .add(lastPaidMonth,'months')
-        .date(7);
-      console.log("NORMAL INSTALLMENT PATH");
-    }
-
-    console.log("dueDate:", dueDate.format("YYYY-MM-DD"));
-    console.log("today > dueDate:", today.isAfter(dueDate));
-
-    if(today.isAfter(dueDate)){
-      const lateDays = today.diff(dueDate,'days');
-      console.log("lateDays:", lateDays);
-      console.log("lateFeePerDay:", property.lateFeePerDay);
-
-      lateFee = lateDays * property.lateFeePerDay;
-
-      console.log("calculatedLateFee:", lateFee);
-    }else{
-      console.log("NO LATE FEE APPLIED");
-    }
-
-  }
-
-  console.log("finalLateFee:", lateFee);
-  console.log("---- LATE FEE DEBUG END ----");
-  const rentAmount = payableAmount;
-  const totalAmount = rentAmount + lateFee;
-  const amountPaise = Math.round(totalAmount * 100);
-
-  const draftTx = await PaymentTransaction.create({
-    userId,
-    bookingId,
-    amount: amountPaise,
-    type:'MONTHLY_RENT',
-    status:'PENDING',
-    merchantOrderId:`tmp-month-${Date.now()}`,
-    meta:{
-      installments,
-      unpaidMonths,
-      lateFee
-    }
-  });
-
-  const finalOrderId = `MONTHLY-${draftTx.id}`;
-  draftTx.merchantOrderId = finalOrderId;
-  await draftTx.save();
-
-  const phonepeResp = await createPayment({
-    merchantOrderId:finalOrderId,
-    amount:amountPaise,
-    paymentFlow:{
-      type:'PG_CHECKOUT',
-      message:'Monthly Rent Payment',
-      merchantUrls:{
-        redirectUrl:`${phonepeConfig.REDIRECT_URL}?merchantOrderId=${finalOrderId}`
-      }
-    }
-  });
-
-  draftTx.rawResponse = {phonepeCreateResponse:phonepeResp};
-  await draftTx.save();
-
-  return res.json({
-    success:true,
-    redirectUrl:phonepeResp.body?.redirectUrl
-  });
-
- }catch(err){
-   return res.status(500).json({success:false,message:err.message});
- }
 };
 
 exports.initiateExtension = async (req, res) => {
@@ -967,8 +972,8 @@ exports.initiateRefund = async (req, res) => {
     const actorId = req.user?.id;
     const { transactionId, amountRupees, reason } = req.body;
 
-    if (!reason || reason.trim().length < 5){
-      return res.status(400).json({success: false, message: 'Refund reason is required ( minimum 5 characters)'});
+    if (!reason || reason.trim().length < 5) {
+      return res.status(400).json({ success: false, message: 'Refund reason is required ( minimum 5 characters)' });
     }
     if (!transactionId || typeof amountRupees === 'undefined') {
       await logApiCall(req, res, 400, "Initiated refund - transactionId and amountRupees required", "payment", actorId);
@@ -1018,10 +1023,10 @@ exports.initiateRefund = async (req, res) => {
     }
     if (reqAmountPaise > refundablePaise) {
       await logApiCall(req, res, 400, `Initiated refund - amount exceeds refundable (Transaction ID: ${transactionId})`, "payment", actorId);
-      return res.status(400).json({ success: false, message: `Refund amount exceeds refundable amount (max refundable: ₹${(refundablePaise/100).toFixed(2)})` });
+      return res.status(400).json({ success: false, message: `Refund amount exceeds refundable amount (max refundable: ₹${(refundablePaise / 100).toFixed(2)})` });
     }
 
-    const tempMerchantRefundId = `REFUND-TMP-${Date.now()}-${Math.floor(Math.random()*10000)}`;
+    const tempMerchantRefundId = `REFUND-TMP-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
     const draftRefund = await PaymentTransaction.create({
       userId: originalTx.userId || actorId,
@@ -1032,11 +1037,11 @@ exports.initiateRefund = async (req, res) => {
       merchantOrderId: tempMerchantRefundId,
       merchantRefundId: null,
       refundReason: reason.trim(),
-      rawResponse: { 
-        note: 'created refund draft',  
+      rawResponse: {
+        note: 'created refund draft',
         originalMerchantOrderId: origMerchantOrderId,
         refundReason: reason.trim()
-       },
+      },
     });
 
     const finalMerchantRefundId = `REFUND-${draftRefund.id}`;
@@ -1066,7 +1071,7 @@ exports.initiateRefund = async (req, res) => {
 
     if (originalTx.bookingId) {
       const booking = await Booking.findByPk(originalTx.bookingId);
-      if(booking?.propertyId) {
+      if (booking?.propertyId) {
         const property = await Property.findByPk(booking.propertyId);
         propertyName = property?.name || '-';
       }
@@ -1101,7 +1106,7 @@ exports.getRefundStatus = async (req, res) => {
   try {
     const { merchantRefundId } = req.params;
 
-    const tx = await PaymentTransaction.findOne({ where: { merchantRefundId: merchantRefundId, type: 'REFUND' }});
+    const tx = await PaymentTransaction.findOne({ where: { merchantRefundId: merchantRefundId, type: 'REFUND' } });
     if (!tx) {
       await logApiCall(req, res, 404, `Viewed refund status - refund transaction not found (ID: ${merchantRefundId})`, "payment", req.user?.id || 0);
       return res.status(404).json({ success: false, message: 'Refund transaction not found' });
@@ -1186,11 +1191,11 @@ exports.getBookingPaymentSummary = async (req, res) => {
       booking,
       bookingType: booking.bookingType,
       paymentStatus: booking.paymentStatus,
-      paymentPlan:{
-          monthlyPlanSelected: booking.monthlyPlanSelected,
-          monthlyInstallment: booking.monthlyInstallment,
-          installmentsPaid: booking.installmentsPaid,
-          securityDepositPaid: booking.securityDepositPaid
+      paymentPlan: {
+        monthlyPlanSelected: booking.monthlyPlanSelected,
+        monthlyInstallment: booking.monthlyInstallment,
+        installmentsPaid: booking.installmentsPaid,
+        securityDepositPaid: booking.securityDepositPaid
       },
       totals: {
         totalAmountRupees,
