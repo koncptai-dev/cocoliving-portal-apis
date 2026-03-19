@@ -179,7 +179,7 @@ exports.getPublicBlogs = async (req, res) => {
     const blogs = await Blog.findAll({
       where: { status: 'published' },
       order: [['createdAt', 'DESC']],
-      attributes: ['id', 'title', 'url', 'thumbnail', 'createdAt'], // no full content needed here
+      attributes: ['id', 'title', 'url', 'thumbnail', 'createdAt', 'status'], // no full content needed here
     });
 
     return res.json({
