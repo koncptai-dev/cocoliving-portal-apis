@@ -666,6 +666,57 @@ exports.importRooms = async (req, res) => {
 
   }
 };
+const User = require('../models/user');
+
+exports.getRoomOccupants = async (req, res) => {
+  try {
+    const { roomId } = req.params;
+
+    const room = await Rooms.findByPk(roomId);
+    if (!room) {
+      await logApiCall(req, res, 404, `Viewed room occupants - room not found (ID: ${roomId})`, "room", parseInt(roomId));
+      return res.status(404).json({ message: "Room not found" });
+    }
+
+    const today = new Date();
+    // Fetch bookings that are active or approved for this room
+    const bookings = await Booking.findAll({
+      where: {
+        roomId,
+        status: { [Op.in]: ['approved', 'active'] }, // typical active statuses
+        // checkOutDate: { [Op.gte]: today } // currently staying
+      },
+      include: [
+        {
+          model: User,
+          as: 'user', // Need to verify if association 'user' is correct
+          attributes: ['fullName', 'email', 'phone', 'userType']
+        }
+      ]
+    });
+
+    // Formatting response to match requirement: Name, Email, Phone, Type, Check in & check out time
+    const occupants = bookings.map(b => ({
+      id: b.id,
+      name: b.user ? b.user.fullName : 'Unknown',
+      email: b.user ? b.user.email : 'N/A',
+      phone: b.user ? b.user.phone : 'N/A',
+      type: b.user ? b.user.userType : 'N/A',
+      checkIn: b.checkInDate,
+      checkOut: b.checkOutDate,
+      status: b.status
+    }));
+
+    await logApiCall(req, res, 200, `Viewed occupants for room: ${room.roomNumber} (ID: ${roomId})`, "room", parseInt(roomId));
+    res.status(200).json(occupants);
+
+  } catch (err) {
+    console.error("Error fetching room occupants:", err);
+    await logApiCall(req, res, 500, "Error occurred while fetching room occupants", "room", parseInt(req.params.roomId) || 0);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
 exports.downloadRoomCsvTemplate = async (req, res) => {
   try {
 

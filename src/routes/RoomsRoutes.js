@@ -12,6 +12,7 @@ router.post('/add',validateRooms,validate,authMiddleware, authorizeRole(1,3), Ro
 router.put('/edit/:id',editRoomsValidate,validate, authMiddleware,authorizeRole(1,3), RoomController.EditRooms);
 router.delete('/delete/:id',authMiddleware, authorizeRole(1,3), RoomController.DeleteRooms);
 router.get('/getall',authMiddleware, authorizeRole(1,3), RoomController.getAllRooms);
+router.get('/occupants/:roomId', authMiddleware, authorizeRole(1,3), RoomController.getRoomOccupants);
 
 router.get('/getAll/:propertyId', RoomController.getRoomsByProperty);
 router.get("/available/:propertyId/:roomType", RoomController.getAvailableRooms);
