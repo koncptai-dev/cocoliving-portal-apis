@@ -7,6 +7,8 @@ const Room = require('../models/rooms');
 const PropertyRateCard = require('../models/propertyRateCard');
 const { logApiCall } = require("../helpers/auditLog");
 const path = require("path");
+const fs = require("fs");
+const sharp = require("sharp");
 
 // exports.createFoodMenu = async (req, res) => {
 //   try {
@@ -121,21 +123,18 @@ exports.upsertFoodMenu = async (req, res) => {
         const baseName = path.parse(file.filename).name;
         const dir = path.dirname(file.path);
 
-        const formats = ["jpg", "jpeg", "png", "bmp"];
+        const newPath = path.join(dir, `${baseName}.webp`);
 
-        for (const format of formats) {
-
-          const newPath = path.join(dir, `${baseName}.${format}`);
-
+        if (file.path !== newPath) {
           await sharp(file.path)
-           .toFormat(format)
+           .webp({ quality: 80 })
            .toFile(newPath);
 
-          imagePaths.push(`/uploads/foodMenus/${baseName}.${format}`);
+          // remove original uploaded file
+          fs.unlinkSync(file.path);
         }
 
-        // remove original uploaded file
-        fs.unlinkSync(file.path);
+        imagePaths.push(`/uploads/foodMenus/${baseName}.webp`);
       }
     }
 
@@ -155,6 +154,7 @@ exports.upsertFoodMenu = async (req, res) => {
         currentPhotos[photoDay][mealType].push(...imagePaths);
       }
       existingMenu.photos = currentPhotos;
+      existingMenu.changed('photos', true);
       await existingMenu.save();
       await logApiCall(req, res, 200, `Updated food menu (Property ID: ${propertyId}, Menu ID: ${existingMenu.id})`, "foodMenu", existingMenu.id);
       return res.status(200).json({ message: "Food menu updated successfully", menu: existingMenu });
@@ -226,6 +226,43 @@ exports.deleteFoodMenu = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 }
+
+exports.deleteFoodImage = async (req, res) => {
+  try {
+    const { propertyId, photoDay, mealType, imageUrl } = req.body;
+    if (!propertyId || !photoDay || !mealType || !imageUrl) {
+      return res.status(400).json({ message: "propertyId, photoDay, mealType, and imageUrl are required" });
+    }
+
+    const menu = await FoodMenu.findOne({ where: { propertyId } });
+    if (!menu) {
+      return res.status(404).json({ message: "Food menu not found for this property" });
+    }
+
+    const currentPhotos = (menu.photos && typeof menu.photos === "object" && !Array.isArray(menu.photos))
+        ? menu.photos
+        : {};
+
+    if (currentPhotos[photoDay] && currentPhotos[photoDay][mealType]) {
+      // Remove imageUrl from the array
+      currentPhotos[photoDay][mealType] = currentPhotos[photoDay][mealType].filter(url => url !== imageUrl);
+      
+      // Inform Sequelize that JSON column has changed
+      menu.photos = currentPhotos;
+      menu.changed('photos', true);
+      await menu.save();
+
+      await logApiCall(req, res, 200, `Deleted food image for ${photoDay} ${mealType}`, "foodMenu", menu.id);
+      return res.status(200).json({ message: "Image deleted successfully", menu });
+    }
+
+    return res.status(404).json({ message: "Image not found in the specified menu slot" });
+  } catch (error) {
+    console.error("Error deleting food image:", error);
+    await logApiCall(req, res, 500, "Error occurred while deleting food image", "foodMenu");
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
 
 //for user 
 
