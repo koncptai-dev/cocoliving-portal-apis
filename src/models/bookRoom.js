@@ -103,6 +103,11 @@ const Booking = sequelize.define(
       allowNull: false,
       defaultValue: "NOT_SIGNED",
     },
+    adminContractStatus: {
+      type: DataTypes.ENUM("NOT_SIGNED", "SIGNED"),
+      allowNull: false,
+      defaultValue: "NOT_SIGNED",
+    },
     cancelRequestStatus: {
       type: DataTypes.ENUM('NONE','PENDING','APPROVED','REJECTED'),
       allowNull: false,

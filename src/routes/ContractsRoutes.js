@@ -16,4 +16,11 @@ router.post(
   ContractController.signContract
 );
 
+router.post(
+  "/:bookingId/admin-sign",
+  authenticateToken,
+  upload.fields([{ name: "adminSignature", maxCount: 1 }]),
+  ContractController.adminSignContract
+);
+
 module.exports = router;
