@@ -210,13 +210,18 @@ exports.getAllRooms = async (req, res) => {
           {
             model: Property,
             as: 'property',
+          },
+          {
+            model: Inventory,
+            as: 'roomInventories',
+            attributes: ['setNumber'],
+            required: false
           }
         ],
         limit,
         offset, order: [['createdAt', 'DESC']]
       }
     )
-
     const formattedRooms = rooms.map((room) => {
       const capacity = room.capacity;
       const occupied = room.bookings ? room.bookings.length : 0;
@@ -224,7 +229,7 @@ exports.getAllRooms = async (req, res) => {
       let status;
 
       if (room.status === "unavailable") {
-        status = "unavailable"; // admin blocked
+        status = "unavailable";
       } else {
         // admin allowed
         if (occupied >= capacity) {
@@ -233,7 +238,13 @@ exports.getAllRooms = async (req, res) => {
           status = "available"; // still space left
         }
       }
-
+      const uniqueSets = [
+        ...new Set(
+          (room.roomInventories || [])
+            .map(i => i.setNumber)
+            .filter(Boolean)
+        )
+      ].sort((a,b) => a-b);
       return {
         id: room.id,
         propertyId: room.propertyId,
@@ -249,6 +260,7 @@ exports.getAllRooms = async (req, res) => {
         images: room.images || [],
         status,
         occupancy: `${occupied}/${capacity}`,
+        sets: uniqueSets.map(s => `SET-${s}`),
         property: room.property ? {
           id: room.property.id,
           name: room.property.name,
