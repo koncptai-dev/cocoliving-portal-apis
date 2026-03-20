@@ -9,7 +9,7 @@ const UserPermission = require('../models/userPermissoin');
 const { logApiCall } = require('../helpers/auditLog');
 const { mailsender } = require('../utils/emailService');
 const { generateQrBuffer } = require('../utils/qrGenerator');
-
+const { notifyGuestRequest } = require("../utils/notificationService");
 const generateQrToken = () =>
   crypto.randomBytes(32).toString('hex');
 
@@ -178,6 +178,7 @@ exports.createGuestVisit = async (req, res) => {
       //  console.log('Mail sent:', info);
       // console.log('Mail sent successfully');
     }
+    await notifyGuestRequest(visit);
     await logApiCall(
       req,
       res,

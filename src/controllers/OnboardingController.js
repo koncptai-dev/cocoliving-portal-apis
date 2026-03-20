@@ -7,6 +7,7 @@ const { smsSender } = require('../utils/smsService');
 const { otpEmail } = require('../utils/emailTemplates/emailTemplates');
 const { mailsender } = require('../utils/emailService');
 const assertAdmin = (role) => role === 1 || role === 3;
+const { notifyOnboardingSuccess } = require('../utils/notificationService');
 
 exports.startOnboarding = async (req, res) => {
   const checklist = [
@@ -202,6 +203,8 @@ exports.verifyOnboardingOtp = async (req, res) => {
 
   booking.onboardingStatus = 'COMPLETED';
   await booking.save();
+
+  await notifyOnboardingSuccess(booking);
 
   return res.json({ success: true });
 };

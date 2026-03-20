@@ -4,6 +4,7 @@ const puppeteer = require("puppeteer");
 const { Booking, User, Rooms, Property, Contract } = require("../models");
 const { mailsender } = require("../utils/emailService");
 const { securityDepositPaymentEmail } = require("../utils/emailTemplates/emailTemplates");
+const { notifySecurityDeposit } = require('../utils/notificationService');
 const { numberToRupeesWords } = require("../utils/numberToWords");
 
 /**
@@ -260,6 +261,12 @@ exports.adminSignContract = async (req, res) => {
     booking.changed('meta', true);
     booking.adminContractStatus = "SIGNED";
     await booking.save();
+
+    await notifySecurityDeposit(booking);
+    fs.unlinkSync(tenantSigPath);
+    if (guardianSigPath) {
+      fs.unlinkSync(guardianSigPath);
+    }
 
     // Cleanup temp signature file
     fs.unlinkSync(adminSigPath);

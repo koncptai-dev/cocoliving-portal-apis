@@ -11,4 +11,6 @@ router.post('/add',upload.fields([{ name: 'photos', maxCount: 10 }]), authMiddle
 // for service-member to get list 
 router.get('/getCleaning', authMiddleware,authorizeRole(4), DaliyTaskController.getDailyCleaning);
 
+router.get( '/admin/property-cleaning-status', authMiddleware, authorizeRole(1, 3), DaliyTaskController.getCleaningStatusByProperty);
+
 module.exports = router

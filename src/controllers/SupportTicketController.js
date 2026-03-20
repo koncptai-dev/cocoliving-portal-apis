@@ -10,6 +10,7 @@ const { logTicketEvent } = require("../utils/ticketLog");
 const { generateSupportTicketCode } = require('../helpers/SupportTicketCode');
 const { logApiCall } = require("../helpers/auditLog");
 const { createFromTicket } = require("./serviceHistoryController");
+const { notifyRequestUpdate } = require("../utils/notificationService");
 
 //create tickets
 exports.createTicket = async (req, res) => {
@@ -224,6 +225,7 @@ exports.updateTicketStatus = async (req, res) => {
         const userRole = req.user.role;
 
         const ticket = await SupportTicket.findByPk(ticketId);
+        let statusChanged = false;
 
         if (!ticket) {
             await logApiCall(req, res, 404, `Updated support ticket status - ticket not found (ID: ${ticketId})`, "supportTicket", parseInt(ticketId));
@@ -241,6 +243,7 @@ exports.updateTicketStatus = async (req, res) => {
             });
 
             ticket.status = status;
+            statusChanged = true;
             }
 
             // ASSIGNMENT CHANGE
@@ -291,6 +294,7 @@ exports.updateTicketStatus = async (req, res) => {
                 });
 
                 ticket.status = status;
+                statusChanged = true;
             }
         }
 
@@ -328,6 +332,9 @@ exports.updateTicketStatus = async (req, res) => {
 
 
         await ticket.save();
+        if (statusChanged){
+            await notifyRequestUpdate(ticket);
+        }
         if (ticket.status && ["in-progress", "resolved"].includes(ticket.status.toLowerCase())) {
             const { createFromTicket } = require("../controllers/serviceHistoryController");
             await createFromTicket(ticket);
@@ -530,10 +537,15 @@ exports.updateTicketStatusByService = async (req, res) => {
       newValue: { status },
       actorId: userId,
     });
-
+    let statusChanged = false;
+    if(ticket.status !== status){
+        statusChanged = true;
+    }
     ticket.status = status;
     await ticket.save();
-
+    if (statusChanged){
+        await notifyRequestUpdate(ticket);
+    }
     if (["in-progress", "resolved"].includes(status.toLowerCase())) {
     await createFromTicket(ticket);
     }

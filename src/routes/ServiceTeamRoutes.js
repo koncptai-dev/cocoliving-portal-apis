@@ -10,7 +10,7 @@ const authorizeRole = require("../middleware/authorizeRole");
 router.post("/register",authMiddleware, authorizeRole(1,3), authorizePage("Service Team Management", "write"), ServiceTeamController.registerServiceTeam);
 router.put("/edit/:id",authMiddleware, authorizeRole(1,3), authorizePage("Service Team Management", "write"), ServiceTeamController.editServiceTeam);
 router.get("/getAll",authMiddleware,  authorizePage("Service Team Management", "read"), ServiceTeamController.getAllServiceTeamMembers);
-router.get("/assigned-rooms", authMiddleware, authorizeRole(1,3), authorizePage("Service Team Management", "read"), ServiceTeamController.getAssignedRoomsForServiceTeam);
+router.get("/assigned-rooms", authMiddleware, authorizeRole(1,3,4), ServiceTeamController.getAssignedRoomsForServiceTeam);
 router.put("/reassign-rooms", authMiddleware, authorizeRole(1,3), authorizePage("Service Team Management", "write"), ServiceTeamController.reassignServiceTeamRooms);
 
 module.exports = router;

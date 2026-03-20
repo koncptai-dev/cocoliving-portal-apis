@@ -46,7 +46,14 @@ const ContractRoutes = require('./routes/ContractsRoutes');
 const ExportRoutes = require("./routes/ExportRoutes");
 const CouponRoute = require('./routes/CouponRoute');
 const BlogRoutes = require("./routes/blogRoutes");   // ← add this
+// cron job for admin notifications about users with pending rent
 require('./utils/rentDetailsCron');
+
+// user cron jobs
+require('./utils/cronJobs/scheduleVisitCron');
+require('./utils/cronJobs/checkInReminderCron');
+require('./utils/cronJobs/rentDueUserCron');
+require('./utils/cronJobs/tenureEndingCron');
 
 app.use(
   cors({
