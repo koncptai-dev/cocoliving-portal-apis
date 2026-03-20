@@ -123,24 +123,27 @@ exports.getCleaningStatusByProperty = async (req, res) => {
     // 2. Get today's cleaning
     const cleaning = await DailyCleaning.findAll({
       where: { cleaningDate: today },
-      attributes: ["roomId", "status"]
+      attributes: ["roomId", "status", "photos"]
     });
 
     // 3. Map cleaning
     const cleaningMap = new Map();
     cleaning.forEach(c => {
-      cleaningMap.set(c.roomId, c.status);
+      cleaningMap.set(c.roomId, { status: c.status, photos: c.photos || [] });
     });
 
     // 4. Final response
-    const result = rooms.map(r => ({
-      roomId: r.id,
-      roomNumber: r.roomNumber,
-      propertyName: r.property?.name,
-      status: cleaningMap.has(r.id)
-        ? cleaningMap.get(r.id)
-        : "Pending"
-    }));
+    const result = rooms.map(r => {
+      const cleaningData = cleaningMap.get(r.id);
+
+      return {
+        roomId: r.id,
+        roomNumber: r.roomNumber,
+        propertyName: r.property?.name,
+        status: cleaningData?.status || "Pending",
+        photos: cleaningData?.photos || []
+      };
+    });
 
     res.json({ rooms: result });
 

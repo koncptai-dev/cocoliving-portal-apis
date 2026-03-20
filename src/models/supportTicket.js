@@ -80,6 +80,10 @@ const SupportTicket = sequelize.define('SupportTicket', {
         type: DataTypes.TEXT,
         allowNull: true,
     },
+    resolutionImages: {
+        type: DataTypes.ARRAY(DataTypes.STRING),
+        allowNull: true,
+    },
     inventoryId: {
         type: DataTypes.INTEGER,
         allowNull: true,

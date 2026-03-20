@@ -19,6 +19,7 @@ const storage = multer.diskStorage({
         else if (file.fieldname === 'tenantSignature' || file.fieldname === 'guardianSignature' || file.fieldname === 'adminSignature') folder = 'signatures';
         else if (file.fieldname === 'proofOfWork') folder = 'proofOfWork';
 else if (file.fieldname === 'thumbnail')              folder = 'blogs';
+else if (file.fieldname === 'resolutionImages') folder = 'ticketResolution';
   const uploadDir = path.join(__dirname, '..', 'uploads', folder);
 
 // const uploadDir = path.join(__dirname, '..', '..', 'uploads', folder);  // go up two levels to project root
@@ -41,7 +42,7 @@ else if (file.fieldname === 'thumbnail')              folder = 'blogs';
 
 //file filter allow only images
 const fileFilter = (req, file, cb) => {
-    if (['profileImage', 'roomImages', 'propertyImages', 'ticketImage', 'eventImage'].includes(file.fieldname) || file.fieldname.startsWith('roomImages_')
+    if (['profileImage', 'roomImages', 'propertyImages', 'ticketImage', 'eventImage', 'resolutionImages'].includes(file.fieldname) || file.fieldname.startsWith('roomImages_')
     ||  file.fieldname.startsWith('floorImages_') 
     ) {
         const allowedTypes = /jpeg|jpg|png/;

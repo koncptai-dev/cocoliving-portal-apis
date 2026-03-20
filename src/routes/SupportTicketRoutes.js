@@ -22,6 +22,12 @@ router.get("/ticket-details/:id", authMiddleware, authorizeRole(1,2,3), SupportT
 
 // service team
 router.get( "/service/assigned-tickets", authMiddleware, authorizeRole(4), SupportTicketController.getAssignedTicketsForService );
-router.put( "/service/update-status/:id", authMiddleware, authorizeRole(4), SupportTicketController.updateTicketStatusByService );
+router.put(
+  "/service/update-status/:id",
+  authMiddleware,
+  authorizeRole(4),
+  upload.fields([{ name: "resolutionImages", maxCount: 10 }]),
+  SupportTicketController.updateTicketStatusByService
+);
 
 module.exports = router;

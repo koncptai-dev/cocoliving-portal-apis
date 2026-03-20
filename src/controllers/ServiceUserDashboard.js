@@ -19,7 +19,7 @@ exports.getServiceDashboard = async (req, res) => {
       cleaning: [],
       tickets: []
     };
-    if (["cleaner", "housekeeping"].includes(roleType)) {
+    if (roleType === "housekeeping") {
 
       const assignedRooms = await ServiceTeamRoom.findAll({
         where: {
@@ -43,6 +43,7 @@ exports.getServiceDashboard = async (req, res) => {
 
       const todayCleanings = await DailyCleaning.findAll({
         where: { cleanerId: userId, cleaningDate: today },
+        attributes: ["roomId", "status", "photos"],
         include: [
           {
             model: Rooms,
@@ -59,21 +60,43 @@ exports.getServiceDashboard = async (req, res) => {
       const cleaningMap = new Map();
 
       todayCleanings.forEach(c => {
-        cleaningMap.set(c.roomId, c.status);
+        cleaningMap.set(c.roomId, {
+          status: c.status,
+          photos: c.photos || []
+        });
       });
 
-      const formatted = assignedRooms.map(r => ({
-        id: r.teamroom.id,
-        roomNumber: r.teamroom.roomNumber,
-        propertyName: r.teamroom.property?.name,
-        status: cleaningMap.get(r.roomId) || "Pending"
-      }));
+      const formatted = assignedRooms.map(r => {
+        const cleaningData = cleaningMap.get(r.roomId);
+
+        return {
+          id: r.teamroom.id,
+          roomNumber: r.teamroom.roomNumber,
+          propertyName: r.teamroom.property?.name,
+          status: cleaningData?.status || "Pending",
+          photos: cleaningData?.photos || []
+        };
+      });
 
       response.cleaning = formatted;
     }
 
     const tickets = await SupportTicket.findAll({
       where: { assignedTo: userId },
+      include: [
+        {
+          model: Rooms,
+          as: "room",
+          attributes: ["roomNumber"],
+          include: [
+            {
+              model: Property,
+              as: "property",
+              attributes: ["name"]
+            }
+          ]
+        }
+      ],
       order: [["createdAt", "DESC"]],
     });
 
