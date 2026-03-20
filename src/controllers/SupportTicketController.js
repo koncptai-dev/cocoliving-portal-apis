@@ -506,7 +506,7 @@ exports.getAssignedTicketsForService = async (req, res) => {
 exports.updateTicketStatusByService = async (req, res) => {
   try {
     const ticketId = req.params.id;
-    const { status } = req.body;
+    const { status, resolutionNotes } = req.body; 
     const userId = req.user.id;
 
     const ticket = await SupportTicket.findByPk(ticketId);
@@ -540,6 +540,25 @@ exports.updateTicketStatusByService = async (req, res) => {
     let statusChanged = false;
     if(ticket.status !== status){
         statusChanged = true;
+    }
+    // Handle resolution images
+    const resolutionImages =  req.files?.resolutionImages?.map(file => `/uploads/ticketResolution/${file.filename}`) || [];
+
+    // Only allow notes/images when resolving
+    if (status.toLowerCase() === "resolved") {
+
+        if (!resolutionNotes || resolutionNotes.trim() === "") {
+            return res.status(400).json({
+            message: "Resolution notes are required when resolving ticket"
+            });
+        }
+
+        ticket.resolutionNotes = resolutionNotes;
+
+        if (resolutionImages.length > 0) {
+            const existing = ticket.resolutionImages || [];
+            ticket.resolutionImages = [...existing, ...resolutionImages];
+        }
     }
     ticket.status = status;
     await ticket.save();

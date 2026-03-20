@@ -73,6 +73,8 @@ AuditLog.belongsTo(User, {
 Rooms.hasMany(Booking, { foreignKey: "roomId", as: "bookings" });
 Booking.belongsTo(Rooms, { foreignKey: "roomId", as: "room" });
 
+Booking.belongsTo(Property, { foreignKey: 'propertyId', as: 'property'});
+
 User.hasMany(Booking, { foreignKey: "userId", as: "bookings", onDelete: "CASCADE" });
 Booking.belongsTo(User, { foreignKey: "userId", as: "user" });
 
