@@ -190,7 +190,7 @@ exports.signContract = async (req, res) => {
     });
 
     booking.contractStatus = "SIGNED";
-    
+
     // Store signatures in meta to allow re-rendering with admin sign
     if (!booking.meta) booking.meta = {};
     booking.meta.signatures = {
@@ -198,7 +198,7 @@ exports.signContract = async (req, res) => {
       guardian: guardianSigBase64
     };
     booking.changed('meta', true);
-    
+
     await booking.save();
 
     // Cleanup temp signature files immediately
@@ -263,10 +263,6 @@ exports.adminSignContract = async (req, res) => {
     await booking.save();
 
     await notifySecurityDeposit(booking);
-    fs.unlinkSync(tenantSigPath);
-    if (guardianSigPath) {
-      fs.unlinkSync(guardianSigPath);
-    }
 
     // Cleanup temp signature file
     fs.unlinkSync(adminSigPath);
