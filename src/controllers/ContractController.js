@@ -5,6 +5,7 @@ const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
 const { Booking, User, Rooms, Property, Contract } = require("../models");
 const { mailsender } = require("../utils/emailService");
 const { securityDepositPaymentEmail } = require("../utils/emailTemplates/emailTemplates");
+const { notifySecurityDeposit } = require('../utils/notificationService');
 
 const generateBasePdf = async (booking) => {
   const pdfDoc = await PDFDocument.create();
@@ -230,6 +231,8 @@ exports.signContract = async (req, res) => {
 
     booking.contractStatus = "SIGNED";
     await booking.save();
+
+    await notifySecurityDeposit(booking);
     fs.unlinkSync(tenantSigPath);
     if (guardianSigPath) {
       fs.unlinkSync(guardianSigPath);

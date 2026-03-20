@@ -21,6 +21,24 @@ exports.getServiceDashboard = async (req, res) => {
     };
     if (["cleaner", "housekeeping"].includes(roleType)) {
 
+      const assignedRooms = await ServiceTeamRoom.findAll({
+        where: {
+          serviceTeamId: serviceTeam.id,
+          isActive: true
+        },
+        include: [
+          {
+            model: Rooms,
+            as: "teamroom",
+            include: [{
+              model: Property,
+              as: "property",
+              attributes: ["name"]
+            }]
+          }
+        ]
+      });
+
       const today = new Date().toISOString().split("T")[0];
 
       const todayCleanings = await DailyCleaning.findAll({
@@ -38,7 +56,20 @@ exports.getServiceDashboard = async (req, res) => {
         ]
       });
 
-      response.cleaning = todayCleanings;
+      const cleaningMap = new Map();
+
+      todayCleanings.forEach(c => {
+        cleaningMap.set(c.roomId, c.status);
+      });
+
+      const formatted = assignedRooms.map(r => ({
+        id: r.teamroom.id,
+        roomNumber: r.teamroom.roomNumber,
+        propertyName: r.teamroom.property?.name,
+        status: cleaningMap.get(r.roomId) || "Pending"
+      }));
+
+      response.cleaning = formatted;
     }
 
     const tickets = await SupportTicket.findAll({

@@ -1,4 +1,4 @@
-const { DailyCleaning, DailyCleaningTask, Rooms, User } = require('../models');
+const { DailyCleaning, DailyCleaningTask, Property, Rooms, User } = require('../models');
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
 
@@ -99,3 +99,53 @@ exports.getDailyCleaning = async (req, res) => {
   }
 };
 
+exports.getCleaningStatusByProperty = async (req, res) => {
+  try {
+    const { propertyId } = req.query;
+
+    if (!propertyId) {
+      return res.status(400).json({ message: "propertyId required" });
+    }
+
+    const today = new Date().toISOString().split("T")[0];
+
+    // 1. Get all rooms of property
+    const rooms = await Rooms.findAll({
+      where: { propertyId },
+      attributes: ["id", "roomNumber"],
+      include: [{
+        model: Property,
+        as: "property",
+        attributes: ["name"]
+      }]
+    });
+
+    // 2. Get today's cleaning
+    const cleaning = await DailyCleaning.findAll({
+      where: { cleaningDate: today },
+      attributes: ["roomId", "status"]
+    });
+
+    // 3. Map cleaning
+    const cleaningMap = new Map();
+    cleaning.forEach(c => {
+      cleaningMap.set(c.roomId, c.status);
+    });
+
+    // 4. Final response
+    const result = rooms.map(r => ({
+      roomId: r.id,
+      roomNumber: r.roomNumber,
+      propertyName: r.property?.name,
+      status: cleaningMap.has(r.id)
+        ? cleaningMap.get(r.id)
+        : "Pending"
+    }));
+
+    res.json({ rooms: result });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to fetch cleaning status" });
+  }
+};
