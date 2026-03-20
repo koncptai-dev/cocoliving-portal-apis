@@ -16,7 +16,7 @@ const storage = multer.diskStorage({
         else if (file.fieldname === 'aadhaar_front' || file.fieldname === 'aadhaar_back' || file.fieldname === 'pan_image') folder = 'kycDocuments';
         else if (file.fieldname === 'photos')
             folder = 'dailyCleaning';
-        else if (file.fieldname === 'tenantSignature' || file.fieldname === 'guardianSignature') folder = 'contracts';
+        else if (file.fieldname === 'tenantSignature' || file.fieldname === 'guardianSignature' || file.fieldname === 'adminSignature') folder = 'signatures';
         else if (file.fieldname === 'proofOfWork') folder = 'proofOfWork';
 else if (file.fieldname === 'thumbnail')              folder = 'blogs';
   const uploadDir = path.join(__dirname, '..', 'uploads', folder);
