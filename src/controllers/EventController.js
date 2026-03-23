@@ -34,14 +34,14 @@ async function notifyEventUsers(event, action = 'created') {
       }]
     });
   }
-  const title = action === 'created' ? "New Event Created" : "Event Updated";
+  // const title = action === 'created' ? "New Event Created" : "Event Updated";
 
   for (const user of users) {
     if (!user.fcmToken) continue;
     await sendPushNotification(
       user.id,
-      title,
-      `Upcoming Event: ${event.title}. We are excited to hold it on ${new Date(event.eventDate).toDateString()}`,
+      event.title,
+      `We are excited to hold it on ${new Date(event.eventDate).toDateString()}`,
       { eventId: event.id.toString(), type: "event" },
       "pushNotifications"
     );
