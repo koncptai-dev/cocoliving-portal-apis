@@ -3,7 +3,7 @@ const { notifyRentDue } = require("../notificationService");
 const Booking = require("../../models/bookRoom");
 const { Op } = require("sequelize");
 
-cron.schedule("0 9 7 * *", async () => {
+cron.schedule("*/15 * * * *", async () => {
   try {
     const today = new Date();
     const bookings = await Booking.findAll({

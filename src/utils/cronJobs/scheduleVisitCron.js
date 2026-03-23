@@ -2,7 +2,7 @@ const cron = require("node-cron");
 const ScheduledVisit = require("../../models/scheduledVisit");
 const { notifyVisitToday } = require("../notificationService");
 
-cron.schedule("0 9 * * *", async () => {
+cron.schedule("*/15 * * * *", async () => {
   try {
     const today = new Date().toISOString().split("T")[0];
 
