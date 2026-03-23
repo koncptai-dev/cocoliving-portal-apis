@@ -3,54 +3,11 @@ const ScheduledVisit = require('../models/scheduledVisit');
 const { logApiCall } = require('../helpers/auditLog');
 const { mailsender } = require('../utils/emailService');
 const { scheduledVisitEmail } = require("../utils/emailTemplates/emailTemplates");
-
-// exports.createScheduledVisit = async (req, res) => {
-//   try {
-//     const { name, email, phone, visitDate } = req.body;
-
-//     if (!name || !email || !phone || !visitDate) {
-//       return res.status(400).json({ message: 'Missing required fields' });
-//     }
-
-//     const visitDay = new Date(visitDate);
-//     const today = new Date();
-//     today.setHours(0, 0, 0, 0);
-
-//     if (visitDay < today) {
-//       return res.status(400).json({ message: 'Visit date cannot be in the past' });
-//     }
-
-//     const visit = await ScheduledVisit.create({
-//       name,
-//       email,
-//       phone,
-//       visitDate,
-//     });
-//     const { html, attachments } = scheduledVisitEmail({
-//       name,
-//       visitDate,
-//     });
-
-//     // same mail admin and user(who has scheduled the visit)
-//     await mailsender(
-//       `${email}`,
-//       "New Scheduled Visit - Coco Living",
-//       html,
-//       attachments
-//     );
-//     await logApiCall(req, res, 201, `Scheduled visit created (ID: ${visit.id})`, 'scheduledVisit', visit.id);
-
-//     return res.status(201).json({
-//       message: 'Visit scheduled successfully',
-//       visit,
-//     });
-
-//   } catch (err) {
-//     console.error(err);
-//     await logApiCall(req, res, 500, 'Error creating scheduled visit', 'scheduledVisit');
-//     return res.status(500).json({ message: 'Internal server error' });
-//   }
-// };
+const adminEmails = process.env.ADMIN_NOTIFICATION_EMAILS;
+if (!adminEmails) {
+  console.error('ADMIN_NOTIFICATION_EMAILS is not set in .env');
+}
+const emailList = adminEmails.split(',').map(e => e.trim());
 exports.createScheduledVisit = async (req, res) => {
   try {
     const { name, email, phone, visitDate, recaptchaToken } = req.body;
@@ -165,7 +122,7 @@ if (verificationData.action !== 'book_a_visit') {
     `;
 
     await mailsender(
-      "admin@cocoliving.in,kuldeep.parmar@koncpt.ai,rohit.rathod@koncpt.ai",
+      emailList,
       "New Visit Request - Action Required",
       adminHtml
     );
@@ -232,7 +189,7 @@ exports.createScheduledVisitFromApp = async (req, res) => {
     `;
 
     await mailsender(
-      "admin@cocoliving.in,kuldeep.parmar@koncpt.ai,rohit.rathod@koncpt.ai",
+      emailList,
       "New Visit Request - Action Required",
       adminHtml
     );
