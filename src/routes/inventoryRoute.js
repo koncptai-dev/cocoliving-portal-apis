@@ -21,6 +21,6 @@ router.get("/:id", authenticateToken, authorizePage("Inventory Management","read
 router.post("/by-ids",authenticateToken, authorizePage("Inventory Management","read"), controller.getInventoryByIds);
 router.put("/:id", authenticateToken, authorizePage("Inventory Management","write"), controller.updateInventory);
 router.delete("/:id", authenticateToken, authorizePage("Inventory Management","write"), controller.deleteInventory);
-router.get('/available/:roomId',authenticateToken, authorizePage("Inventory Management","read"), controller.getAvailableByRoom);
+router.get('/available/:roomId',authenticateToken, controller.getAvailableByRoom);
 
 module.exports = router;
