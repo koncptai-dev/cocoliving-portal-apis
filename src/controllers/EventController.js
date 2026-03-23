@@ -41,9 +41,9 @@ async function notifyEventUsers(event, action = 'created') {
     await sendPushNotification(
       user.id,
       title,
-      `Event "${event.title}" scheduled on ${new Date(event.eventDate).toDateString()} at ${event.location}`,
+      `Upcoming Event: ${event.title}. We are excited to hold it on ${new Date(event.eventDate).toDateString()}`,
       { eventId: event.id.toString(), type: "event" },
-      "event"
+      "pushNotifications"
     );
   }
 }

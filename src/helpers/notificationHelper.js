@@ -51,20 +51,24 @@ exports.sendPushNotification = async (userId, title, body, data = {}, type) => {
             data: data || {}, // optional key value data
         };
 
-        //send notification 
-        await admin.messaging().send(message);
-        console.log(`Notification sent to user ${userId}: ${title} - ${body}`);
 
         // Check if notification already exists (duplicate prevention)
         const exists = await Notification.findOne({
             where: { userId, title, message: body, notificationKey: type }
         });
-        if (!exists) {
-            await Notification.create({ userId, title, message: body, notificationKey: type });
+        if (exists) {
+            return false;
         }
 
-        return true; //when successfully sent
+        await admin.messaging().send(message);
+        console.log(`Notification sent to user ${userId}: ${title} - ${body}`);
 
+        await Notification.create({
+            userId,
+            title,
+            message: body,
+            notificationKey: type
+        });
     } catch (error) {
         const firebaseError = error?.errorInfo?.code;
         if (firebaseError) {

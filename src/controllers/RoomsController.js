@@ -218,6 +218,7 @@ exports.getAllRooms = async (req, res) => {
             required: false
           }
         ],
+        distinct: true,
         limit,
         offset, order: [['createdAt', 'DESC']]
       }
@@ -521,32 +522,59 @@ exports.importRooms = async (req, res) => {
           const match = lastInventory.inventoryCode.match(/INV-PR\d+-(\d+)/);
           if (match) inventorySeq = parseInt(match[1]);
         }
-        
+        const normalize = (str) => str?.toLowerCase().trim();
+
         const roomTypeConfig = {
-          "Single sharing": { roomType: "Single Sharing", capacity: 1 },
-          "Double sharing": { roomType: "Double Sharing", capacity: 2 },
-          "Triple sharing": { roomType: "Triple Sharing", capacity: 3 },
-          "Quad sharing": { roomType: "Quad Sharing", capacity: 4 },
-          "Premium triple sharing": { roomType: "Premium Triple Sharing", capacity: 3 },
+          "single sharing": { roomType: "Single Sharing", capacity: 1 },
+          "double sharing": { roomType: "Double Sharing", capacity: 2 },
+          "triple sharing": { roomType: "Triple Sharing", capacity: 3 },
+          "quad sharing": { roomType: "Quad Sharing", capacity: 4 },
+          "premium triple sharing": { roomType: "Premium Triple Sharing", capacity: 3 },
         };
 
-        for (const [index, row] of rows.entries()) {
+        for (const [index, rawRow] of rows.entries()) {
 
-          const floorNumber = row["Floor Number"];
+          const normalizedRow = {};
+          for (const key of Object.keys(rawRow)) {
+            normalizedRow[normalize(key)] = rawRow[key];
+          }
+          const floorNumber = normalizedRow["floor number"];
 
           if (!floorNumber) {
             skippedRows.push({
-              row,
+              row: rawRow,
               reason: "Missing Floor Number",
               line: index + 2
             });
             continue;
           }
 
-          for (const column of Object.keys(roomTypeConfig)) {
+          // ✅ detect unknown columns
+          const allowedColumns = ["floor number", ...Object.keys(roomTypeConfig)];
 
-            const value = row[column];
+          for (const key of Object.keys(normalizedRow)) {
+            if (!allowedColumns.includes(key)) {
+              skippedRows.push({
+                row: rawRow,
+                reason: `Unknown column: ${key}`,
+                line: index + 2
+              });
+            }
+          }
 
+          // ✅ process room types
+          for (const columnKey of Object.keys(roomTypeConfig)) {
+
+            if (!(columnKey in normalizedRow)) {
+              skippedRows.push({
+                row: rawRow,
+                reason: `Missing column: ${columnKey}`,
+                line: index + 2
+              });
+              continue;
+            }
+
+            const value = normalizedRow[columnKey];
             if (!value) continue;
 
             const roomNumbers = value
@@ -555,14 +583,10 @@ exports.importRooms = async (req, res) => {
               .filter(Boolean);
 
             for (const roomNumber of roomNumbers) {
-
               try {
 
                 const exists = await Rooms.findOne({
-                  where: {
-                    propertyId: req.body.propertyId,
-                    roomNumber
-                  }
+                  where: { propertyId: req.body.propertyId, roomNumber }
                 });
 
                 if (exists) {
@@ -574,7 +598,8 @@ exports.importRooms = async (req, res) => {
                   continue;
                 }
 
-                const { roomType, capacity } = roomTypeConfig[column];
+                const { roomType, capacity } = roomTypeConfig[columnKey];
+
                 const rateCard = await PropertyRateCard.findOne({
                   where: {
                     propertyId: req.body.propertyId,
@@ -585,11 +610,12 @@ exports.importRooms = async (req, res) => {
                 if (!rateCard) {
                   skippedRows.push({
                     row: { roomNumber },
-                    reason: `Rate card not found for room type ${roomType}`,
+                    reason: `Rate card not found for ${roomType}`,
                     line: index + 2
                   });
                   continue;
                 }
+
                 const newRoom = await Rooms.create({
                   propertyId: req.body.propertyId,
                   roomNumber,
@@ -601,15 +627,9 @@ exports.importRooms = async (req, res) => {
                   status: "available"
                 });
 
-                const defaultItems = [
-                  "Bed",
-                  "Wardrobe",
-                  "Study Table",
-                  "Chair"
-                ];
+                const defaultItems = ["Bed", "Wardrobe", "Study Table", "Chair"];
 
                 for (let setNumber = 1; setNumber <= capacity; setNumber++) {
-
                   for (const baseItem of defaultItems) {
 
                     inventorySeq++;
@@ -634,16 +654,13 @@ exports.importRooms = async (req, res) => {
 
                 inserted++;
 
-              } catch (innerError) {
-
+              } catch (err) {
                 skippedRows.push({
                   row: { roomNumber },
-                  reason: innerError.message,
+                  reason: err.message,
                   line: index + 2
                 });
-
               }
-
             }
           }
         }

@@ -2,7 +2,7 @@ const cron = require("node-cron");
 const Booking = require("../../models/bookRoom");
 const { notifyCheckInReminder } = require("../notificationService");
 
-cron.schedule("0 10 * * *", async () => {
+cron.schedule("*/15 * * * *", async () => {
   try {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);

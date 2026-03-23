@@ -46,7 +46,7 @@ exports.notifyVisitToday = async (visit) => {
   await sendPushNotification(
     user.id,
     "Visit Reminder",
-    `Hi ${firstName}, you have a scheduled visit today at ${propertyName}.`,
+    `Hi ${firstName}, you have a scheduled visit today at ${propertyName}. [VisitID:${visit.id}]`,
     { type: "visit_today", visitId: visit.id.toString() },
     "pushNotifications"
   );
@@ -79,7 +79,6 @@ exports.notifyOnboardingSuccess = async (booking) => {
 };
 
 exports.notifySecurityDeposit = async (booking) => {
-  if (!booking.monthlyPlanSelected) return;
 
   const { user } = await getUserAndProperty(booking);
   if (!user) return;
@@ -97,10 +96,13 @@ exports.notifyRentDue = async (booking) => {
   const user = await User.findByPk(booking.userId);
   if (!user) return;
 
+  const now = new Date();
+  const formatted = now.toLocaleString("en-IN", { month: "short", year: "numeric" });
+  
   await sendPushNotification(
     user.id,
     "Rent Due",
-    `Today is the last day to pay rent. Please pay to avoid late fees.`,
+    `Today is the last day to pay rent. Please pay to avoid late fees. [${formatted}]`,
     { type: "rent_due_last_day", bookingId: booking.id.toString() },
     "pushNotifications"
   );
@@ -145,7 +147,7 @@ exports.notifyTenureEnding = async (booking) => {
   await sendPushNotification(
     user.id,
     "Tenure Ending",
-    `Re-book your room before current tenure ends to continue living the CoCo way!`,
+    `Re-book your room before current tenure ends to continue living the CoCo way! [Booking:${booking.id}]`,
     { type: "tenure_ending", bookingId: booking.id.toString() },
     "pushNotifications"
   );
