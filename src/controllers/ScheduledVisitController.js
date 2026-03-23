@@ -182,6 +182,82 @@ if (verificationData.action !== 'book_a_visit') {
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
+
+exports.createScheduledVisitFromApp = async (req, res) => {
+  try {
+    const { name, email, phone, visitDate } = req.body;
+
+    if (!name || !email || !phone || !visitDate) {
+      return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    const visitDay = new Date(visitDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (visitDay < today) {
+      return res.status(400).json({ message: 'Visit date cannot be in the past' });
+    }
+
+    const visit = await ScheduledVisit.create({
+      name,
+      email,
+      phone,
+      visitDate,
+    });
+
+    const { html, attachments } = scheduledVisitEmail({
+      name,
+      visitDate,
+    });
+
+    await mailsender(
+      `${email}`,
+      "Visit Approved - Coco Living",
+      html,
+      attachments
+    );
+
+    const adminHtml = `
+      <p>A new visit request has been submitted.</p>
+
+      <p>
+      <strong>Name:</strong> ${name}<br/>
+      <strong>Email:</strong> ${email}<br/>
+      <strong>Phone:</strong> ${phone}<br/>
+      <strong>Visit Date:</strong> ${new Date(visitDate).toLocaleDateString('en-IN')}
+      </p>
+
+      <p>Please review and take action from the admin panel.</p>
+    `;
+
+    await mailsender(
+      "admin@cocoliving.in,kuldeep.parmar@koncpt.ai,rohit.rathod@koncpt.ai",
+      "New Visit Request - Action Required",
+      adminHtml
+    );
+
+    await logApiCall(
+      req,
+      res,
+      201,
+      `Scheduled visit created (ID: ${visit.id})`,
+      'scheduledVisit',
+      visit.id
+    );
+
+    return res.status(201).json({
+      message: 'Visit scheduled successfully',
+      visit,
+    });
+
+  } catch (err) {
+    console.error('Error in createScheduledVisit:', err);
+    await logApiCall(req, res, 500, 'Error creating scheduled visit', 'scheduledVisit');
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
 exports.getScheduledVisitList = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
