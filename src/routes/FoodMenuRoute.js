@@ -19,6 +19,6 @@ router.delete('/delete/:id', authMiddleware, authorizeRole(1,3), authorizePage("
 router.put('/delete-image', authMiddleware, authorizeRole(1,3), authorizePage("Food Menu", "write"), FoodMenuController.deleteFoodImage);
 
 // user
-router.get('/user-menus', authMiddleware, authorizeRole(2), authorizePage("Food Menu", "read"), FoodMenuController.getUserMenus);
+router.get('/user-menus', authMiddleware, authorizeRole(2), FoodMenuController.getUserMenus);
 
 module.exports = router
