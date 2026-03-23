@@ -11,6 +11,22 @@ const BookingExtension = require('../models/bookingExtension');
 const Inventory = require("../models/inventory");
 const { sendPushNotification } = require("../helpers/notificationHelper");
 
+const releaseInventoryForBooking = async (booking, transaction = null) => {
+  if (!booking.assignedItems || booking.assignedItems.length === 0) return;
+
+  await Inventory.update(
+    { status: "Available" },
+    {
+      where: { id: booking.assignedItems },
+      transaction
+    }
+  );
+  if (booking.assignedItems.length > 0) {
+    booking.assignedItems = [];
+    await booking.save({ transaction });
+  }
+};
+
 //for notification application side
 async function notifyBookingUser(booking) {
   if (!booking.userId) return;
@@ -120,6 +136,7 @@ exports.rejectBooking = async (req, res) => {
 
     booking.status = "rejected";
     await booking.save();
+    await releaseInventoryForBooking(booking);
 
     if (booking.roomId) {
       const room = await Rooms.findByPk(booking.roomId);
@@ -152,11 +169,16 @@ exports.rejectBooking = async (req, res) => {
 };
 
 exports.cancelBooking = async (req, res) => {
+  let t;
   try {
+    t = await sequelize.transaction();
     const { bookingId } = req.params;
     const { reason } = req.body || {};
 
-    const booking = await Booking.findByPk(bookingId);
+    const booking = await Booking.findByPk(bookingId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE
+    });
 
     if (!booking) {
       await logApiCall(req, res, 404, `Cancelled booking - booking not found (ID: ${bookingId})`, "booking", parseInt(bookingId));
@@ -170,7 +192,8 @@ exports.cancelBooking = async (req, res) => {
 
     booking.status = "cancelled";
     booking.adminCancelReason = reason || null;
-    await booking.save();
+    await booking.save({transaction: t});
+    await releaseInventoryForBooking(booking,t);
     const updatedBooking = await Booking.findByPk(booking.id, {
       include: [
         {
@@ -207,12 +230,14 @@ exports.cancelBooking = async (req, res) => {
     }
 
     await logApiCall(req, res, 200, `Cancelled booking (ID: ${bookingId})`, "booking", parseInt(bookingId));
+    await t.commit();
     return res.status(200).json({
       message: "Booking cancelled successfully",
       booking: updatedBooking
     });
 
   } catch (err) {
+    await t.rollback();
     console.error("cancelBooking error:", err);
     await logApiCall(req, res, 500, "Error occurred while cancelling booking", "booking", parseInt(req.params.bookingId) || 0);
     return res.status(500).json({ message: "Internal server error", error: err.message });
@@ -241,6 +266,7 @@ exports.approveCancellation = async (req, res) => {
     booking.adminCancelReason = adminReason || null;
     booking.checkOutDate = booking.cancelEffectiveCheckOutDate;
     await booking.save();
+    await releaseInventoryForBooking(booking);
     const updatedBooking = await Booking.findByPk(booking.id, {
       include: [
         {
@@ -462,8 +488,12 @@ exports.assignInventory = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { bookingId } = req.params;
-    const { inventoryIds = [] } = req.body;
+    const { setNumber } = req.body;
 
+    if (!setNumber) {
+      await t.rollback();
+      return res.status(400).json({ message: "setNumber is required" });
+    }
     const booking = await Booking.findByPk(bookingId, {
       transaction: t,
       lock: t.LOCK.UPDATE
@@ -471,85 +501,128 @@ exports.assignInventory = async (req, res) => {
 
     if (!booking) {
       await t.rollback();
-      await logApiCall(req, res, 404, `Assigned inventory - booking not found (ID: ${bookingId})`, "booking", parseInt(bookingId));
       return res.status(404).json({ message: "Booking not found" });
     }
 
     if (!booking.roomId) {
       await t.rollback();
-      await logApiCall(req, res, 400, `Assigned inventory - room must be assigned first (ID: ${bookingId})`, "booking", parseInt(bookingId));
       return res.status(400).json({
         message: "Room must be assigned before assigning inventory"
       });
     }
 
-    // Fetch room + property (no lock)
     const room = await Rooms.findByPk(booking.roomId, {
-      include: [{ model: Property, as: "property" }]
-    });
-
-    if (!room) {
-      await t.rollback();
-      await logApiCall(req, res, 400, `Assigned inventory - room not found (Booking ID: ${bookingId})`, "booking", parseInt(bookingId));
-      return res.status(400).json({ message: "Room not found" });
-    }
-
-    const roomId = room.id;
-    const propertyId = room.propertyId;
-
-    // Validate items belong to this exact room
-    const items = await Inventory.findAll({
-      where: {
-        id: inventoryIds,
-        status: "Available",
-        roomId: roomId,         // room-level inventory only
-        isCommonAsset: false    // Common assets cannot be assigned
-      },
       transaction: t,
       lock: t.LOCK.UPDATE
     });
 
-    if (items.length !== inventoryIds.length) {
-      const foundIds = items.map(i => i.id);
-      const invalid = inventoryIds.filter(id => !foundIds.includes(id));
-
+    if (!room) {
       await t.rollback();
-      await logApiCall(req, res, 400, `Assigned inventory - some items not available (Booking ID: ${bookingId})`, "booking", parseInt(bookingId));
+      return res.status(400).json({ message: "Room not found" });
+    }
+
+    // STEP 1: fetch ALL items of this set
+    const items = await Inventory.findAll({
+      where: {
+        propertyId: room.propertyId,
+        roomId: room.id,
+        setNumber,
+        isCommonAsset: false
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+      order: [["id", "ASC"]]
+    });
+
+    if (items.length === 0) {
+      await t.rollback();
       return res.status(400).json({
-        message: "Some items are not available for this room",
-        invalidItems: invalid
+        message: "Selected set has no inventory"
       });
     }
 
-    // Mark items as allocated
+    // STEP 2: check if entire set is available
+    const unavailable = items.filter(i => i.status !== "Available");
+
+    if (unavailable.length > 0) {
+      await t.rollback();
+      return res.status(400).json({
+        message: "Selected set is not fully available"
+      });
+    }
+
+    const ids = items.map(i => i.id);
+
+    // STEP 3: release old inventory (if reassigned)
+    await releaseInventoryForBooking(booking, t);
+
+    // STEP 4: allocate new set
     await Inventory.update(
       { status: "Allocated" },
-      { where: { id: inventoryIds }, transaction: t }
+      { where: { id: ids }, transaction: t }
     );
 
-    // Save assigned items into Booking JSON array
-    booking.assignedItems = [
-      ...new Set([...(booking.assignedItems || []), ...inventoryIds])
-    ];
-
+    // STEP 5: save assignment
+    booking.assignedItems = ids;
     await booking.save({ transaction: t });
 
     await t.commit();
 
-    await logApiCall(req, res, 200, `Assigned ${inventoryIds.length} inventory items to booking (ID: ${bookingId})`, "booking", parseInt(bookingId));
     return res.status(200).json({
-      message: "Inventory assigned successfully",
-      assignedInventory: inventoryIds
+      message: "Inventory set assigned successfully",
+      setNumber,
+      assignedInventory: ids
     });
 
   } catch (err) {
     await t.rollback();
-    console.error("Assign Inventory Error:", err);
-    await logApiCall(req, res, 500, "Error occurred while assigning inventory", "booking", parseInt(req.params.bookingId) || 0);
+    console.error("Assign Set Error:", err);
     return res.status(500).json({
       message: "Internal server error",
       error: err.message
     });
+  }
+};
+
+exports.getInventorySets = async (req, res) => {
+  try {
+    const { propertyId, roomId } = req.params;
+
+    const items = await Inventory.findAll({
+      where: {
+        propertyId,
+        roomId,
+        isCommonAsset: false
+      },
+      attributes: ["id", "setNumber", "itemName", "status"],
+      order: [["setNumber", "ASC"], ["id", "ASC"]]
+    });
+
+    const grouped = {};
+
+    for (const item of items) {
+      if (!grouped[item.setNumber]) {
+        grouped[item.setNumber] = {
+          setNumber: item.setNumber,
+          items: [],
+          isAvailable: true
+        };
+      }
+
+      grouped[item.setNumber].items.push(item.itemName);
+
+      if (item.status !== "Available") {
+        grouped[item.setNumber].isAvailable = false;
+      }
+    }
+
+    return res.json({
+      sets: Object.values(grouped)
+    });
+
+  } catch (err) {
+    console.error("Get Sets Error:", err);
+    return res.status(500).json({ message: "Internal server error" });
   }
 };
 
