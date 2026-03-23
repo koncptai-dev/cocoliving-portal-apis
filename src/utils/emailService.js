@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const CURRENT_YEAR = new Date().getFullYear();
 require('dotenv').config();
 
 const transporter = nodemailer.createTransport({
@@ -85,7 +86,7 @@ const sendContactEmail = async (name, email, phone, message) => {
 
               <tr>
                 <td style="border-top: 1px solid #e5e7eb; padding: 16px; text-align: center; color: #6b7280; font-size: 14px;">
-                  This message was sent via the website contact form.<br>© 2025 COCO LIVING
+                  This message was sent via the website contact form.<br>© ${CURRENT_YEAR} COCO LIVING
                 </td>
               </tr>
             </table>
@@ -114,64 +115,172 @@ const sendContactEmail = async (name, email, phone, message) => {
 };
 
 // 2. For sending a thank you email to the sender
+// const sendThankYouEmail = async (name, email) => {
+//   try {
+//     const htmlContent = `
+//   <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f5f2ea;padding:24px 0;">
+//     <tr>
+//       <td align="center">
+//         <table border="0" cellpadding="0" cellspacing="0" width="600" style="background:#ffffff;border-radius:12px;overflow:hidden;">
+//           <tr>
+//             <td align="center" style="padding:0;">
+//               <img 
+//                 src="https://cocoliving.in/background-img.png" 
+//                 width="600" 
+//                 alt="Banner"
+//                 style="width:100%; max-width:600px; display:block;"
+//               />
+//             </td>
+//               <table border="0" cellpadding="0" cellspacing="0" width="100%" height="100%" style="background-color: rgba(69, 50, 43, 0.75);">
+//                 <tr>
+//                   <td align="center" style="background-color:#45322b; padding:40px 20px;">
+//                   <img 
+//                     src="https://cocoliving.in/logo.png" 
+//                     alt="COCO Living Logo" 
+//                     width="120"
+//                     style="display:block; margin:0 auto 16px;"
+//                   />
+//                     <h2 style="color:white;font-size:28px;font-weight:600;margin:0;">
+//                     Hello ${name},</h2>
+//                   </td>
+//                 </tr>
+//               </table>
+//             </td>
+//           </tr>
+
+//           <tr>
+//             <td style="padding:24px;text-align:center;color:#333333;">
+//               <p style="font-size:18px;font-weight:600;margin-bottom:16px;">Thanks for connecting.</p>
+//               <p style="margin:0 0 16px;">We’ve got your form and we’re on it. From late-night study sessions to lazy Sunday mornings</p>
+//               <p style="margin:0;">We’ll help you find the space that matches your request.</p>
+//             </td>
+//           </tr>
+
+//           <tr>
+//             <td style="border-top:1px solid #e5e7eb;padding:16px;text-align:center;color:#6b7280;font-size:14px;">
+//               📞 +91-7041454455 &nbsp; | &nbsp; 🌐 cocoliving.in &nbsp; | &nbsp; ✉️ info@cocoliving.in
+//             </td>
+//           </tr>
+//         </table>
+//         </td>
+//     </tr>
+//   </table>
+//   `;
+
+
+//     const info = await transporter.sendMail({
+//       from: `Cocoliving Team <${process.env.SMTP_USER}>`,
+//       to: email, // This is the recipient of the thank you email
+//       subject: "Thank You For Your Inquiry!",
+//       html: htmlContent,
+//     });
+
+//     console.log('Thank you email sent:', info.response);
+//   } catch (error) {
+//     console.error('Error sending thank you email:', error);
+//   }
+// };
+// 2. For sending a thank you email to the sender
 const sendThankYouEmail = async (name, email) => {
   try {
     const htmlContent = `
-  <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f5f2ea;padding:24px 0;">
-    <tr>
-      <td align="center">
-        <table border="0" cellpadding="0" cellspacing="0" width="600" style="background:#ffffff;border-radius:12px;overflow:hidden;">
-          <tr>
-            <td align="center" style="padding:0;">
-              <img 
-                src="https://cocoliving.in/background-img.png" 
-                width="600" 
-                alt="Banner"
-                style="width:100%; max-width:600px; display:block;"
-              />
-            </td>
-              <table border="0" cellpadding="0" cellspacing="0" width="100%" height="100%" style="background-color: rgba(69, 50, 43, 0.75);">
-                <tr>
-                  <td align="center" style="background-color:#45322b; padding:40px 20px;">
-                  <img 
-                    src="https://cocoliving.in/logo.png" 
-                    alt="COCO Living Logo" 
-                    width="120"
-                    style="display:block; margin:0 auto 16px;"
-                  />
-                    <h2 style="color:white;font-size:28px;font-weight:600;margin:0;">
-                    Hello ${name},</h2>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8" /></head>
+<body style="margin:0;background:#f3efe9;font-family:'Rethink Sans','Inter','Segoe UI',Arial,sans-serif;">
+<table width="100%" align="center">
+<tr><td align="center">
 
-          <tr>
-            <td style="padding:24px;text-align:center;color:#333333;">
-              <p style="font-size:18px;font-weight:600;margin-bottom:16px;">Thanks for connecting.</p>
-              <p style="margin:0 0 16px;">We’ve got your form and we’re on it. From late-night study sessions to lazy Sunday mornings</p>
-              <p style="margin:0;">We’ll help you find the space that matches your request.</p>
-            </td>
-          </tr>
+<table width="600" style="max-width:600px;">
 
-          <tr>
-            <td style="border-top:1px solid #e5e7eb;padding:16px;text-align:center;color:#6b7280;font-size:14px;">
-              📞 +91-7041454455 &nbsp; | &nbsp; 🌐 cocoliving.in &nbsp; | &nbsp; ✉️ info@cocoliving.in
-            </td>
-          </tr>
-        </table>
-        </td>
-    </tr>
-  </table>
-  `;
+<!-- Header - now matching other templates -->
+<tr>
+<td align="center"
+style="background-color:#4F3421;
+background-image:url(cid:bg);
+background-repeat:repeat;
+background-size:400px 400px;
+padding:28px 28px 90px;">
+  <img src="cid:logo" width="140" />
+</td>
+</tr>
 
+<!-- Main content -->
+<tr>
+<td align="center" style="background:#f3efe9;padding:0 24px 40px;">
+  <div style="background:#f3efe9;border-radius:80px 80px 0 0;
+  padding:40px 24px 0;max-width:520px;margin:-60px auto 0;">
+    
+    <h1 style="margin:0 0 16px;font-size:34px;line-height:1.25;font-weight:700;">
+      Thank You, ${name}!
+    </h1>
+
+    <p style="max-width:420px;margin:0 auto 28px;font-size:15px;line-height:1.6;color:#000;">
+      Thanks for reaching out to Coco Living.<br/><br/>
+      We’ve received your message and we’re on it! Whether you're looking for a peaceful study space, a fun community vibe, or just the perfect place to call home — we’ll help you find it.
+    </p>
+
+    <p style="max-width:420px;margin:0 auto 32px;font-size:15px;line-height:1.6;color:#000;">
+      Our team will get back to you soon.
+    </p>
+
+    <a href="https://staging.cocoliving.in/"
+    style="display:inline-block;padding:14px 32px;background:#D36517;
+    color:#fff;text-decoration:none;border-radius:24px;font-weight:600;">
+      Explore Coco Living
+    </a>
+  </div>
+</td>
+</tr>
+
+<!-- Footer - aligned with other templates -->
+<tr>
+<td align="center" style="background:#4a2f1b;color:#fff;
+padding:28px 20px;font-size:12px;line-height:1.6;">
+  <div>© ${CURRENT_YEAR} COCO LIVING</div>
+  <div>The Spark Tower S.G. Highway, Ahmedabad</div>
+  <div>
+    <img src="cid:phone" width="9"/> +91-7041454455
+    &nbsp;
+    <img src="cid:mail" width="10"/> info@cocoliving.in
+  </div>
+  <div style="margin:10px 0;">
+    <a href="https://cocoliving.in/privacy-policy" style="color:#fff;">Privacy Policy</a>
+    &nbsp;&nbsp;
+    <a href="https://cocoliving.in/terms-and-conditions" style="color:#fff;">Terms & Conditions</a>
+  </div>
+  <div>
+    <img src="cid:instagram" width="18"/>
+    <img src="cid:facebook" width="18"/>
+    <img src="cid:linkedin" width="18"/>
+  </div>
+</td>
+</tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>
+    `;
+
+    // Important: Add the same attachments as your other branded emails
+    const attachments = [
+      { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
+      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' },
+      { filename: 'phone.png', path: path.join(__dirname, 'assets/phone-icon.png'), cid: 'phone' },
+      { filename: 'mail.png', path: path.join(__dirname, 'assets/mail-icon.png'), cid: 'mail' },
+      { filename: 'instagram.png', path: path.join(__dirname, 'assets/instagram.png'), cid: 'instagram' },
+      { filename: 'facebook.png', path: path.join(__dirname, 'assets/facebook.png'), cid: 'facebook' },
+      { filename: 'linkedin.png', path: path.join(__dirname, 'assets/linkedin.png'), cid: 'linkedin' },
+    ];
 
     const info = await transporter.sendMail({
-      from: `Cocoliving Team <${process.env.SMTP_USER}>`,
-      to: email, // This is the recipient of the thank you email
+      from: `CocoLiving Team <${process.env.SMTP_USER}>`,
+      to: email,
       subject: "Thank You For Your Inquiry!",
       html: htmlContent,
+      attachments: attachments,   // ← added
     });
 
     console.log('Thank you email sent:', info.response);
@@ -179,7 +288,6 @@ const sendThankYouEmail = async (name, email) => {
     console.error('Error sending thank you email:', error);
   }
 };
-
 // 3. For sending a Job Application Recieved Email
 const sendJobApplicationEmail = async (applicant) => {
   try {

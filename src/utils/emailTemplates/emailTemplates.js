@@ -1,6 +1,8 @@
 // utils/emailTemplates.js
 const path = require('path');
 
+const CURRENT_YEAR = new Date().getFullYear();
+
 // ---------- COMMON ATTACHMENTS ----------
 const baseAttachments = [
   { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
@@ -97,7 +99,7 @@ border-radius:10px;height:140px;font-weight:500;">
 <tr>
 <td align="center" style="background:#4a2f1b;color:#fff;
 padding:28px 20px;font-size:12px;line-height:1.6;">
-  <div>© 2025 COCO LIVING</div>
+  <div>© ${CURRENT_YEAR} COCO LIVING</div>
   <div>The Spark Tower S.G. Highway, Ahmedabad</div>
   <div>
     <img src="cid:phone" width="9"/> +91-7041454455
@@ -187,7 +189,7 @@ padding:28px;">
 <tr>
 <td align="center" style="background:#4a2f1b;color:#fff;
 padding:16px;font-size:11px;">
-  © 2025 COCO LIVING
+  © ${CURRENT_YEAR} COCO LIVING
 </td>
 </tr>
 
@@ -252,7 +254,7 @@ function refundInitiatedEmail({ userName, bookingId, propertyName, refundAmount,
 <!-- Footer -->
 <tr>
 <td align="center" style="background:#4a2f1b;color:#fff;padding:28px 20px;font-size:12px;line-height:1.6;">
-<div>© 2025 COCO LIVING</div>
+<div>© ${CURRENT_YEAR} COCO LIVING</div>
 <div>The Spark Tower S.G. Highway, Ahmedabad</div>
 <div>
 <img src="cid:phone" width="9"/> +91-7041454455
@@ -329,7 +331,7 @@ function refundCompletedEmail({ userName, bookingId, propertyName, refundAmount 
 <!-- Same footer -->
 <tr>
 <td align="center" style="background:#4a2f1b;color:#fff;padding:28px 20px;font-size:12px;line-height:1.6;">
-<div>© 2025 COCO LIVING</div>
+<div>© ${CURRENT_YEAR} COCO LIVING</div>
 <!-- ... same as above ... -->
 </td>
 </tr>
@@ -425,7 +427,7 @@ padding:28px;">
 <tr>
 <td align="center" style="background:#4a2f1b;color:#fff;
 padding:16px;font-size:11px;">
-  © 2025 COCO LIVING
+ © ${CURRENT_YEAR} COCO LIVING
 </td>
 </tr>
 
@@ -488,7 +490,7 @@ We look forward to welcoming you.
 
 <tr>
 <td align="center" style="background:#4a2f1b;color:#fff;padding:28px 20px;font-size:12px;">
-© 2025 COCO LIVING
+© ${CURRENT_YEAR} COCO LIVING
 </td>
 </tr>
 
@@ -559,7 +561,7 @@ Pay Security Deposit
 
 <tr>
 <td align="center" style="background:#4a2f1b;color:#fff;padding:28px 20px;font-size:12px;">
-© 2025 COCO LIVING
+© ${CURRENT_YEAR} COCO LIVING
 </td>
 </tr>
 
@@ -639,7 +641,7 @@ If you have any questions regarding this invoice, feel free to contact our suppo
 
 <tr>
 <td align="center" style="background:#4a2f1b;color:#fff;padding:28px 20px;font-size:12px;line-height:1.6;">
-<div>© 2025 COCO LIVING</div>
+<div>© ${CURRENT_YEAR} COCO LIVING</div>
 <div>The Spark Tower S.G. Highway, Ahmedabad</div>
 
 <div>
@@ -747,7 +749,7 @@ Generated automatically by Coco Living System.
 
 <tr>
 <td align="center" style="background:#4a2f1b;color:#fff;padding:28px 20px;font-size:12px;line-height:1.6;">
-<div>© 2026 COCO LIVING</div>
+<div>© ${CURRENT_YEAR} COCO LIVING</div>
 <div>The Spark Tower S.G. Highway, Ahmedabad</div>
 <div>
 <img src="cid:phone" width="9"/> +91-7041454455
@@ -830,7 +832,7 @@ Apply this code at checkout to enjoy your discount. Don't wait, book your stay n
 
 <tr>
 <td align="center" style="background:#4a2f1b;color:#fff;padding:28px 20px;font-size:12px;">
-© 2026 COCO LIVING
+© ${CURRENT_YEAR} COCO LIVING
 </td>
 </tr>
 
