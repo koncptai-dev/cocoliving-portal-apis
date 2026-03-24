@@ -73,10 +73,10 @@ exports.sendPushNotification = async (userId, title, body, data = {}, type) => {
             where: { userId, title, message: body, notificationKey: type }
         });
 
-        if (exists) {
-            console.log("⚠️ Duplicate notification blocked");
-            return false;
-        }
+        // if (exists) {
+        //     console.log("⚠️ Duplicate notification blocked");
+        //     return false;
+        // }
 
         console.log("🚀 Sending notification via Firebase...");
 
