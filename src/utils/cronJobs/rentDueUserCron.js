@@ -4,8 +4,12 @@ const Booking = require("../../models/bookRoom");
 const { Op } = require("sequelize");
 
 cron.schedule("*/15 * * * *", async () => {
+  console.log("\n🕒 Running Rent Due Cron...");
+
   try {
     const today = new Date();
+    console.log("📅 Today:", today);
+
     const bookings = await Booking.findAll({
       where: {
         monthlyPlanSelected: true,
@@ -15,14 +19,14 @@ cron.schedule("*/15 * * * *", async () => {
       }
     });
 
+    console.log("📦 Bookings found:", bookings.length);
+
     for (const booking of bookings) {
-      try {
-        await notifyRentDue(booking);
-      } catch (err) {
-        console.error("Rent notification failed:", err.message);
-      }
+      console.log("➡️ Processing booking:", booking.id);
+      await notifyRentDue(booking);
     }
+
   } catch (err) {
-    console.error("Rent cron error:", err.message);
+    console.error("🔥 Rent cron error:", err.message);
   }
 });

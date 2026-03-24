@@ -3,8 +3,11 @@ const ScheduledVisit = require("../../models/scheduledVisit");
 const { notifyVisitToday } = require("../notificationService");
 
 cron.schedule("*/15 * * * *", async () => {
+  console.log("\n🕒 Running Visit Cron...");
+
   try {
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date().toLocaleDateString("en-CA");
+    console.log("📅 Today:", today);
 
     const visits = await ScheduledVisit.findAll({
       where: {
@@ -13,14 +16,14 @@ cron.schedule("*/15 * * * *", async () => {
       }
     });
 
+    console.log("📦 Visits found:", visits.length);
+
     for (const visit of visits) {
-      try {
-        await notifyVisitToday(visit);
-      } catch (err) {
-        console.error("Visit notification failed:", err.message);
-      }
+      console.log("➡️ Processing visit:", visit.id);
+      await notifyVisitToday(visit);
     }
+
   } catch (err) {
-    console.error("Visit cron error:", err.message);
+    console.error("🔥 Visit cron error:", err.message);
   }
 });

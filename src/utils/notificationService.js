@@ -14,35 +14,35 @@ async function getUserAndProperty(booking) {
 }
 
 exports.notifyVisitToday = async (visit) => {
+  console.log("\n==== notifyVisitToday ====");
+  console.log("Visit:", visit?.id);
+
   if (!visit) return;
 
   let user = null;
 
-  // 1. Try phone match (priority)
   if (visit.phone) {
-    user = await User.findOne({
-      where: {
-        phone: visit.phone
-      }
-    });
+    console.log("Trying phone:", visit.phone);
+    user = await User.findOne({ where: { phone: visit.phone } });
   }
 
-  // 2. If not found → try email
   if (!user && visit.email) {
+    console.log("Trying email:", visit.email);
     user = await User.findOne({
-      where: {
-        email: {
-          [Op.iLike]: visit.email
-        }
-      }
+      where: { email: { [Op.iLike]: visit.email } }
     });
   }
 
-  // 3. If still not found → exit
-  if (!user) return;
+  if (!user) {
+    console.log("❌ No user found for visit:", visit.id);
+    return;
+  }
+
+  console.log("✅ User found:", user.id);
 
   const firstName = user.fullName?.split(" ")[0] || "User";
   const propertyName = visit.propertyName || "your property";
+
   await sendPushNotification(
     user.id,
     "Visit Reminder",
@@ -53,8 +53,17 @@ exports.notifyVisitToday = async (visit) => {
 };
 
 exports.notifyCheckInReminder = async (booking) => {
+  console.log("\n==== notifyCheckInReminder ====");
+  console.log("Booking:", booking?.id);
+
   const { user, propertyName } = await getUserAndProperty(booking);
-  if (!user) return;
+
+  if (!user) {
+    console.log("❌ User not found for booking:", booking?.id);
+    return;
+  }
+
+  console.log("✅ User found:", user.id);
 
   await sendPushNotification(
     user.id,
@@ -93,12 +102,21 @@ exports.notifySecurityDeposit = async (booking) => {
 };
 
 exports.notifyRentDue = async (booking) => {
+  console.log("\n==== notifyRentDue ====");
+  console.log("Booking:", booking?.id);
+
   const user = await User.findByPk(booking.userId);
-  if (!user) return;
+
+  if (!user) {
+    console.log("❌ User not found for booking:", booking?.id);
+    return;
+  }
+
+  console.log("✅ User found:", user.id);
 
   const now = new Date();
   const formatted = now.toLocaleString("en-IN", { month: "short", year: "numeric" });
-  
+
   await sendPushNotification(
     user.id,
     "Rent Due",
@@ -141,8 +159,17 @@ exports.notifyGuestRequest = async (guestRequest) => {
 };
 
 exports.notifyTenureEnding = async (booking) => {
+  console.log("\n==== notifyTenureEnding ====");
+  console.log("Booking:", booking?.id);
+
   const user = await User.findByPk(booking.userId);
-  if (!user) return;
+
+  if (!user) {
+    console.log("❌ User not found for booking:", booking?.id);
+    return;
+  }
+
+  console.log("✅ User found:", user.id);
 
   await sendPushNotification(
     user.id,
