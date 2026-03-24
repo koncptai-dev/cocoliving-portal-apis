@@ -25,17 +25,19 @@ exports.smsSender = async (phone, type, data) => {
   let apiEndpoint = "";
   if (type === "otp") {
 
-    const randomHash = generateRandomHash(); //portal
-
-    message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED`;
-    if (
-      data.platform === "android" &&
-      data.appHash &&
-      typeof data.appHash === "string" &&
-      data.appHash.length === 11 &&
-      allowedAndroidHashes.includes(data.appHash)
-    ) {
-      message += `\n${data.appHash}`;
+    if( data.platform && data.platform === "ios"){
+      message = `${data.otp} is your CoCo Living verification code`;
+    }else{
+      message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED`;
+      if (
+        data.platform === "android" &&
+        data.appHash &&
+        typeof data.appHash === "string" &&
+        data.appHash.length === 11 &&
+        allowedAndroidHashes.includes(data.appHash)
+      ) {
+        message += `\n${data.appHash}`;
+      }
     }
 
     apiEndpoint = otpApiEndpoint;
