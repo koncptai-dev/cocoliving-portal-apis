@@ -292,7 +292,7 @@ exports.validateProperty = [
   check("name")
     .notEmpty()
     .withMessage("Property name is required")
-    .matches(/^[A-Za-z\s]+$/)
+    .matches(/^[A-Za-z0-9\s|().'-]+$/)
     .withMessage("Property name must contain only letters and spaces")
     .isLength({ min: 3, max: 100 })
     .withMessage("Property name must be between 3 and 100 characters"),

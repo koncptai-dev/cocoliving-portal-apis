@@ -7,16 +7,29 @@ const Notification = require('../models/notifications');
 
 //push notification 
 exports.sendPushNotification = async (userId, title, body, data = {}, type) => {
-    try {
+    console.log("\n================ PUSH NOTIFICATION START ================");
+    console.log({ userId, title, body, type, data });
 
+    try {
         const user = await User.findByPk(userId);
-        if (!user || !user.fcmToken) {
+
+        if (!user) {
+            console.log("❌ User not found:", userId);
             return false;
         }
 
+        if (!user.fcmToken) {
+            console.log("❌ Missing FCM token for user:", userId);
+            return false;
+        }
+
+        console.log("✅ User found. FCM Token:", user.fcmToken);
+
         // Fetch or create notification settings
         let settings = await UserNotificationSettings.findOne({ where: { userId } });
+
         if (!settings) {
+            console.log("⚠️ No settings found. Creating default...");
             settings = await UserNotificationSettings.create({
                 userId,
                 pushNotifications: true,
@@ -25,14 +38,14 @@ exports.sendPushNotification = async (userId, title, body, data = {}, type) => {
                 email: true
             });
         }
-        console.log('Notification settings for user:', userId, settings.toJSON());
 
-        //check for global push disable
+        console.log("📌 Notification settings:", settings.toJSON());
+
         if (!settings.enableAll) {
-            console.log(`All notifications disabled globally for user ${userId}`);
+            console.log("❌ Global notifications disabled for user:", userId);
             return false;
         }
-        // Type-specific check from JSON
+
         const typeMapping = {
             pushNotifications: 'pushNotifications',
             email: 'email',
@@ -40,28 +53,36 @@ exports.sendPushNotification = async (userId, title, body, data = {}, type) => {
         };
 
         const settingField = typeMapping[type];
+
         if (settingField && !settings[settingField]) {
-            console.log(`User ${userId} has disabled ${type} notifications`);
+            console.log(`❌ ${type} notifications disabled for user ${userId}`);
             return false;
         }
 
         const message = {
             token: user.fcmToken,
             notification: { title, body },
-            data: data || {}, // optional key value data
+            data: data || {},
         };
 
+        console.log("📤 Prepared Firebase message:", message);
 
-        // Check if notification already exists (duplicate prevention)
+        // Duplicate check
+        console.log("🔍 Checking duplicate notification...");
         const exists = await Notification.findOne({
             where: { userId, title, message: body, notificationKey: type }
         });
+
         if (exists) {
+            console.log("⚠️ Duplicate notification blocked");
             return false;
         }
 
+        console.log("🚀 Sending notification via Firebase...");
+
         await admin.messaging().send(message);
-        console.log(`Notification sent to user ${userId}: ${title} - ${body}`);
+
+        console.log(`✅ Notification sent to user ${userId}`);
 
         await Notification.create({
             userId,
@@ -69,15 +90,21 @@ exports.sendPushNotification = async (userId, title, body, data = {}, type) => {
             message: body,
             notificationKey: type
         });
+
+        console.log("📝 Notification saved in DB");
+
+        console.log("================ PUSH NOTIFICATION END ================\n");
+
     } catch (error) {
         const firebaseError = error?.errorInfo?.code;
+
         if (firebaseError) {
             const cleanMsg = firebaseError.replace('messaging/', '').replace(/-/g, ' ');
-            console.error(`Firebase error for user ${userId}: ${cleanMsg}`);
+            console.error(`🔥 Firebase error for user ${userId}:`, cleanMsg);
             return false;
         }
-        console.error(`Error sending notification to user ${userId}:`, error.message);
+
+        console.error(`🔥 General error for user ${userId}:`, error);
         return false;
     }
-}
-
+};
