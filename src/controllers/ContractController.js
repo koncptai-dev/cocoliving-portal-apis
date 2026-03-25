@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const puppeteer = require("puppeteer");
+const { PDFDocument } = require("pdf-lib");
 const { Booking, User, Rooms, Property, Contract } = require("../models");
 const { mailsender } = require("../utils/emailService");
 const { securityDepositPaymentEmail } = require("../utils/emailTemplates/emailTemplates");
@@ -190,15 +191,6 @@ exports.signContract = async (req, res) => {
     });
 
     booking.contractStatus = "SIGNED";
-
-    // Store signatures in meta to allow re-rendering with admin sign
-    if (!booking.meta) booking.meta = {};
-    booking.meta.signatures = {
-      tenant: tenantSigBase64,
-      guardian: guardianSigBase64
-    };
-    booking.changed('meta', true);
-
     await booking.save();
 
     // Cleanup temp signature files immediately
@@ -241,24 +233,45 @@ exports.adminSignContract = async (req, res) => {
     const contract = await Contract.findOne({ where: { bookingId } });
     if (!contract) return res.status(404).json({ message: "Contract record not found" });
 
-    // Prepare Admin signature
+    // 1. Get the uploaded admin signature image
     const adminSigPath = req.files.adminSignature[0].path;
-    const adminSigBase64 = fs.readFileSync(adminSigPath).toString("base64");
+    const adminImageBytes = fs.readFileSync(adminSigPath);
 
-    // Get signatures from meta and add admin sign
-    const signatures = booking.meta?.signatures || {};
-    signatures.admin = adminSigBase64;
+    // 2. Load the existing tenant-signed PDF
+    const existingPdfBytes = fs.readFileSync(contract.signedPdfPath);
+    const pdfDoc = await PDFDocument.load(existingPdfBytes);
 
-    // RE-RENDER (Same method as tenant - Perfect alignment)
-    const pdfBuffer = await renderContractPdf(booking, signatures);
+    // 3. Embed the new admin signature (handle both png and jpg)
+    let adminImage;
+    if (adminSigPath.toLowerCase().endsWith('.png') || adminImageBytes[0] === 0x89) {
+      adminImage = await pdfDoc.embedPng(adminImageBytes);
+    } else {
+      adminImage = await pdfDoc.embedJpg(adminImageBytes);
+    }
 
-    // Overwrite the signed PDF
+    // 4. Get the last page of the PDF
+    const pages = pdfDoc.getPages();
+    const lastPage = pages[pages.length - 1];
+
+    // Scale image down if it's too big, max 150x60
+    const { width, height } = adminImage.scaleToFit(150, 60);
+
+    // 5. STAMP the signature onto the last page!
+    // Since we added `page-break-before: always` to the HTML, the signature
+    // box is now GUARANTEED to be at the exact same Y-coordinate on the last page!
+    // -> 0,0 is the BOTTOM-LEFT of the page.
+    lastPage.drawImage(adminImage, {
+      x: 55,    // Aligns perfectly with the left padding of the box
+      y: 229,   // Aligns perfectly right on top of the signature line
+      width: width,
+      height: height,
+    });
+
+    // 6. Save the newly stamped PDF, overwriting the old one.
+    const pdfBuffer = await pdfDoc.save();
     fs.writeFileSync(contract.signedPdfPath, pdfBuffer);
 
-    // Update status and store admin sig in meta (for record/consistency)
-    if (!booking.meta) booking.meta = {};
-    booking.meta.signatures = signatures;
-    booking.changed('meta', true);
+    // Update status 
     booking.adminContractStatus = "SIGNED";
     await booking.save();
 
