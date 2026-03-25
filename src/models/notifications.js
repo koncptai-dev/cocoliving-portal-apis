@@ -22,6 +22,11 @@ const Notification = sequelize.define("Notification", {
     type: DataTypes.STRING,  
     allowNull: true         // newsletter | push | email | event
   },
+  dedupeKey: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    unique: true
+  }
 },
   {
     tableName: "notifications",

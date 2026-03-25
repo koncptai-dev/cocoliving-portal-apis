@@ -6,7 +6,7 @@ const { logApiCall } = require("../helpers/auditLog");
 const Notification = require('../models/notifications');
 
 //push notification 
-exports.sendPushNotification = async (userId, title, body, data = {}, type) => {
+exports.sendPushNotification = async (userId, title, body, data = {}, type, dedupeKey = null ) => {
     console.log("\n================ PUSH NOTIFICATION START ================");
     console.log({ userId, title, body, type, data });
 
@@ -67,16 +67,18 @@ exports.sendPushNotification = async (userId, title, body, data = {}, type) => {
 
         console.log("📤 Prepared Firebase message:", message);
 
-        // Duplicate check
-        console.log("🔍 Checking duplicate notification...");
-        const exists = await Notification.findOne({
-            where: { userId, title, message: body, notificationKey: type }
-        });
+        if (dedupeKey) {
+            console.log("🔍 Checking duplicate via dedupeKey:", dedupeKey);
 
-        // if (exists) {
-        //     console.log("⚠️ Duplicate notification blocked");
-        //     return false;
-        // }
+            const exists = await Notification.findOne({
+                where: { dedupeKey }
+            });
+
+            if (exists) {
+                console.log("⚠️ Duplicate blocked via dedupeKey");
+                return false;
+            }
+        }
 
         console.log("🚀 Sending notification via Firebase...");
 
@@ -88,7 +90,8 @@ exports.sendPushNotification = async (userId, title, body, data = {}, type) => {
             userId,
             title,
             message: body,
-            notificationKey: type
+            notificationKey: type,
+            dedupeKey
         });
 
         console.log("📝 Notification saved in DB");

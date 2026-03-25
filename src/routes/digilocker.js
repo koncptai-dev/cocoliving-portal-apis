@@ -14,15 +14,9 @@ const API_BASE_URL = process.env.IDTO_BASE_URL_PROD || "https://prod.idto.ai/ver
 const API_KEY = process.env.IDTO_API_KEY;
 const CLIENT_ID = process.env.IDTO_CLIENT_ID;
 
-console.log("========== DIGILOCKER CONFIG ==========");
-console.log("API_BASE_URL:", API_BASE_URL);
-console.log("API_KEY present:", API_KEY ? true : false);
-console.log("CLIENT_ID present:", CLIENT_ID ? true : false);
-console.log("=======================================");
 
 const validateConfig = (req, res, next) => {
 
-  console.log("validateConfig middleware triggered");
 
   if (!API_KEY || !CLIENT_ID) {
 
@@ -32,11 +26,9 @@ const validateConfig = (req, res, next) => {
 
     return res.status(500).json({
       error: "Server configuration error",
-      message: "API_KEY and CLIENT_ID must be set in environment variables",
     });
   }
 
-  console.log("API credentials verified");
 
   next();
 };
@@ -46,11 +38,6 @@ const makeIdtoRequest = async (
   acceptHeader
 ) => {
 
-  console.log("========== IDTO REQUEST ==========");
-  console.log("Endpoint:", endpoint);
-  console.log("URL:", `${API_BASE_URL}${endpoint}`);
-  console.log("Payload:", data);
-  console.log("Accept Header:", acceptHeader || "application/json");
 
   try {
 
@@ -67,15 +54,11 @@ const makeIdtoRequest = async (
       responseType: "json",
     });
 
-    console.log("IDTO Response Status:", response.status);
-    console.log("IDTO Response Data:", response.data);
-    console.log("===================================");
 
     return response.data;
 
   } catch (error) {
 
-    console.error("========== IDTO ERROR ==========");
 
     if (error.response) {
 
@@ -99,9 +82,6 @@ const makeIdtoRequest = async (
 };
 
 router.post("/verify-account", authMiddleware, validateConfig, async (req, res) => {
-  console.log("========== VERIFY ACCOUNT ROUTE ==========");
-  console.log("Request body:", req.body);
-  console.log("User:", req.user);
   try {
     const { mobile_number } = req.body;
 
@@ -112,11 +92,9 @@ router.post("/verify-account", authMiddleware, validateConfig, async (req, res) 
       });
     }
 
-    console.log("Calling IDTO verify_account API...");
     const result = await makeIdtoRequest("/verify_account", {
       mobile_number: mobile_number,
     });
-    console.log("verify_account result:", result);
 
     res.json({
       success: true,
@@ -133,10 +111,6 @@ router.post("/verify-account", authMiddleware, validateConfig, async (req, res) 
 });
 
 router.post("/initiate-session", authMiddleware, upload.fields([ { name: "aadhaar_front", maxCount: 1 }, { name: "aadhaar_back", maxCount: 1 }, ]), validateConfig, async (req, res) => {
-  console.log("========== INITIATE SESSION ==========");
-  console.log("User:", req.user);
-  console.log("Body:", req.body);
-  console.log("Files:", req.files);
   try {
     const userId = req.user.id;
     const role = req.user.role; 
@@ -148,11 +122,8 @@ router.post("/initiate-session", authMiddleware, upload.fields([ { name: "aadhaa
       });
     }
     let kyc = await UserKYC.findOne({ where: { userId,role } });
-    console.log("Existing KYC:", kyc);
     const aadhaarFrontImage = `/uploads/kycDocuments/${req.files.aadhaar_front[0].filename}`;
     const aadhaarBackImage  = `/uploads/kycDocuments/${req.files.aadhaar_back[0].filename}`;
-    console.log("Aadhaar Front Path:", aadhaarFrontImage);
-    console.log("Aadhaar Back Path:", aadhaarBackImage);
 
     if (kyc) {
       await kyc.update({
@@ -198,10 +169,6 @@ router.post("/initiate-session", authMiddleware, upload.fields([ { name: "aadhaa
     }
     const normalizedConsent = consent === true || consent === "true";
     const normalizedRedirect = redirect_to_signup === true || redirect_to_signup === "true";
-    console.log("Calling IDTO initiate_session...");
-    console.log("Consent:", normalizedConsent);
-    console.log("Redirect:", normalizedRedirect);
-    console.log("Documents:", parsedDocuments);
     const result = await makeIdtoRequest("/initiate_session", {
       consent: normalizedConsent,
       consent_purpose: consent_purpose,
@@ -209,7 +176,6 @@ router.post("/initiate-session", authMiddleware, upload.fields([ { name: "aadhaa
       redirect_to_signup: normalizedRedirect,
       documents_for_consent: parsedDocuments,
     });
-    console.log("initiate_session result:", result);
 
     res.json({
       success: true,
@@ -225,8 +191,6 @@ router.post("/initiate-session", authMiddleware, upload.fields([ { name: "aadhaa
 });
 
 router.post("/get-reference", validateConfig, async (req, res) => {
-  console.log("========== GET REFERENCE ==========");
-  console.log("Body:", req.body);
   try {
     const { code, code_verifier } = req.body;
 
@@ -237,12 +201,10 @@ router.post("/get-reference", validateConfig, async (req, res) => {
       });
     }
 
-    console.log("Calling IDTO get_reference...");
     const result = await makeIdtoRequest("/get_reference", {
       code: code,
       code_verifier: code_verifier,
     });
-    console.log("Reference response:", result);
 
     res.json({
       success: true,
@@ -258,15 +220,11 @@ router.post("/get-reference", validateConfig, async (req, res) => {
 });
 
 router.post("/fetch-aadhaar", validateConfig, authMiddleware, async (req, res) => {
-  console.log("========== FETCH AADHAAR ==========");
-  console.log("User:", req.user);
-  console.log("Body:", req.body);
   try {
     const { reference_key } = req.body;
     const userId = req.user.id;
     const role = req.user.role;
 
-    console.log("Role verified:", role);
     /*  Role check (same as PAN) */
     if (![2, 3].includes(role)) {
       return res.status(403).json({
@@ -288,7 +246,6 @@ router.post("/fetch-aadhaar", validateConfig, authMiddleware, async (req, res) =
       where: { userId, role },
     });
 
-    console.log("Existing KYC record:", existingKyc);
     if (existingKyc && existingKyc.ekycStatus === "verified") {
       return res.status(200).json({
         success: true,
@@ -302,14 +259,10 @@ router.post("/fetch-aadhaar", validateConfig, authMiddleware, async (req, res) =
     const user = await User.findByPk(userId);
     const fullName = user?.fullName;
 
-    console.log("User fetched:", user);
-    console.log("User fullName:", fullName);
     if (!fullName) {
       return res.status(400).json({ success: false, message: "Full name is missing in user profile" });
     }
 
-    console.log("Calling IDTO fetch_aadhaar...");
-    console.log("Reference key:", reference_key);
     //call idto adhar api
     const result = await makeIdtoRequest(
       "/fetch_aadhaar",
@@ -319,12 +272,10 @@ router.post("/fetch-aadhaar", validateConfig, authMiddleware, async (req, res) =
       "application/xml"
     );
 
-    console.log("Raw Aadhaar XML:", result);
     //parse XML
     const parser = new xml2js.Parser({ explicitArray: false });
     const aadhaarData = await parser.parseStringPromise(result);
 
-    console.log("Parsed Aadhaar data:", aadhaarData);
     const uidData = aadhaarData.Certificate.CertificateData.KycRes.UidData;
 
     console.log("UID Data:", uidData);
@@ -356,25 +307,15 @@ router.post("/fetch-aadhaar", validateConfig, authMiddleware, async (req, res) =
       vtc: poa.$.vtc,
     };
 
-    console.log("Extracted Aadhaar Details:", details);
     const last4 = String(uidData.$.uid).slice(-4);
 
     const kycRes = aadhaarData.Certificate.CertificateData.KycRes;
     const idtoVerified = kycRes?.$?.ret === "Y";
 
-    console.log("IDTO Verified:", idtoVerified);
-    //name match
-    console.log("Calling nameMatchService...");
-    console.log("Profile Name:", fullName);
-    console.log("Aadhaar Name:", aadhaarName);
     const nameMatchResult = await nameMatchService(fullName, aadhaarName);
     
     const { matchScore, matched } = nameMatchResult;
 
-    console.log("Name Match Result:", nameMatchResult);
-    console.log("Match Score:", matchScore);
-    console.log("Matched:", matched);
-    //decision
     const storeResult = idtoVerified && matchScore >= 60;
     const ekycStatus = storeResult ? "verified" : "not-verified";
 
@@ -389,9 +330,6 @@ router.post("/fetch-aadhaar", validateConfig, authMiddleware, async (req, res) =
       failureReason = "Aadhaar verification failed at IDTO";
     }
 
-    console.log("Store Result:", storeResult);
-    console.log("ekycStatus:", ekycStatus);
-    console.log("failureReason:", failureReason);
     const [kycRecord, created] = await UserKYC.findOrCreate({
       where: { userId, role },
       defaults: {
@@ -420,8 +358,6 @@ router.post("/fetch-aadhaar", validateConfig, authMiddleware, async (req, res) =
         adharNameMatched: matched,
       });
     }
-    console.log("KYC Record:", kycRecord);
-    console.log("Created:", created);
 
     res.json({
       success: true,
@@ -441,8 +377,6 @@ router.post("/fetch-aadhaar", validateConfig, authMiddleware, async (req, res) =
 );
 
 router.get("/aadhaar-status", authMiddleware, async (req, res) => {
-  console.log("========== AADHAAR STATUS ==========");
-  console.log("User:", req.user);
   try {
     const userId = req.user.id;
     const role = req.user.role;
@@ -459,7 +393,6 @@ router.get("/aadhaar-status", authMiddleware, async (req, res) => {
       return res.json({ success: true, ekycStatus: "not-verified" });
     }
 
-    console.log("KYC Record:", kycRecord);
     res.json({
       success: true,
       ekycStatus: kycRecord.ekycStatus || "not-verified",
