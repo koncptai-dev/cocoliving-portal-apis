@@ -42,13 +42,15 @@ exports.notifyVisitToday = async (visit) => {
 
   const firstName = user.fullName?.split(" ")[0] || "User";
   const propertyName = visit.propertyName || "your property";
+  const dedupeKey = `visit_${visit.id}`;
 
   await sendPushNotification(
     user.id,
     "Visit Reminder",
     `Hi ${firstName}, you have a scheduled visit today at ${propertyName}. [VisitID:${visit.id}]`,
     { type: "visit_today", visitId: visit.id.toString() },
-    "pushNotifications"
+    "pushNotifications",
+    dedupeKey
   );
 };
 
@@ -64,13 +66,15 @@ exports.notifyCheckInReminder = async (booking) => {
   }
 
   console.log("✅ User found:", user.id);
+  const dedupeKey = `checkin_${booking.id}_${booking.checkInDate}`;
 
   await sendPushNotification(
     user.id,
     "Check-in Reminder",
     `We are ready to welcome you to ${propertyName} on ${booking.checkInDate}. Please make sure to have any pending documents ready with you.`,
     { type: "checkin_reminder", bookingId: booking.id.toString() },
-    "pushNotifications"
+    "pushNotifications",
+    dedupeKey
   );
 };
 
@@ -116,13 +120,16 @@ exports.notifyRentDue = async (booking) => {
 
   const now = new Date();
   const formatted = now.toLocaleString("en-IN", { month: "short", year: "numeric" });
+  const month = new Date().toISOString().slice(0, 7);
+  const dedupeKey = `rent_${booking.id}_${month}`;
 
   await sendPushNotification(
     user.id,
     "Rent Due",
     `Today is the last day to pay rent. Please pay to avoid late fees. [${formatted}]`,
     { type: "rent_due_last_day", bookingId: booking.id.toString() },
-    "pushNotifications"
+    "pushNotifications",
+    dedupeKey
   );
 };
 
@@ -170,12 +177,14 @@ exports.notifyTenureEnding = async (booking) => {
   }
 
   console.log("✅ User found:", user.id);
+  const dedupeKey = `tenure_${booking.id}_${booking.checkOutDate}`;
 
   await sendPushNotification(
     user.id,
     "Tenure Ending",
     `Re-book your room before current tenure ends to continue living the CoCo way! [Booking:${booking.id}]`,
     { type: "tenure_ending", bookingId: booking.id.toString() },
-    "pushNotifications"
+    "pushNotifications",
+    dedupeKey
   );
 };
