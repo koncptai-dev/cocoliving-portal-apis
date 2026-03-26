@@ -358,6 +358,29 @@ exports.phonePeWebhook = async (req, res) => {
     const root = parseRoot(req);
     const ctx = normalizeContext(root);
 
+    // ================= REFUND WEBHOOK DEBUG LOG =================
+    if (isRefundEvent(ctx)) {
+      try {
+        console.log('\n================ PHONEPE REFUND WEBHOOK ================');
+        console.log('TIME:', new Date().toISOString());
+        console.log('EVENT:', ctx.eventType);
+        console.log('STATE:', ctx.state);
+
+        console.log('MERCHANT REFUND ID:', ctx.merchantRefundId);
+        console.log('PHONEPE REFUND ID:', ctx.payload?.refundId);
+
+        console.log('ORIGINAL ORDER ID:', ctx.payload?.originalMerchantOrderId);
+
+        console.log('FULL PAYLOAD:\n', JSON.stringify(root, null, 2));
+
+        console.log('HEADERS:\n', JSON.stringify(req.headers, null, 2));
+        console.log('========================================================\n');
+
+      } catch (err) {
+        console.error('[REFUND WEBHOOK LOG ERROR]', err);
+      }
+    }
+    // ============================================================
     if (!ctx.merchantOrderId && !ctx.merchantRefundId) {
       return res.status(200).json({ message: 'Webhook processed (no merchant identifiers)' });
     }
