@@ -12,7 +12,7 @@ const authorizePage = require("../middleware/authorizePage");
 router.post('/add',validateRooms,validate,authMiddleware, authorizeRole(1,3), authorizePage("Room Management","write"), RoomController.AddRooms);
 router.put('/edit/:id',editRoomsValidate,validate, authMiddleware,authorizeRole(1,3), authorizePage("Room Management","write"), RoomController.EditRooms);
 router.delete('/delete/:id',authMiddleware, authorizeRole(1,3), authorizePage("Room Management","write"), RoomController.DeleteRooms);
-router.get('/getall',authMiddleware, authorizeRole(1,3), authorizePage("Room Management","read"), RoomController.getAllRooms);
+router.get('/getall',authMiddleware, authorizeRole(1,3),  RoomController.getAllRooms);
 router.get('/occupants/:roomId', authMiddleware, authorizeRole(1,3), RoomController.getRoomOccupants);
 
 router.get('/getAll/:propertyId', RoomController.getRoomsByProperty);
