@@ -10,33 +10,21 @@ const smsApiEndpoint = "https://onlysms.co.in/api/sms.aspx";
 const allowedAndroidHashes = process.env.ANDROID_APP_HASHES
   ? process.env.ANDROID_APP_HASHES.split(",").map(h => h.trim())
   : [];
-// Random hash generator
-function generateRandomHash(length = 11) {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-  let hash = '';
-  for (let i = 0; i < length; i++) {
-    hash += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return hash;
-}
 
 exports.smsSender = async (phone, type, data) => {
-  let message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED`;
+  let message = "";
   let apiEndpoint = "";
   if (type === "otp") {
 
-    if( data.platform === "ios"){
-      message = `${data.otp} is your CoCo Living verification code`;
-    }else{
-      if (
-        data.platform === "android" &&
-        data.appHash &&
-        typeof data.appHash === "string" &&
-        data.appHash.length === 11 &&
-        allowedAndroidHashes.includes(data.appHash)
-      ) {
-        message += `\n${data.appHash}`;
-      }
+    message = `Dear user, your OTP is ${data.otp}. - COLLAB COLONY PRIVATE LIMITED`;
+    if (
+      data.platform === "android" &&
+      data.appHash &&
+      typeof data.appHash === "string" &&
+      data.appHash.length === 11 &&
+      allowedAndroidHashes.includes(data.appHash)
+    ) {
+      message += `\n${data.appHash}`;
     }
 
     apiEndpoint = otpApiEndpoint;
