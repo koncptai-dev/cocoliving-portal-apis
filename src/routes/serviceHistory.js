@@ -16,14 +16,10 @@ router.get(
 );
 
 // update an existing record
-router.put("/record/:id", authenticateToken, controller.updateServiceRecord);
+router.put("/record/:id", authenticateToken, authorizeRole(1,3), controller.updateServiceRecord);
 
 // delete a service record
-router.delete(
-  "/:inventoryId/record/:id",
-  authenticateToken,
-  controller.deleteServiceRecord
-);
+router.delete("/:inventoryId/record/:id", authenticateToken,authorizeRole(1,3),controller.deleteServiceRecord );
 
 
 module.exports = router;
