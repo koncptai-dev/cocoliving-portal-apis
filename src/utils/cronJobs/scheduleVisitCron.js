@@ -2,7 +2,8 @@ const cron = require("node-cron");
 const ScheduledVisit = require("../../models/scheduledVisit");
 const { notifyVisitToday } = require("../notificationService");
 
-cron.schedule("*/15 * * * *", async () => {
+const schedule = process.env.CRON_SCHEDULE_VISIT || "0 8 * * *";
+cron.schedule(schedule, async () => {
   console.log("\n🕒 Running Visit Cron...");
 
   try {
@@ -26,4 +27,6 @@ cron.schedule("*/15 * * * *", async () => {
   } catch (err) {
     console.error("🔥 Visit cron error:", err.message);
   }
+},{
+  timezone: "Asia/Kolkata"
 });
