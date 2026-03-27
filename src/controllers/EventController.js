@@ -3,6 +3,7 @@ const Events = require('../models/events');
 const Booking = require('../models/bookRoom');
 const EventParticipation = require('../models/eventParticipation');
 const User = require('../models/user');
+const Rooms = require('../models/rooms');
 const { Op } = require('sequelize');
 const { Property } = require('../models');
 const { logApiCall } = require("../helpers/auditLog");
@@ -246,61 +247,79 @@ exports.deleteEvent = async (req, res) => {
   }
 }
 
-// exports.getEventParticipants = async (req, res) => {
-//   try {
-//     const events = await Events.findAll({
-//       include: [{
-//           model: EventParticipation,
-//           include: [{
-//               model: User, attributes: ["id", "fullName"]},]},
-//         {
-//           model: Property,
-//           as: "property",
-//           attributes: ["id", "name"]
-//         }
-//       ]
-//     });
+exports.getEventParticipants = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const participants = await EventParticipation.findAll({
+      where: {
+        eventId,
+        status: "attending" // ✅ only attending
+      },
+      include: [
+        {
+          model: User,
+          attributes: ["id", "fullName", "email", "phone"],
+          include: [
+            {
+              model: Booking,
+              as: "bookings",
+              required: false,
+              where: {
+                checkInDate: { [Op.lte]: today },
+                checkOutDate: { [Op.gte]: today }
+              },
+              include: [
+                {
+                  model: Rooms,
+                  as: "room",
+                  include: [
+                    {
+                      model: Property,
+                      as: "property",
+                      attributes: ["id", "name"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      order: [["createdAt", "DESC"]]
+    });
 
-//     // const allUsers = await User.findAll({ where: { userType: { [Op.ne]: 'admin' } }, attributes: ["id", "fullName"] });
+    const formatted = participants.map(p => {
+      const user = p.User;
+      const booking = user?.bookings?.[0];
 
-//     const formatted = events.map(event => {
-//       // const joinedUsersIds = event.EventParticipations.map(p => p.User?.id);
+      const room = booking?.room;
+      const property = room?.property;
 
-//       //user based on property filter
-//       // let filteredUsers = event.propertyId ? allUsers.filter(u => u.propertyId === event.propertyId) : allUsers;
+      return {
+        id: user?.id,
+        fullName: user?.fullName,
+        email: user?.email,
+        phone: user?.phone,
+        joinedAt: p.createdAt,
 
-//       // Combine joined and not-joined users
-//       // const participantsData = [
-//       //   ...event.EventParticipations.map(p => ({
-//       //     name: p.User?.fullName, status: p.status === "active" ? "active" : "inactive"
-//       //   })),
-//       //   ...filteredUsers.filter(u => !joinedUsersIds.includes(u.id))
-//       //     .map(u => ({
-//       //       name: u.fullName,
-//       //       status: "inactive"
-//       //     }))
-//       // ];
+        roomId: room?.id || null,
+        roomNumber: room?.roomNumber || "-",
+        roomName: room?.name || "-",
 
-//       // For each participant, create a separate event object
-//       return {
-//         id: event.id,
-//         title: event.title,
-//         eventDate: event.eventDate,
-//         location: event.location,
-//         maxParticipants: event.maxParticipants,
-//         is_active: event.is_active,
-//         property: event.property ? { id: event.property.id, name: event.property.name } : "NA",
-//         // participants: participantsData,
-//         description: event.description || ''
-//       };
-//     });
+        propertyId: property?.id || null,
+        propertyName: property?.name || "-"
+      };
+    });
 
-//     res.json(formatted);
+    res.json({ participants: formatted });
 
-//   } catch (err) {
-//     res.status(500).json({ error: err.message });
-//   }
-// };
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
 
 exports.getAllEvents = async (req, res) => {
   try {

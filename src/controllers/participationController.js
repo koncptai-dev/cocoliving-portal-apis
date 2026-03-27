@@ -26,6 +26,37 @@ exports.joinEvent = async (req, res) => {
       status = "attending";
     }
 
+    if (status === "attending") {
+      const attendingCount = await EventParticipation.count({
+        where: {
+          eventId,
+          status: {
+            [Op.in]: ["attending", "active"]
+          }
+        }
+      });
+
+      const existing = await EventParticipation.findOne({
+        where: { eventId, userId }
+      });
+
+      const alreadyAttending = existing?.status === "attending";
+
+      if (!alreadyAttending && attendingCount >= event.maxParticipants) {
+        await logApiCall(
+          req,
+          res,
+          400,
+          `Join failed - event full (ID: ${eventId})`,
+          "event",
+          parseInt(eventId)
+        );
+
+        return res.status(400).json({
+          message: "Event is full. Maximum participants reached."
+        });
+      }
+    }
     // upsert (insert if not exist, update if exists)
     const [participation, created] = await EventParticipation.findOrCreate({
       where: { eventId, userId },
