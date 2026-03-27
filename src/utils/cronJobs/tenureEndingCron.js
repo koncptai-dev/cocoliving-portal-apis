@@ -2,7 +2,7 @@ const cron = require("node-cron");
 const { notifyTenureEnding } = require("../notificationService");
 const Booking = require("../../models/bookRoom");
 
-cron.schedule("*/15 * * * *", async () => {
+cron.schedule("0 8 * * *", async () => {
   console.log("\n🕒 Running Tenure Ending Cron...");
 
   try {
@@ -31,4 +31,6 @@ cron.schedule("*/15 * * * *", async () => {
   } catch (err) {
     console.error("🔥 Tenure cron error:", err.message);
   }
+},{
+  timezone: "Asia/Kolkata"
 });

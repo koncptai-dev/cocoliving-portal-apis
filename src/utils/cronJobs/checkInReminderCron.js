@@ -2,7 +2,7 @@ const cron = require("node-cron");
 const Booking = require("../../models/bookRoom");
 const { notifyCheckInReminder } = require("../notificationService");
 
-cron.schedule("*/15 * * * *", async () => {
+cron.schedule("0 8 * * *", async () => {
   console.log("\n🕒 Running Check-in Cron...");
 
   try {
@@ -29,4 +29,6 @@ cron.schedule("*/15 * * * *", async () => {
   } catch (err) {
     console.error("🔥 Check-in cron error:", err.message);
   }
+},{
+  timezone: "Asia/Kolkata"
 });

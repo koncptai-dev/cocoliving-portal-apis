@@ -3,7 +3,7 @@ const { notifyRentDue } = require("../notificationService");
 const Booking = require("../../models/bookRoom");
 const { Op } = require("sequelize");
 
-cron.schedule("*/15 * * * *", async () => {
+cron.schedule("0 8 7 * *", async () => {
   console.log("\n🕒 Running Rent Due Cron...");
 
   try {
@@ -29,4 +29,6 @@ cron.schedule("*/15 * * * *", async () => {
   } catch (err) {
     console.error("🔥 Rent cron error:", err.message);
   }
+},{
+  timezone: "Asia/Kolkata"
 });
