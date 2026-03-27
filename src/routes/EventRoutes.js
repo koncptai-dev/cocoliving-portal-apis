@@ -24,8 +24,7 @@ router.get('/admin/getAllEvents', authMiddleware, authorizeRole(1,3), authorizeP
 //delete event by admin
 router.delete('/delete/:eventId', authMiddleware, authorizeRole(1,3), authorizePage("Event Management", "write"), EventController.deleteEvent);
 
-// admin list dekhega
-// router.get("/admin/eventparticipants", EventController.getEventParticipants);
+router.get( "/:eventId/participants", authMiddleware, authorizeRole(1, 3), authorizePage("Event Management", "read"), EventController.getEventParticipants );
 
 // user join karega
 router.post("/:eventId/join", authMiddleware, authorizeRole(2), joinEvent);
