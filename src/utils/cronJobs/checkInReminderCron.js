@@ -2,7 +2,8 @@ const cron = require("node-cron");
 const Booking = require("../../models/bookRoom");
 const { notifyCheckInReminder } = require("../notificationService");
 
-cron.schedule("0 8 * * *", async () => {
+const schedule = process.env.CRON_CHECKIN || "0 8 * * *";
+cron.schedule(schedule, async () => {
   console.log("\n🕒 Running Check-in Cron...");
 
   try {

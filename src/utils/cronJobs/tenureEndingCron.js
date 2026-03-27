@@ -2,7 +2,8 @@ const cron = require("node-cron");
 const { notifyTenureEnding } = require("../notificationService");
 const Booking = require("../../models/bookRoom");
 
-cron.schedule("0 8 * * *", async () => {
+const schedule = process.env.CRON_TENURE_ENDING || "0 8 * * *";
+cron.schedule(schedule, async () => {
   console.log("\n🕒 Running Tenure Ending Cron...");
 
   try {
