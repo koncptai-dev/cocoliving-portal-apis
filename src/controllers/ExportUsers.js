@@ -133,8 +133,8 @@ exports.exportPropertyUsersZip = async (req, res) => {
 
       // -------- PAN FRONT --------
       if (kyc.panFrontImage) {
-        const panPath = path.join(uploadBasePath, kyc.panFrontImage);
-
+        const panFile = path.basename(kyc.panFrontImage);
+        const panPath = path.join(uploadBasePath, panFile);
         if (fs.existsSync(panPath)) {
           const ext = path.extname(kyc.panFrontImage);
           archive.file(panPath, {
@@ -145,11 +145,8 @@ exports.exportPropertyUsersZip = async (req, res) => {
 
       // -------- AADHAAR FRONT --------
       if (kyc.aadhaarFrontImage) {
-        const aadhaarFrontPath = path.join(
-          uploadBasePath,
-          kyc.aadhaarFrontImage
-        );
-
+        const aadhaarFrontFile = path.basename(kyc.aadhaarFrontImage);
+        const aadhaarFrontPath = path.join(uploadBasePath, aadhaarFrontFile);
         if (fs.existsSync(aadhaarFrontPath)) {
           const ext = path.extname(kyc.aadhaarFrontImage);
           archive.file(aadhaarFrontPath, {
@@ -160,11 +157,8 @@ exports.exportPropertyUsersZip = async (req, res) => {
 
       // -------- AADHAAR BACK --------
       if (kyc.aadhaarBackImage) {
-        const aadhaarBackPath = path.join(
-          uploadBasePath,
-          kyc.aadhaarBackImage
-        );
-
+        const aadhaarBackFile = path.basename(kyc.aadhaarBackImage);
+        const aadhaarBackPath = path.join(uploadBasePath, aadhaarBackFile);
         if (fs.existsSync(aadhaarBackPath)) {
           const ext = path.extname(kyc.aadhaarBackImage);
           archive.file(aadhaarBackPath, {
