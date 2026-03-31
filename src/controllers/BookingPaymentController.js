@@ -223,13 +223,13 @@ exports.initiate = async (req, res) => {
         console.warn('[BookingPaymentController] expire-old-tx error', err);
       }
     }
-
-    const totalAmountRupees = rebuiltMeta.monthlyRent * rebuiltMeta.duration + rebuiltMeta.securityDeposit;
+    let rentAmount = rebuiltMeta.monthlyRent * rebuiltMeta.duration ;
+    const totalAmountRupees = rentAmount + rebuiltMeta.securityDeposit;
 
     let baseAmountRupees =
       rebuiltMeta.bookingType === "PREBOOK"
         ? 5000
-        : totalAmountRupees;
+        : rentAmount;
 
     let discountApplied = 0;
     let appliedCoupon = null;
@@ -287,17 +287,34 @@ exports.initiate = async (req, res) => {
 
       discountApplied = Math.round(discountApplied);
 
-      if (discountApplied >= baseAmountRupees) {
-        return res.status(400).json({
-          success: false,
-          message: "Discount cannot be applied"
-        });
+      if ( rebuiltMeta.bookingType === "PREBOOK" ){
+        if( discountApplied >= baseAmountRupees ){
+          return res.status(400).json({
+            success : false,
+            message : "Discount cannot be applied ( Payable amount must be atleast ₹1 )"
+          })
+        }
       }
+      if( rebuiltMeta.bookingType === "BOOK" ){
+        if( discountApplied > baseAmountRupees ){
+          return res.status(400).json({
+            success : false,
+            message : "Discount exceeds rent amount"
+          })
+        }
+      }
+
 
       appliedCoupon = coupon;
     }
+    let payableAmountRupees;
 
-    let payableAmountRupees = baseAmountRupees - discountApplied;
+    if (rebuiltMeta.bookingType === "PREBOOK") {
+      payableAmountRupees = baseAmountRupees - discountApplied;
+    } else {
+      payableAmountRupees =
+        (rentAmount - discountApplied) + rebuiltMeta.securityDeposit;
+    }
     const amountPaise = paiseFromRupees(payableAmountRupees);
 
     const tx = await PaymentTransaction.create({

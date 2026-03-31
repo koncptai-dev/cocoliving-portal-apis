@@ -33,6 +33,8 @@ const resolveCreatorRole = (user) => {
   return 'unknown';
 };
 
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
 const applyLazyExpiry = async (visits) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -145,7 +147,7 @@ exports.createGuestVisit = async (req, res) => {
       status: 'scheduled',
     });
 
-    if (guestEmail) {
+    if (guestEmail && isValidEmail(guestEmail)) {
       console.log(guestEmail);
 
       const qrBuffer = await generateQrBuffer(qrToken);
