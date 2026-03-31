@@ -71,11 +71,10 @@ exports.validateLogin = [
 
 exports.validateEvent = [
   check("title")
-    .matches(/^[A-Za-z\s.'-]+$/)
-    .withMessage("Title Contains Characters")
+    .trim()
     .isLength({ min: 2 })
-    .notEmpty()
-    .withMessage("Title is required"),
+    .withMessage("Title must be at least 2 characters")
+    .notEmpty(),
   check("eventDate")
     .isDate()
     .withMessage("Invalid event date")
@@ -101,11 +100,8 @@ exports.validateEvent = [
     .notEmpty()
     .withMessage("Max participants is required"),
   check("description")
-    .optional({ checkFalsy: true })
-    .matches(/^[A-Za-z\s.'-]+$/)
-    .withMessage("Contains Characters")
-    .isLength({ max: 500 })
-    .withMessage("Description must be under 500 characters"),
+  .optional({ checkFalsy: true })
+  .isLength({ max: 500 }),
 ];
 
 exports.validateRooms = [
@@ -253,22 +249,17 @@ exports.addUserValidate = [
 
 exports.validateAnnouncement = [
   check("title")
+    .trim()
     .notEmpty()
     .withMessage("Title is required")
     .isLength({ min: 3, max: 100 })
-    .withMessage("Title must be between 3 and 100 characters")
-    .matches(/^[A-Za-z0-9\s.'-]+$/)
-    .withMessage(
-      "Title must contain only letters, numbers, spaces, and basic punctuation"
-    ),
+    .withMessage("Title must be between 3 and 100 characters"),
 
   body("priority")
     .notEmpty()
     .withMessage("Priority is required")
     .isString()
     .withMessage("Priority must be a string")
-    .matches(/^[A-Za-z\s]+$/)
-    .withMessage("Priority must contain only alphabets")
     .trim(),
 
   check("audience")
@@ -276,8 +267,6 @@ exports.validateAnnouncement = [
     .withMessage("Audience is required")
     .isString()
     .withMessage("Audience must be a string")
-    .matches(/^[A-Za-z\s]+$/)
-    .withMessage("Audience must contain only alphabets")
     .trim(),
 
   check("content")

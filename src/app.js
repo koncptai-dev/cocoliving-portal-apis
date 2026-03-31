@@ -2,6 +2,7 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const sequelize = require("./config/database");
+const sanitize = require("./middleware/sanitize");
 const app = express();
 app.set("trust proxy", 1);
 const admin = require("./routes/AdminRoutes");
@@ -45,7 +46,8 @@ const ScheduledVisitRoutes = require("./routes/ScheduledVisitRoutes");
 const ContractRoutes = require('./routes/ContractsRoutes');
 const ExportRoutes = require("./routes/ExportRoutes");
 const CouponRoute = require('./routes/CouponRoute');
-const BlogRoutes = require("./routes/blogRoutes");   // ← add this
+const BlogRoutes = require("./routes/blogRoutes");
+
 // cron job for admin notifications about users with pending rent
 require('./utils/rentDetailsCron');
 
@@ -71,6 +73,7 @@ app.post(
 );
 
 app.use(bodyParser.json());
+app.use(sanitize);
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.use("/api/admin", admin);
