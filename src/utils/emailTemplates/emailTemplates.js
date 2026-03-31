@@ -1,7 +1,8 @@
-// utils/emailTemplates.js
 const path = require('path');
 
 const CURRENT_YEAR = new Date().getFullYear();
+
+const BASE_URL = process.env.BASE_URL;
 
 // ---------- COMMON ATTACHMENTS ----------
 const baseAttachments = [
@@ -16,6 +17,54 @@ const baseAttachments = [
   { filename: 'facebook.png', path: path.join(__dirname, 'assets/facebook.png'), cid: 'facebook' },
   { filename: 'linkedin.png', path: path.join(__dirname, 'assets/linkedin.png'), cid: 'linkedin' },
 ];
+
+const FOOTER_ATTACHMENTS = [
+  { filename: 'phone.png', path: path.join(__dirname, 'assets/phone-icon.png'), cid: 'phone' },
+  { filename: 'mail.png', path: path.join(__dirname, 'assets/mail-icon.png'), cid: 'mail' },
+  { filename: 'instagram.png', path: path.join(__dirname, 'assets/instagram.png'), cid: 'instagram' },
+  { filename: 'facebook.png', path: path.join(__dirname, 'assets/facebook.png'), cid: 'facebook' },
+  { filename: 'linkedin.png', path: path.join(__dirname, 'assets/linkedin.png'), cid: 'linkedin' }
+];
+
+const FOOTER = `
+<tr>
+<td align="center" style="background:#4a2f1b;color:#fff;
+padding:28px 20px;font-size:12px;line-height:1.6;">
+
+  <div>© ${CURRENT_YEAR} COCO LIVING</div>
+  <div>The Spark Tower S.G. Highway, Ahmedabad</div>
+
+  <div>
+    <img src="cid:phone" width="9"/> +91-7041454455
+    &nbsp;
+    <img src="cid:mail" width="10"/> info@cocoliving.in
+  </div>
+
+  <div style="margin-top:6px;">
+    Mon - Sat: 10:00 AM - 7:00 PM
+  </div>
+
+  <div style="margin:10px 0;">
+    <a href="${BASE_URL}/privacy-policy" style="color:#fff;">Privacy Policy</a>
+    &nbsp;&nbsp;
+    <a href="${BASE_URL}/terms-and-conditions" style="color:#fff;">Terms & Conditions</a>
+  </div>
+
+ <div>
+    <a href="https://www.instagram.com/cocoliving.in/">
+      <img src="cid:instagram" width="18"/>
+    </a>
+    <a href="https://www.facebook.com/people/COCO-Living/">
+      <img src="cid:facebook" width="18"/>
+    </a>
+    <a href="https://in.linkedin.com/company/collabcolony">
+      <img src="cid:linkedin" width="18"/>
+    </a>
+  </div>
+
+</td>
+</tr>
+`;
 
 // ---------- WELCOME EMAIL ----------
 function welcomeEmail() {
@@ -58,7 +107,7 @@ padding:28px 28px 90px;">
       smart living, and community come together.
     </p>
 
-    <a href="https://staging.cocoliving.in/"
+    <a href="${BASE_URL}"
     style="display:inline-block;padding:14px 32px;background:#D36517;
     color:#fff;text-decoration:none;border-radius:24px;font-weight:600;">
       Explore Your New Home
@@ -96,45 +145,26 @@ border-radius:10px;height:140px;font-weight:500;">
 </td>
 </tr>
 
-<tr>
-<td align="center" style="background:#4a2f1b;color:#fff;
-padding:28px 20px;font-size:12px;line-height:1.6;">
-  <div>© ${CURRENT_YEAR} COCO LIVING</div>
-  <div>The Spark Tower S.G. Highway, Ahmedabad</div>
-  <div>
-    <img src="cid:phone" width="9"/> +91-7041454455
-    &nbsp;
-    <img src="cid:mail" width="10"/> info@cocoliving.in
-  </div>
-  <div style="margin:10px 0;">
-    <a href="https://cocoliving.in/privacy-policy" style="color:#fff;">Privacy Policy</a>
-    &nbsp;&nbsp;
-    <a href="https://cocoliving.in/terms-and-conditions" style="color:#fff;">Terms & Conditions</a>
-  </div>
-  <div>
-    <img src="cid:instagram" width="18"/>
-    <img src="cid:facebook" width="18"/>
-    <img src="cid:linkedin" width="18"/>
-  </div>
-</td>
-</tr>
+${FOOTER}
 
 </table>
 </td></tr>
 </table>
 </body>
 </html>
-`,
-  };
-}
+`
+  };  
+};
+
 
 // ---------- OTP EMAIL (REDESIGNED) ----------
 function otpEmail({ otp }) {
   return {
     attachments: [
       { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
-      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' }]
-    ,
+      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' },
+      ...FOOTER_ATTACHMENTS
+    ],
     html: `
 <!DOCTYPE html>
 <html>
@@ -186,12 +216,7 @@ padding:28px;">
 </td>
 </tr>
 
-<tr>
-<td align="center" style="background:#4a2f1b;color:#fff;
-padding:16px;font-size:11px;">
-  © ${CURRENT_YEAR} COCO LIVING
-</td>
-</tr>
+${FOOTER}
 
 </table>
 </td></tr>
@@ -205,7 +230,7 @@ padding:16px;font-size:11px;">
 function refundInitiatedEmail({ userName, bookingId, propertyName, refundAmount, reason }) {
   return {
     attachments: baseAttachments,
-    html: `
+    html :`
 <!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8" /></head>
@@ -244,43 +269,22 @@ function refundInitiatedEmail({ userName, bookingId, propertyName, refundAmount,
       Thank you for choosing Coco Living. We hope to welcome you soon!
 </p>
  
-    <a href="https://staging.cocoliving.in/" style="display:inline-block;padding:14px 32px;background:#D36517;color:#fff;text-decoration:none;border-radius:24px;font-weight:600;">
+    <a href="${BASE_URL}" style="display:inline-block;padding:14px 32px;background:#D36517;color:#fff;text-decoration:none;border-radius:24px;font-weight:600;">
       Explore Rooms Again
 </a>
 </div>
 </td>
 </tr>
  
-<!-- Footer -->
-<tr>
-<td align="center" style="background:#4a2f1b;color:#fff;padding:28px 20px;font-size:12px;line-height:1.6;">
-<div>© ${CURRENT_YEAR} COCO LIVING</div>
-<div>The Spark Tower S.G. Highway, Ahmedabad</div>
-<div>
-<img src="cid:phone" width="9"/> +91-7041454455
-&nbsp;
-<img src="cid:mail" width="10"/> info@cocoliving.in
-</div>
-<div style="margin:10px 0;">
-<a href="https://cocoliving.in/privacy-policy" style="color:#fff;">Privacy Policy</a>
-&nbsp;&nbsp;
-<a href="https://cocoliving.in/terms-and-conditions" style="color:#fff;">Terms & Conditions</a>
-</div>
-<div>
-<img src="cid:instagram" width="18"/>
-<img src="cid:facebook" width="18"/>
-<img src="cid:linkedin" width="18"/>
-</div>
-</td>
-</tr>
+${FOOTER}
  
 </table>
 </td></tr></table>
 </body>
 </html>
-    `,
-  };
-}
+    ` 
+  };  
+};
 
 function refundCompletedEmail({ userName, bookingId, propertyName, refundAmount }) {
   return {
@@ -321,43 +325,30 @@ function refundCompletedEmail({ userName, bookingId, propertyName, refundAmount 
       We hope to see you again soon at Coco Living!
 </p>
  
-    <a href="https://staging.cocoliving.in/" style="display:inline-block;padding:14px 32px;background:#D36517;color:#fff;text-decoration:none;border-radius:24px;font-weight:600;">
+    <a href="${BASE_URL}" style="display:inline-block;padding:14px 32px;background:#D36517;color:#fff;text-decoration:none;border-radius:24px;font-weight:600;">
       Book Your Next Stay
 </a>
 </div>
 </td>
 </tr>
  
-<!-- Same footer -->
-<tr>
-<td align="center" style="background:#4a2f1b;color:#fff;padding:28px 20px;font-size:12px;line-height:1.6;">
-<div>© ${CURRENT_YEAR} COCO LIVING</div>
-<!-- ... same as above ... -->
-</td>
-</tr>
+${FOOTER}
  
 </table>
 </td></tr></table>
 </body>
 </html>
-    `,
-  };
-}
+    `
+  };  
+};
 
 // ----------ADMIN CREDENTIALS ----------
 function adminCredentialsEmail({ fullName, email, password }) {
   return {
     attachments: [
-      {
-        filename: "logo.png",
-        path: path.join(__dirname, "assets/logo.png"),
-        cid: "logo",
-      },
-      {
-        filename: "bg-pattern.png",
-        path: path.join(__dirname, "assets/bg-pattern.png"),
-        cid: "bg",
-      },
+      { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
+      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' },
+      ...FOOTER_ATTACHMENTS
     ],
     html: `
 <!DOCTYPE html>
@@ -407,7 +398,7 @@ padding:28px;">
     Password: <strong>${password}</strong>
   </div>
 
-  <a href="${process.env.ADMIN_LOGIN_URL}"
+  <a href="${BASE_URL}/admin-login"
      style="
       display:inline-block;
       margin-top:20px;
@@ -424,28 +415,24 @@ padding:28px;">
 </td>
 </tr>
 
-<tr>
-<td align="center" style="background:#4a2f1b;color:#fff;
-padding:16px;font-size:11px;">
- © ${CURRENT_YEAR} COCO LIVING
-</td>
-</tr>
+${FOOTER}
 
 </table>
 </td></tr>
 </table>
 </body>
 </html>
-`,
-  };
-}
+`
+  };  
+};
 
 // schedule visit
 function scheduledVisitEmail({ name, visitDate }) {
   return {
     attachments: [
       { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
-      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' }
+      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' },
+      ...FOOTER_ATTACHMENTS
     ],
     html: `
 <!DOCTYPE html>
@@ -488,17 +475,13 @@ We look forward to welcoming you.
 </td>
 </tr>
 
-<tr>
-<td align="center" style="background:#4a2f1b;color:#fff;padding:28px 20px;font-size:12px;">
-© ${CURRENT_YEAR} COCO LIVING
-</td>
-</tr>
+${FOOTER}
 
 </table>
 </td></tr></table>
 </body>
 </html>
-    `,
+`
   };
 }
 
@@ -550,7 +533,7 @@ To complete your booking process, please pay the
 Please visit your <strong>My Booking</strong> page to complete the payment.
 </div>
 
-<a href="https://staging.cocoliving.in/my-bookings"
+<a href="${BASE_URL}/my-bookings"
 style="display:inline-block;padding:14px 32px;background:#D36517;color:#fff;text-decoration:none;border-radius:24px;font-weight:600;">
 Pay Security Deposit
 </a>
@@ -559,11 +542,7 @@ Pay Security Deposit
 </td>
 </tr>
 
-<tr>
-<td align="center" style="background:#4a2f1b;color:#fff;padding:28px 20px;font-size:12px;">
-© ${CURRENT_YEAR} COCO LIVING
-</td>
-</tr>
+${FOOTER}
 
 </table>
 </td></tr></table>
@@ -582,7 +561,8 @@ function invoiceEmail({
   return {
     attachments: [
       { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
-      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' }
+      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' },
+      ...FOOTER_ATTACHMENTS
     ],
     html: `
 <!DOCTYPE html>
@@ -639,38 +619,14 @@ If you have any questions regarding this invoice, feel free to contact our suppo
 </td>
 </tr>
 
-<tr>
-<td align="center" style="background:#4a2f1b;color:#fff;padding:28px 20px;font-size:12px;line-height:1.6;">
-<div>© ${CURRENT_YEAR} COCO LIVING</div>
-<div>The Spark Tower S.G. Highway, Ahmedabad</div>
-
-<div>
-<img src="cid:phone" width="9"/> +91-7041454455
-&nbsp;
-<img src="cid:mail" width="10"/> info@cocoliving.in
-</div>
-
-<div style="margin:10px 0;">
-<a href="https://cocoliving.in/privacy-policy" style="color:#fff;">Privacy Policy</a>
-&nbsp;&nbsp;
-<a href="https://cocoliving.in/terms-and-conditions" style="color:#fff;">Terms & Conditions</a>
-</div>
-
-<div>
-<img src="cid:instagram" width="18"/>
-<img src="cid:facebook" width="18"/>
-<img src="cid:linkedin" width="18"/>
-</div>
-
-</td>
-</tr>
+${FOOTER}
 
 </table>
 </td></tr>
 </table>
 </body>
 </html>
-`,
+`
   };
 }
 
@@ -680,11 +636,7 @@ function rentDueAdminEmail({ reportMonth, tableRows, hasOverdue }) {
     attachments: [
       { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
       { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' },
-      { filename: 'phone.png', path: path.join(__dirname, 'assets/phone-icon.png'), cid: 'phone' },
-      { filename: 'mail.png', path: path.join(__dirname, 'assets/mail-icon.png'), cid: 'mail' },
-      { filename: 'instagram.png', path: path.join(__dirname, 'assets/instagram.png'), cid: 'instagram' },
-      { filename: 'facebook.png', path: path.join(__dirname, 'assets/facebook.png'), cid: 'facebook' },
-      { filename: 'linkedin.png', path: path.join(__dirname, 'assets/linkedin.png'), cid: 'linkedin' }
+      ...FOOTER_ATTACHMENTS
     ],
     html: `
 <!DOCTYPE html>
@@ -747,34 +699,14 @@ Generated automatically by Coco Living System.
 </td>
 </tr>
 
-<tr>
-<td align="center" style="background:#4a2f1b;color:#fff;padding:28px 20px;font-size:12px;line-height:1.6;">
-<div>© ${CURRENT_YEAR} COCO LIVING</div>
-<div>The Spark Tower S.G. Highway, Ahmedabad</div>
-<div>
-<img src="cid:phone" width="9"/> +91-7041454455
-&nbsp;
-<img src="cid:mail" width="10"/> info@cocoliving.in
-</div>
-<div style="margin:10px 0;">
-<a href="https://cocoliving.in/privacy-policy" style="color:#fff;">Privacy Policy</a>
-&nbsp;&nbsp;
-<a href="https://cocoliving.in/terms-and-conditions" style="color:#fff;">Terms & Conditions</a>
-</div>
-<div>
-<img src="cid:instagram" width="18"/>
-<img src="cid:facebook" width="18"/>
-<img src="cid:linkedin" width="18"/>
-</div>
-</td>
-</tr>
+${FOOTER}
 
 </table>
 </td></tr>
 </table>
 </body>
 </html>
-`,
+`
   };
 }
 
@@ -786,7 +718,8 @@ function couponShareEmail({ title, code, discountValue, discountType, propertyNa
   return {
     attachments: [
       { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
-      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' }
+      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' },
+      ...FOOTER_ATTACHMENTS
     ],
     html: `
 <!DOCTYPE html>
@@ -830,17 +763,13 @@ Apply this code at checkout to enjoy your discount. Don't wait, book your stay n
 </td>
 </tr>
 
-<tr>
-<td align="center" style="background:#4a2f1b;color:#fff;padding:28px 20px;font-size:12px;">
-© ${CURRENT_YEAR} COCO LIVING
-</td>
-</tr>
+${FOOTER}
 
 </table>
 </td></tr></table>
 </body>
 </html>
-    `,
+    `
   };
 }
 

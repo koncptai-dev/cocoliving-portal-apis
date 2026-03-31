@@ -2,7 +2,7 @@ const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
 
 const EventParticipation = sequelize.define("EventParticipation", {
-   eventId: {
+  eventId: {
     type: DataTypes.INTEGER,
     allowNull: false
   },
