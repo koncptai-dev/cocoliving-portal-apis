@@ -339,7 +339,11 @@ exports.getReport = async (req, res) => {
         occupancyRate: parseFloat(pOccupancyRate),
       });
     }
-
+    const mergedGraphData = graphRevenue.map((rev, index) => ({
+      period: rev.month,
+      revenue: rev.revenue,
+      occupancyRate: graphOccupancy[index]?.occupancyRate || 0,
+    }));
     res.status(200).json({
       message: "Report fetched successfully",
       completeRevenue: Math.max(0, timelineRevenue),
@@ -350,6 +354,7 @@ exports.getReport = async (req, res) => {
         revenue: graphRevenue,
         roomOccupancy: graphOccupancy,
       },
+      reportTable: mergedGraphData,
     });
     await logApiCall(req, res, 200, "Viewed report data with timeline: " + timeline, "dashboard");
   } catch (error) {
