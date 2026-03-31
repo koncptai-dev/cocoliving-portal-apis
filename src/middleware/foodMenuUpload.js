@@ -34,7 +34,7 @@ const upload = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: 500 * 1024, // 500 KB limit
+    fileSize: 2 * 1024 * 1024,
   },
 }).array("photos", 1); 
 
@@ -42,7 +42,7 @@ const uploadFoodImages = (req, res, next) => {
   upload(req, res, function (err) {
     if (err instanceof multer.MulterError) {
       if (err.code === "LIMIT_FILE_SIZE") {
-        return res.status(400).json({ message: "A photo exceeded the 500KB maximum size limit. Please upload a smaller image." });
+        return res.status(400).json({ message: "A photo exceeded the 2MB maximum size limit. Please upload a smaller image." });
       }
       if (err.code === "LIMIT_UNEXPECTED_FILE") {
         return res.status(400).json({ message: "You can only upload a maximum of 1 photo per meal." });
