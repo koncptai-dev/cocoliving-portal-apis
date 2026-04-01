@@ -74,7 +74,7 @@ exports.exportPropertyUsersZip = async (req, res) => {
     ];
 
     uniqueUsers.forEach((user) => {
-      const kyc = user.kyc; // ✅ correct alias
+      const kyc = user.kyc;
 
       worksheet.addRow({
         userId: user.id,
@@ -85,14 +85,14 @@ exports.exportPropertyUsersZip = async (req, res) => {
         collegeName: user.collegeName,
         companyName: user.companyName,
 
-        panNumber: kyc?.panNumber,
-        panStatus: kyc?.panStatus,
-        verifiedAtPan: kyc?.verifiedAtPan,
+        panNumber: kyc?.panNumber || "N/A",
+        panStatus: kyc?.panStatus || "Not Submitted",
+        verifiedAtPan: kyc?.verifiedAtPan || "N/A",
 
-        aadhaarLast4: kyc?.aadhaarLast4,
-        ekycStatus: kyc?.ekycStatus,
-        verifiedAtAadhaar: kyc?.verifiedAtAadhaar,
-        mediaFilename: user.fullname + "-" + user.phone
+        aadhaarLast4: kyc?.aadhaarLast4 || "N/A",
+        ekycStatus: kyc?.ekycStatus || "Not Submitted",
+        verifiedAtAadhaar: kyc?.verifiedAtAadhaar || "N/A",
+        mediaFilename: kyc ? `${user.fullName}-${user.phone}` : "NO_KYC"
       });
     });
 
