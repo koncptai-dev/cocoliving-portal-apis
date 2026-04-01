@@ -320,8 +320,8 @@ exports.validateProperty = [
 exports.editPropertyValidate = [
   check("name")
     .optional()
-    .matches(/^[A-Za-z\s]+$/)
-    .withMessage("Property name must contain only letters and spaces")
+    .matches(/^[A-Za-z0-9\s|().'-]+$/)
+    .withMessage("Property name contains invalid characters")
     .isLength({ min: 3, max: 100 })
     .withMessage("Property name must be between 3 and 100 characters"),
 
