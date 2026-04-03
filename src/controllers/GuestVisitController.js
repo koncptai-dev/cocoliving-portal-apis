@@ -7,6 +7,7 @@ const User = require('../models/user');
 const UserPermission = require('../models/userPermissoin');
 
 const { logApiCall } = require('../helpers/auditLog');
+const { guestQrEmail } = require('../utils/emailTemplates/emailTemplates');
 const { mailsender } = require('../utils/emailService');
 const { generateQrBuffer } = require('../utils/qrGenerator');
 const { notifyGuestRequest } = require("../utils/notificationService");
@@ -151,30 +152,19 @@ exports.createGuestVisit = async (req, res) => {
       console.log(guestEmail);
 
       const qrBuffer = await generateQrBuffer(qrToken);
-      const body = `
-        <p>Hello <b>${guestName}</b>,</p>
-        <p>Your visit is scheduled on <b>${visitDate}</b>.</p>
-        <p>Please present the QR code below at the entrance.</p>
-        <img src="cid:guest-qr" alt="Guest QR" />
-        <p><b>Rules:</b></p>
-        <ul>
-          <li>Valid only for the visit date</li>
-          <li>Single-use</li>
-          <li>Scan required for entry</li>
-        </ul>
-        <p>- COCO Living</p>
-      `;
+      const mail = guestQrEmail({ guestName, visitDate });
 
-      const info = await mailsender(
+      await mailsender(
         guestEmail,
         'COCO Living - Guest Entry QR',
-        body,
+        mail.html,
         [
           {
             filename: 'guest-qr.png',
             content: qrBuffer,
             cid: 'guest-qr',
           },
+          ...mail.attachments
         ]
       );
       //  console.log('Mail sent:', info);

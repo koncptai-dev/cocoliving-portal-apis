@@ -327,9 +327,10 @@ exports.getAvailableRooms = async (req, res) => {
       ]
     });
 
-    const availableRooms = rooms.filter(
-      room => (room.bookings?.length || 0) < room.capacity
-    );
+    const availableRooms = rooms.filter( room => {
+      if (room.status === "unavailable") return false;
+      return (room.bookings?.length || 0) < room.capacity;
+  });
 
     await logApiCall(req, res, 200, `Viewed available rooms (Property ID: ${propertyId}, Room Type: ${roomType})`, "room");
     res.json({ rooms: availableRooms });

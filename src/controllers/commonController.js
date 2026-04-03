@@ -8,7 +8,7 @@ const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
 require('dotenv').config();
 const jwt = require('jsonwebtoken');
-const { mailsender, sendResetEmail } = require('../utils/emailService');
+const { mailsender } = require('../utils/emailService');
 const { logApiCall } = require("../helpers/auditLog");
 const { smsSender } = require('../utils/smsService');
 
@@ -79,7 +79,7 @@ exports.login = async (req, res) => {
         const token = jwt.sign(
             { id: account.id, email: account.email, role: account.role, userType: account.userType },
             process.env.JWT_SECRET,
-            { expiresIn: '1d' }
+            { expiresIn: '7d' }
         );
 
 
@@ -313,7 +313,7 @@ exports.verifyLoginOtp = async (req, res) => {
                     loginAs
                 },
                 process.env.JWT_SECRET,
-                { expiresIn: "1d" }
+                { expiresIn: "7d" }
             );
 
             req.user = { id: user.id, role: user.role };
@@ -454,7 +454,7 @@ exports.verifyLoginOtp = async (req, res) => {
                 loginAs
             },
             process.env.JWT_SECRET,
-            { expiresIn: "1d" }
+            { expiresIn: "7d" }
         );
 
         req.user = { id: user.id, role: user.role };

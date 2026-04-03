@@ -401,7 +401,7 @@ exports.registerUser = async (req, res) => {
         loginAs: "user"
       },
       process.env.JWT_SECRET,
-      { expiresIn: "1d" }
+      { expiresIn: "7d" }
     );
 
     await logApiCall(req, res, 201, `Registered new user: ${fullName} (${email})`, "user", newUser.id);
