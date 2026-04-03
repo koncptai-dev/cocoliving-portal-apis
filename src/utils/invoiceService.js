@@ -8,6 +8,8 @@ const { invoiceEmail } = require("./emailTemplates/emailTemplates");
 
 const { sendEmail } = require("../utils/sendEmail");
 
+const round2 = (num) => Math.round(num * 100) / 100;
+
 function numberToWordsINR(value) {
   const ones = [
     "",
@@ -110,10 +112,18 @@ async function generateAndSendInvoice(transaction) {
 
     const amount = transaction.amount / 100;
 
-    const gst = amount * 0.05;
+    const total = transaction.amount / 100;
+
+    const gst = total * (5 / 105);
     const cgst = gst / 2;
     const sgst = gst / 2;
-    const total = amount + gst;
+    const baseAmount = total - gst;
+
+    const displayBase = round2(baseAmount);
+    const displayCgst = round2(cgst);
+    const displaySgst = round2(sgst);
+    const roundedTotal = Math.round(total);
+
 
     const invoiceNo = `INV-${transaction.id}`;
     const invoiceDateObj = new Date();
@@ -214,14 +224,14 @@ async function generateAndSendInvoice(transaction) {
             <td class="center">9963</td>
             <td class="center">5%</td>
             <td class="amount-cell">
-              ${amount.toFixed(2)}<br />
-              ${cgst.toFixed(2)}<br />
-              ${sgst.toFixed(2)}
+              ${displayBase.toFixed(2)}<br />
+              ${displayCgst.toFixed(2)}<br />
+              ${displaySgst.toFixed(2)}
             </td>
           </tr>
           <tr>
             <td colspan="4" class="right"><strong>Total</strong></td>
-            <td class="amount-cell"><strong>₹ ${total.toFixed(2)}</strong></td>
+            <td class="amount-cell"><strong>₹ ${roundedTotal.toFixed(2)}</strong></td>
           </tr>
         </tbody>
       </table>
