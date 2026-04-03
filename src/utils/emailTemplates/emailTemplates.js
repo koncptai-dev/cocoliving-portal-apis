@@ -229,7 +229,10 @@ ${FOOTER}
 
 function refundInitiatedEmail({ userName, bookingId, propertyName, refundAmount, reason }) {
   return {
-    attachments: baseAttachments,
+    attachments: [
+      { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
+      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' },
+    ],
     html :`
 <!DOCTYPE html>
 <html>
