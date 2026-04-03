@@ -148,7 +148,7 @@ exports.rejectBooking = async (req, res) => {
         }
       });
 
-      room.status = activeBookings > 0 ? "booked" : "available";
+      room.status = activeBookings >= room.capacity ? "booked" : "available";
       await room.save();
     }
 
@@ -224,7 +224,7 @@ exports.cancelBooking = async (req, res) => {
           }
         });
 
-        room.status = active > 0 ? "booked" : "available";
+        room.status = active >= room.capacity ? "booked" : "available";
         await room.save();
       }
     }

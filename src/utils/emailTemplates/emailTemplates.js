@@ -2,7 +2,7 @@ const path = require('path');
 
 const CURRENT_YEAR = new Date().getFullYear();
 
-const BASE_URL = process.env.BASE_URL;
+const BASE_URL = process.env.FRONTEND_BASE_URL;
 
 // ---------- COMMON ATTACHMENTS ----------
 const baseAttachments = [
@@ -229,7 +229,10 @@ ${FOOTER}
 
 function refundInitiatedEmail({ userName, bookingId, propertyName, refundAmount, reason }) {
   return {
-    attachments: baseAttachments,
+    attachments: [
+      { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
+      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' },
+    ],
     html :`
 <!DOCTYPE html>
 <html>
@@ -773,6 +776,87 @@ ${FOOTER}
   };
 }
 
+function onboardingOtpEmail({ otp, userName }) {
+  return {
+    attachments: [
+      { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
+      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' },
+      ...FOOTER_ATTACHMENTS
+    ],
+    html: `
+<!DOCTYPE html>
+<html>
+<body style="margin:0;background:#f3efe9;font-family:'Rethink Sans','Inter',Arial;">
+<table width="100%" align="center"><tr><td align="center">
+
+<table width="420">
+
+<tr>
+<td align="center" style="background:#4F3421;background-image:url(cid:bg);padding:28px;">
+<img src="cid:logo" width="120"/>
+</td>
+</tr>
+
+<tr>
+<td align="center" style="padding:32px 24px;">
+
+<h2>Complete Your Move-in</h2>
+
+<p>
+Hi ${userName},<br/><br/>
+Use this OTP to complete your onboarding process.
+</p>
+
+<div style="font-size:28px;font-weight:700;letter-spacing:6px;background:#fff;padding:16px;border-radius:12px;">
+${otp}
+</div>
+
+<p style="font-size:12px;margin-top:12px;">
+Valid for 5 minutes.
+</p>
+
+</td>
+</tr>
+
+${FOOTER}
+
+</table>
+</td></tr></table>
+</body>
+</html>
+`
+  };
+}
+
+function guestQrEmail({ guestName, visitDate }) {
+  return {
+    attachments: [
+      ...FOOTER_ATTACHMENTS
+    ],
+    html: `
+    <table width="100%">
+    <tr><td>
+<p>Hello <b>${guestName}</b>,</p>
+
+<p>Your visit is scheduled on <b>${visitDate}</b>.</p>
+
+<p>Please present the QR code below at the entrance.</p>
+
+<img src="cid:guest-qr"/>
+
+<p><b>Rules:</b></p>
+<ul>
+<li>Valid only for the visit date</li>
+<li>Single-use</li>
+<li>Scan required</li>
+</ul>
+</td></tr>
+${FOOTER}
+</table>
+`
+  };
+}
+
 module.exports = {
   welcomeEmail,
   otpEmail,
@@ -783,5 +867,9 @@ module.exports = {
   securityDepositPaymentEmail,
   invoiceEmail,
   rentDueAdminEmail,
-  couponShareEmail
+  couponShareEmail,
+  onboardingOtpEmail,
+  guestQrEmail,
+  FOOTER,
+  FOOTER_ATTACHMENTS
 };
