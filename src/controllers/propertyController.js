@@ -601,6 +601,9 @@ exports.getPropertiesForUser = async (req, res) => {
 
     // Fetch all properties with rate cards
     const { rows: properties, count } = await Property.findAndCountAll({
+      where: {
+        is_active: true
+      },
       order: [["createdAt", "DESC"]],
       include: [{ model: PropertyRateCard, as: "rateCard" }, { model: PropertyFloorLayout, as: "floorLayout" }],
       limit,
@@ -620,15 +623,15 @@ exports.getPropertiesForUser = async (req, res) => {
             required: false
           }]
         });
-
+        const validRooms = rooms.filter(r => r.status !== "unavailable");
         // Filter available rooms
-        const availableRooms = rooms.filter( r => (r.capacity - (r.bookings?.length || 0) > 0));
+        const availableRooms = validRooms.filter( r => (r.capacity - (r.bookings?.length || 0) > 0));
 
         return {
           ...rc.dataValues,
-          totalRooms: rooms.length,
+          totalRooms: validRooms.length,
           availableRooms: availableRooms.length,
-          isAvailable: rooms.length > 0 && availableRooms.length > 0
+          isAvailable: validRooms.length > 0 && availableRooms.length > 0
         };
       }));
 

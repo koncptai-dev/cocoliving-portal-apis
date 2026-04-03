@@ -4,7 +4,7 @@ const User = require('../models/user');
 const OTP = require('../models/otp');
 const otpGenerator = require('otp-generator');
 const { smsSender } = require('../utils/smsService');
-const { otpEmail } = require('../utils/emailTemplates/emailTemplates');
+const { onboardingOtpEmail } = require('../utils/emailTemplates/emailTemplates');
 const { mailsender } = require('../utils/emailService');
 const assertAdmin = (role) => role === 1 || role === 3;
 const { notifyOnboardingSuccess } = require('../utils/notificationService');
@@ -132,7 +132,7 @@ exports.completeOnboarding = async (req, res) => {
     expiresAt: new Date(Date.now() + 5 * 60 * 1000),
   });
   if (channel === 'email') {
-    const mail = otpEmail({ otp });
+    const mail = onboardingOtpEmail({ otp , userName: booking.user.fullName });
     await mailsender(
         booking.user.email,
         'Coco Living - Onboarding OTP',
