@@ -139,7 +139,7 @@ exports.initiate = async (req, res) => {
       await logApiCall(req, res, 400, "Initiated booking payment - unauthorized access", "payment");
       return res.status(400).json({ success: false, message: 'Unauthorized Access' });
     }
-    await assertUserKycVerified(userId);
+    // await assertUserKycVerified(userId);
     await assertProfileDetailsComplete(userId);
 
     const { bookingType, couponCode, metadata = {} } = req.body;
