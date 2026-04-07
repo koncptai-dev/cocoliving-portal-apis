@@ -142,12 +142,13 @@ exports.initiate = async (req, res) => {
     // await assertUserKycVerified(userId);
     await assertProfileDetailsComplete(userId);
 
-    const { bookingType, couponCode, metadata = {} } = req.body;
+    const { bookingType, paymentMode = 'FULL', couponCode, metadata = {} } = req.body;
     const {
       preferredFloor = null,
       preferredRoomNumber = null,
       preferredBed = null,
     } = metadata;
+
     if (!metadata.duration || ![6, 12].includes(Number(metadata.duration))) {
       await logApiCall(req, res, 400, "Initiated booking payment - invalid duration", "payment", userId);
       return res.status(400).json({ success: false, message: 'duration must be either 6 or 12 months only' });
@@ -158,6 +159,18 @@ exports.initiate = async (req, res) => {
       return res.status(400).json({ success: false, message: 'bookingType and metadata are required' });
     }
 
+    if (!['FULL', 'MONTHLY'].includes(paymentMode)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid paymentMode'
+      });
+    }
+    if (paymentMode === 'MONTHLY' && couponCode) {
+      return res.status(400).json({
+        success: false,
+        message: "Coupons are not allowed for monthly payment plan"
+      });
+    }
     const rateCard = await PropertyRateCard.findByPk(metadata.rateCardId);
     if (!rateCard) {
       await logApiCall(req, res, 400, "Initiated booking payment - invalid rateCardId", "payment", userId);
@@ -226,15 +239,20 @@ exports.initiate = async (req, res) => {
     let rentAmount = rebuiltMeta.monthlyRent * rebuiltMeta.duration ;
     const totalAmountRupees = rentAmount + rebuiltMeta.securityDeposit;
 
-    let baseAmountRupees =
-      rebuiltMeta.bookingType === "PREBOOK"
-        ? 5000
-        : rentAmount;
-
+    let baseAmountRupees;
+    if (rebuiltMeta.bookingType === "PREBOOK") {
+      baseAmountRupees = 5000;
+    } else if (rebuiltMeta.bookingType === "BOOK") {
+      if (paymentMode === 'MONTHLY') {
+        baseAmountRupees = rebuiltMeta.securityDeposit;
+      } else {
+        baseAmountRupees = rentAmount;
+      }
+    }
     let discountApplied = 0;
     let appliedCoupon = null;
 
-    if (couponCode) {
+    if (couponCode && paymentMode !== 'MONTHLY') {
 
       const coupon = await Coupon.findOne({ where: { code: couponCode } });
 
@@ -311,9 +329,12 @@ exports.initiate = async (req, res) => {
 
     if (rebuiltMeta.bookingType === "PREBOOK") {
       payableAmountRupees = baseAmountRupees - discountApplied;
-    } else {
-      payableAmountRupees =
-        (rentAmount - discountApplied) + rebuiltMeta.securityDeposit;
+    } else if (rebuiltMeta.bookingType === "BOOK" ){
+      if (paymentMode === 'MONTHLY'){
+        payableAmountRupees = rebuiltMeta.securityDeposit;
+      } else {
+        payableAmountRupees = ( rentAmount - discountApplied ) + rebuiltMeta.securityDeposit;
+      }
     }
     const amountPaise = paiseFromRupees(payableAmountRupees);
 
@@ -321,10 +342,11 @@ exports.initiate = async (req, res) => {
       merchantOrderId: `tmp-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
       userId,
       amount: amountPaise,
-      type: rebuiltMeta.bookingType === 'PREBOOK' ? 'PREBOOK' : 'FULL',
+      type: rebuiltMeta.bookingType === 'PREBOOK' ? 'PREBOOK' : paymentMode === 'MONTHLY' ? 'BOOK_DEPOSIT' : 'FULL',
       status: 'PENDING',
       pendingBookingData: {
         bookingType: rebuiltMeta.bookingType,
+        paymentMode,
         rateCardId: rebuiltMeta.rateCardId,
         checkInDate: rebuiltMeta.checkInDate,
         checkOutDate: rebuiltMeta.checkOutDate,
@@ -356,7 +378,15 @@ exports.initiate = async (req, res) => {
       rawResponse: { note: 'pending transaction created' }
     });
 
-    const typeLower = rebuiltMeta.bookingType === 'PREBOOK' ? 'prebook' : 'full';
+    let typeLower;
+
+    if (rebuiltMeta.bookingType === 'PREBOOK') {
+      typeLower = 'prebook';
+    } else if (paymentMode === 'MONTHLY') {
+      typeLower = 'book-deposit';
+    } else {
+      typeLower = 'full';
+    }
     const merchantOrderId = createMerchantOrderId(typeLower, tx.id);
     tx.merchantOrderId = merchantOrderId;
     await tx.save();
@@ -491,6 +521,12 @@ exports.initiateRemaining = async (req, res) => {
       return res.status(422).json({ success: false, message: 'Can Only pay remaining after Booking gets Approved' })
     }
 
+    if (booking.bookingType === 'BOOK' && booking.monthlyPlanSelected) {
+      return res.status(400).json({
+        success: false,
+        message: 'Remaining payment is not applicable for monthly booking plan'
+      });
+    }
     if (paymentMode === 'MONTHLY') {
 
       if (booking.monthlyPlanSelected) {
