@@ -227,6 +227,8 @@ async function createBookingFromPending(tx, t) {
     await tx.save({ transaction: t });
     return null;
   }
+  // is MONTHLY type "BOOK" Booking
+  const isMonthly = pb.paymentMode === 'MONTHLY' && pb.bookingType === "BOOK";
 
   const booking = await Booking.create({
     propertyId: pb.propertyId,
@@ -244,6 +246,9 @@ async function createBookingFromPending(tx, t) {
     bookingType: pb.bookingType,
     paymentStatus: 'INITIATED',
     status: 'pending',
+    monthlyPlanSelected: isMonthly,
+    monthlyInstallment: isMonthly ? pb.monthlyRent : null,
+
     meta: pb?.meta || null,
   }, { transaction: t });
 
@@ -345,6 +350,17 @@ async function handleOrderSuccess(ctx, tx) {
 
     if (tx.pendingBookingData) {
       await createBookingFromPending(tx, t);
+    }
+    if (tx.type === 'BOOK_DEPOSIT') {
+      const booking = await Booking.findByPk(tx.bookingId, {
+        transaction: t,
+        lock: t.LOCK.UPDATE
+      });
+
+      if (booking) {
+        booking.securityDepositPaid = true;
+        await booking.save({ transaction: t });
+      }
     }
   });
 }
