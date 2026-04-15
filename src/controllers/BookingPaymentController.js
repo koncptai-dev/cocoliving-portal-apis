@@ -8,6 +8,7 @@ const { mailsender } = require('../utils/emailService');
 
 const User = require('../models/user');
 const Booking = require('../models/bookRoom');
+const Room = require('../models/rooms');
 const PaymentTransaction = require('../models/paymentTransaction');
 const Property = require('../models/property');
 const PropertyRateCard = require('../models/propertyRateCard');
@@ -949,16 +950,28 @@ exports.initiateExtension = async (req, res) => {
       .format('YYYY-MM-DD');
 
     if (booking.roomId) {
-      const conflict = await Booking.findOne({
+      const room = await Room.findByPk(booking.roomId);
+
+      if (!room) {
+        return res.status(404).json({
+          success: false,
+          message: 'Room not found'
+        });
+      }
+
+      const overlappingBookings = await Booking.count({
         where: {
           roomId: booking.roomId,
           id: { [Op.ne]: booking.id },
+          status: ['approved', 'active'],
           checkInDate: { [Op.lt]: newCheckOutDate },
           checkOutDate: { [Op.gt]: booking.checkOutDate },
         },
       });
 
-      if (conflict) {
+      const totalOccupancy = overlappingBookings + 1;
+
+      if (totalOccupancy > room.capacity) {
         return res.status(409).json({ success: false, message: 'Room already booked for this period' });
       }
     }
