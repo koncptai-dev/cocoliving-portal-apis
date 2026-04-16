@@ -955,7 +955,7 @@ exports.initiateMonthlyRent = async (req, res) => {
       });
 
       if (prebookPaid > 0) {
-        if (payableAmount >= prebookPaid) {
+        if (payableAmount > prebookPaid) {
 
           payableAmount -= prebookPaid;
 
