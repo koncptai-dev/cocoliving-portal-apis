@@ -787,62 +787,156 @@ exports.initiateMonthlyRent = async (req, res) => {
     const { bookingId } = req.body;
     const isMobile = req.headers['x-client'] === 'mobile';
 
+    console.log("===== INITIATE MONTHLY RENT START =====");
+    console.log("userId:", userId);
+    console.log("bookingId:", bookingId);
+    console.log("isMobile:", isMobile);
+
     const booking = await Booking.findByPk(bookingId);
 
     if (!booking) {
+      console.log("Booking NOT FOUND");
       return res.status(404).json({ success: false, message: 'Booking not found' });
     }
 
+    console.log("BOOKING DATA:", {
+      id: booking.id,
+      checkInDate: booking.checkInDate,
+      checkOutDate: booking.checkOutDate,
+      monthlyInstallment: booking.monthlyInstallment,
+      installmentsPaid: booking.installmentsPaid,
+      monthlyPlanSelected: booking.monthlyPlanSelected,
+      securityDepositPaid: booking.securityDepositPaid
+    });
+
     if (!booking.monthlyPlanSelected) {
+      console.log("Monthly plan NOT selected");
       return res.status(400).json({ success: false, message: 'Monthly plan not selected' });
     }
+
     if (!booking.securityDepositPaid) {
+      console.log("Security deposit NOT paid");
       return res.status(422).json({
         success: false,
         message: 'Security deposit must be paid before rent payments'
       });
     }
+
     const property = await Property.findByPk(booking.propertyId);
+
+    console.log("PROPERTY DATA:", {
+      id: property?.id,
+      lateFeePerDay: property?.lateFeePerDay
+    });
 
     const today = moment();
     const checkInDate = moment(booking.checkInDate);
 
+    console.log("DATE DEBUG:", {
+      today: today.format("YYYY-MM-DD"),
+      checkInDate: checkInDate.format("YYYY-MM-DD")
+    });
+
     const monthsElapsed = today.year() * 12 + today.month() - (checkInDate.year() * 12 + checkInDate.month()) + 1;
+
     const unpaidMonths = monthsElapsed - booking.installmentsPaid;
 
+    console.log("MONTH CALCULATION:", {
+      monthsElapsed,
+      installmentsPaid: booking.installmentsPaid,
+      unpaidMonths
+    });
+
     if (unpaidMonths <= 0) {
+      console.log("NO UNPAID MONTHS");
       return res.json({ success: false, message: 'No pending installments' });
     }
 
     let payableAmount = 0;
     let installments = 0;
     let remainingMonths = unpaidMonths;
+
+    console.log("INITIAL STATE:", {
+      payableAmount,
+      installments,
+      remainingMonths
+    });
+
     if (booking.installmentsPaid === 0) {
       const daysInMonth = checkInDate.daysInMonth();
       const checkInDay = checkInDate.date();
       const remainingDays = daysInMonth - checkInDay + 1;
       const dailyRent = booking.monthlyInstallment / daysInMonth;
       const proratedRent = dailyRent * remainingDays;
+
+      console.log("FIRST MONTH PRORATION:", {
+        daysInMonth,
+        checkInDay,
+        remainingDays,
+        monthlyInstallment: booking.monthlyInstallment,
+        dailyRent,
+        proratedRent
+      });
+
       payableAmount += proratedRent;
       installments += 1;
       remainingMonths -= 1;
+
+      console.log("AFTER FIRST MONTH:", {
+        payableAmount,
+        installments,
+        remainingMonths
+      });
     }
     if (remainingMonths > 0) {
       const checkoutDate = moment(booking.checkOutDate);
+
+      console.log("LOOP START:", {
+        remainingMonths,
+        checkoutDate: checkoutDate.format("YYYY-MM-DD")
+      });
+
       for (let i = 0; i < remainingMonths; i++) {
+
         const monthStart = moment(checkInDate).add(booking.installmentsPaid + installments, 'months').startOf('month');
+
+        console.log(`MONTH ITERATION ${i + 1}:`, {
+          monthStart: monthStart.format("YYYY-MM-DD")
+        });
+
         if (monthStart.isSame(checkoutDate, 'month')) {
+
           const daysInMonth = monthStart.daysInMonth();
           const checkoutDay = checkoutDate.date();
           const dailyRent = booking.monthlyInstallment / daysInMonth;
           const proratedLastMonth = dailyRent * checkoutDay;
+
+          console.log("LAST MONTH PRORATION:", {
+            daysInMonth,
+            checkoutDay,
+            dailyRent,
+            proratedLastMonth
+          });
+
           payableAmount += proratedLastMonth;
+
         } else {
+
+          console.log("FULL MONTH ADDED:", booking.monthlyInstallment);
           payableAmount += booking.monthlyInstallment;
         }
+
         installments += 1;
+
+        console.log("RUNNING TOTAL:", {
+          payableAmount,
+          installments
+        });
       }
     }
+
+    console.log("BEFORE PREBOOK ADJUSTMENT:", payableAmount);
+
     booking.meta = booking.meta || {};
     if (!booking.meta.prebookAdjusted) {
       const prebookTx = await PaymentTransaction.findOne({
@@ -854,62 +948,92 @@ exports.initiateMonthlyRent = async (req, res) => {
       });
 
       const prebookPaid = prebookTx ? Number(prebookTx.amount) / 100 : 0;
+
+      console.log("PREBOOK DEBUG:", {
+        prebookTx: !!prebookTx,
+        prebookPaid
+      });
+
       if (prebookPaid > 0) {
         if (payableAmount >= prebookPaid) {
+
           payableAmount -= prebookPaid;
+
+          console.log("PREBOOK APPLIED:", {
+            deducted: prebookPaid,
+            remaining: payableAmount
+          });
+
           booking.meta.prebookAdjusted = true;
           await booking.save();
+
+        } else {
+          console.log("PREBOOK > PAYABLE (POSSIBLE ZERO CASE):", {
+            payableAmount,
+            prebookPaid
+          });
         }
       }
     }
+
+    console.log("AFTER PREBOOK:", payableAmount);
+
+    // LATE FEE
     let lateFee = 0;
 
     console.log("---- LATE FEE DEBUG START ----");
-    console.log("today:", today.format("YYYY-MM-DD"));
-    console.log("checkInDate:", checkInDate.format("YYYY-MM-DD"));
-    console.log("installmentsPaid:", booking.installmentsPaid);
-    console.log("unpaidMonths:", unpaidMonths);
 
     if (unpaidMonths > 0) {
 
       const lastPaidMonth = booking.installmentsPaid;
-      console.log("lastPaidMonth:", lastPaidMonth);
-
       let dueDate;
 
       if (lastPaidMonth === 0) {
         dueDate = moment(checkInDate);
-        console.log("FIRST INSTALLMENT PATH");
       } else {
         dueDate = moment(checkInDate)
           .add(lastPaidMonth, 'months')
           .date(7);
-        console.log("NORMAL INSTALLMENT PATH");
       }
-
-      console.log("dueDate:", dueDate.format("YYYY-MM-DD"));
-      console.log("today > dueDate:", today.isAfter(dueDate));
 
       if (today.isAfter(dueDate)) {
         const lateDays = today.diff(dueDate, 'days');
-        console.log("lateDays:", lateDays);
-        console.log("lateFeePerDay:", property.lateFeePerDay);
-
         lateFee = lateDays * property.lateFeePerDay;
 
-        console.log("calculatedLateFee:", lateFee);
+        console.log("LATE FEE APPLIED:", {
+          lateDays,
+          lateFeePerDay: property.lateFeePerDay,
+          lateFee
+        });
       } else {
-        console.log("NO LATE FEE APPLIED");
+        console.log("NO LATE FEE");
       }
 
     }
 
-    console.log("finalLateFee:", lateFee);
+    console.log("FINAL LATE FEE:", lateFee);
     console.log("---- LATE FEE DEBUG END ----");
+
     const rentAmount = payableAmount;
     const totalAmount = rentAmount + lateFee;
     const amountPaise = Math.round(totalAmount * 100);
 
+    console.log("FINAL AMOUNT DEBUG:", {
+      rentAmount,
+      lateFee,
+      totalAmount,
+      amountPaise
+    });
+
+    if (amountPaise <= 0) {
+      console.log("CRITICAL: ZERO OR NEGATIVE PAYMENT GENERATED", {
+        payableAmount,
+        lateFee,
+        totalAmount
+      });
+    }
+
+    // ---- TRANSACTION CREATION ----
     const draftTx = await PaymentTransaction.create({
       userId,
       bookingId,
@@ -924,9 +1048,15 @@ exports.initiateMonthlyRent = async (req, res) => {
       }
     });
 
+    console.log("TRANSACTION CREATED:", draftTx.id);
+
     const finalOrderId = `MONTHLY-${draftTx.id}`;
     draftTx.merchantOrderId = finalOrderId;
     await draftTx.save();
+
+    console.log("FINAL ORDER ID:", finalOrderId);
+
+    console.log("===== INITIATE MONTHLY RENT END =====");
 
     if (isMobile) {
       const mobResp = await createMobileOrder({
