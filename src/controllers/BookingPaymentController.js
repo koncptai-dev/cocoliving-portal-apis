@@ -696,7 +696,7 @@ exports.initiateSecurityDeposit = async (req, res) => {
       });
     }
 
-    if (booking.bookingType !== 'BOOK') {
+    if (booking.bookingType !== 'PREBOOK') {
       return res.status(400).json({
         success:false,
         message: 'Security deposity can not be paid for BOOK type bookings.'
