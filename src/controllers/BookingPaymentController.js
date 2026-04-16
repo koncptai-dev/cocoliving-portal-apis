@@ -670,6 +670,7 @@ exports.initiateSecurityDeposit = async (req, res) => {
 
     const userId = req.user?.id;
     const { bookingId } = req.body;
+    const isMobile = req.headers['x-client'] === 'mobile';
 
     const booking = await Booking.findByPk(bookingId);
 
@@ -710,26 +711,70 @@ exports.initiateSecurityDeposit = async (req, res) => {
     draftTx.merchantOrderId = finalOrderId;
     await draftTx.save();
 
-    const phonepeResp = await createPayment({
-      merchantOrderId: finalOrderId,
-      amount: amountPaise,
-      paymentFlow: {
-        type: 'PG_CHECKOUT',
-        message: 'Security Deposit Payment',
-        merchantUrls: {
-          redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${finalOrderId}`
+    if (isMobile) {
+      const mobResp = await createMobileOrder({
+        merchantOrderId: finalOrderId,
+        amount: amountPaise,
+        userId,
+      });
+
+      draftTx.phonepeOrderId = mobResp.orderId || null;
+      draftTx.rawResponse = {
+        ...(draftTx.rawResponse || {}),
+        client: 'mobile',
+        phonepeCreateResponse: mobResp,
+      };
+
+      await draftTx.save();
+
+      return res.json({
+        success: true,
+        merchantOrderId: finalOrderId,
+        phonepe: {
+          orderId: mobResp.orderId,
+          token: mobResp.token,
+          paymentMode: 'SDK',
+        },
+        transactionId: draftTx.id,
+      });
+
+    } else {
+      const phonepeResp = await createPayment({
+        merchantOrderId: finalOrderId,
+        amount: amountPaise,
+        paymentFlow: {
+          type: 'PG_CHECKOUT',
+          message: 'Security Deposit Payment',
+          merchantUrls: {
+            redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${finalOrderId}`
+          }
         }
+      });
+
+      draftTx.rawResponse = {
+        ...(draftTx.rawResponse || {}),
+        client: 'web',
+        phonepeCreateResponse: phonepeResp,
+      };
+
+      if (phonepeResp?.success && phonepeResp?.body) {
+        draftTx.phonepeOrderId = phonepeResp.body.orderId;
+        draftTx.redirectUrl =
+          phonepeResp.body.redirectUrl ||
+          phonepeResp.body.checkoutUrl ||
+          null;
+      } else {
+        draftTx.status = 'FAILED';
       }
-    });
 
-    draftTx.rawResponse = { phonepeCreateResponse: phonepeResp };
-    await draftTx.save();
+      await draftTx.save();
 
-    return res.json({
-      success: true,
-      redirectUrl: phonepeResp.body?.redirectUrl
-    });
-
+      return res.json({
+        success: true,
+        redirectUrl: draftTx.redirectUrl,
+        transaction: draftTx,
+      });
+    }
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
@@ -740,6 +785,7 @@ exports.initiateMonthlyRent = async (req, res) => {
 
     const userId = req.user?.id;
     const { bookingId } = req.body;
+    const isMobile = req.headers['x-client'] === 'mobile';
 
     const booking = await Booking.findByPk(bookingId);
 
@@ -882,25 +928,70 @@ exports.initiateMonthlyRent = async (req, res) => {
     draftTx.merchantOrderId = finalOrderId;
     await draftTx.save();
 
-    const phonepeResp = await createPayment({
-      merchantOrderId: finalOrderId,
-      amount: amountPaise,
-      paymentFlow: {
-        type: 'PG_CHECKOUT',
-        message: 'Monthly Rent Payment',
-        merchantUrls: {
-          redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${finalOrderId}`
+    if (isMobile) {
+      const mobResp = await createMobileOrder({
+        merchantOrderId: finalOrderId,
+        amount: amountPaise,
+        userId,
+      });
+
+      draftTx.phonepeOrderId = mobResp.orderId || null;
+      draftTx.rawResponse = {
+        ...(draftTx.rawResponse || {}),
+        client: 'mobile',
+        phonepeCreateResponse: mobResp,
+      };
+
+      await draftTx.save();
+
+      return res.json({
+        success: true,
+        merchantOrderId: finalOrderId,
+        phonepe: {
+          orderId: mobResp.orderId,
+          token: mobResp.token,
+          paymentMode: 'SDK',
+        },
+        transactionId: draftTx.id,
+      });
+
+    } else {
+      const phonepeResp = await createPayment({
+        merchantOrderId: finalOrderId,
+        amount: amountPaise,
+        paymentFlow: {
+          type: 'PG_CHECKOUT',
+          message: 'Monthly Rent Payment',
+          merchantUrls: {
+            redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${finalOrderId}`
+          }
         }
+      });
+
+      draftTx.rawResponse = {
+        ...(draftTx.rawResponse || {}),
+        client: 'web',
+        phonepeCreateResponse: phonepeResp,
+      };
+
+      if (phonepeResp?.success && phonepeResp?.body) {
+        draftTx.phonepeOrderId = phonepeResp.body.orderId;
+        draftTx.redirectUrl =
+          phonepeResp.body.redirectUrl ||
+          phonepeResp.body.checkoutUrl ||
+          null;
+      } else {
+        draftTx.status = 'FAILED';
       }
-    });
 
-    draftTx.rawResponse = { phonepeCreateResponse: phonepeResp };
-    await draftTx.save();
+      await draftTx.save();
 
-    return res.json({
-      success: true,
-      redirectUrl: phonepeResp.body?.redirectUrl
-    });
+      return res.json({
+        success: true,
+        redirectUrl: draftTx.redirectUrl,
+        transaction: draftTx,
+      });
+    }
 
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
@@ -911,6 +1002,8 @@ exports.initiateExtension = async (req, res) => {
   try {
     const { bookingId, months } = req.body;
     const userId = req.user?.id;
+    const isMobile = req.headers['x-client'] === 'mobile';
+
     if (!bookingId || !months || ![6, 12].includes(Number(months))) {
       return res.status(400).json({ success: false, message: 'bookingId and valid months required(Extension duration must be either 6 or 12 months only)' });
     }
@@ -1002,30 +1095,70 @@ exports.initiateExtension = async (req, res) => {
     tx.merchantOrderId = finalOrderId;
     await tx.save();
 
-    const phonepeResp = await createPayment({
-      merchantOrderId: finalOrderId,
-      amount: amountPaise,
-      paymentFlow: {
-        type: 'PG_CHECKOUT',
-        message: 'Coco Living - Booking Extension',
-        merchantUrls: {
-          redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${finalOrderId}`,
+    if (isMobile) {
+      const mobResp = await createMobileOrder({
+        merchantOrderId: finalOrderId,
+        amount: amountPaise,
+        userId,
+      });
+
+      tx.phonepeOrderId = mobResp.orderId || null;
+      tx.rawResponse = {
+        ...(tx.rawResponse || {}),
+        client: 'mobile',
+        phonepeCreateResponse: mobResp,
+      };
+
+      await tx.save();
+
+      return res.json({
+        success: true,
+        merchantOrderId: finalOrderId,
+        phonepe: {
+          orderId: mobResp.orderId,
+          token: mobResp.token,
+          paymentMode: 'SDK',
         },
-      },
-    });
+        transactionId: tx.id,
+      });
 
-    tx.rawResponse = { ...tx.rawResponse, phonepeCreateResponse: phonepeResp };
+    } else {
+      const phonepeResp = await createPayment({
+        merchantOrderId: finalOrderId,
+        amount: amountPaise,
+        paymentFlow: {
+          type: 'PG_CHECKOUT',
+          message: 'Coco Living - Booking Extension',
+          merchantUrls: {
+            redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${finalOrderId}`,
+          },
+        },
+      });
 
-    if (!phonepeResp?.success) {
-      tx.status = 'FAILED';
+      tx.rawResponse = {
+        ...(tx.rawResponse || {}),
+        client: 'web',
+        phonepeCreateResponse: phonepeResp,
+      };
+
+      if (phonepeResp?.success && phonepeResp?.body) {
+        tx.phonepeOrderId = phonepeResp.body.orderId;
+        tx.redirectUrl =
+          phonepeResp.body.redirectUrl ||
+          phonepeResp.body.checkoutUrl ||
+          null;
+      } else {
+        tx.status = 'FAILED';
+      }
+
+      await tx.save();
+
+      return res.json({
+        success: true,
+        redirectUrl: tx.redirectUrl,
+        transaction: tx,
+      });
     }
-
-    await tx.save();
-
-    return res.json({
-      success: true,
-      redirectUrl: tx.redirectUrl || phonepeResp?.body?.redirectUrl,
-    });
 
   } catch (err) {
     console.error('[initiateExtension]', err);
