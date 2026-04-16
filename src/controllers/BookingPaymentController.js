@@ -696,6 +696,13 @@ exports.initiateSecurityDeposit = async (req, res) => {
       });
     }
 
+    if (booking.bookingType !== 'BOOK') {
+      return res.status(400).json({
+        success:false,
+        message: 'Security deposity can not be paid for BOOK type bookings.'
+      });
+    }
+
     const amountPaise = Math.round(booking.monthlyRent * 2 * 100);
 
     const draftTx = await PaymentTransaction.create({
