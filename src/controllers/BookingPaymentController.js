@@ -664,7 +664,6 @@ exports.initiateRemaining = async (req, res) => {
     return res.status(500).json({ success: false, message: err.message });
   }
 };
-
 exports.initiateSecurityDeposit = async (req, res) => {
   try {
 
@@ -672,17 +671,48 @@ exports.initiateSecurityDeposit = async (req, res) => {
     const { bookingId } = req.body;
     const isMobile = req.headers['x-client'] === 'mobile';
 
+    console.log('[SECURITY_DEPOSIT][REQ]', {
+      bookingId,
+      userId,
+      isMobile,
+      env: process.env.NODE_ENV,
+    });
+
     const booking = await Booking.findByPk(bookingId);
+
+    console.log('[SECURITY_DEPOSIT][BOOKING_FETCH]', {
+      found: !!booking,
+      fetchedBookingId: booking?.id,
+    });
 
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Booking not found' });
     }
 
+    console.log('[SECURITY_DEPOSIT][BOOKING_CORE_FIELDS]', {
+      id: booking.id,
+      bookingType: booking.bookingType,
+      bookingTypeType: typeof booking.bookingType,
+      isPrebookCheck: booking.bookingType === 'PREBOOK',
+      isBookCheck: booking.bookingType === 'BOOK',
+      userIdFromBooking: booking.userId,
+      userIdFromReq: userId,
+      contractStatus: booking.contractStatus,
+      securityDepositPaid: booking.securityDepositPaid,
+    });
+
     if (booking.userId !== userId) {
+      console.log('[SECURITY_DEPOSIT][FAIL][UNAUTHORIZED]', {
+        bookingUserId: booking.userId,
+        requestUserId: userId,
+      });
       return res.status(403).json({ success: false, message: 'Unauthorized' });
     }
 
     if (booking.contractStatus !== 'SIGNED') {
+      console.log('[SECURITY_DEPOSIT][FAIL][CONTRACT_NOT_SIGNED]', {
+        contractStatus: booking.contractStatus,
+      });
       return res.status(422).json({
         success: false,
         message: 'Contract must be signed before security deposit payment'
@@ -690,13 +720,20 @@ exports.initiateSecurityDeposit = async (req, res) => {
     }
 
     if (booking.securityDepositPaid) {
+      console.log('[SECURITY_DEPOSIT][FAIL][ALREADY_PAID]');
       return res.status(422).json({
         success: false,
         message: 'Security deposit already paid'
       });
     }
 
+    // ---- DEBUG: exact failing condition ----
     if (booking.bookingType !== 'PREBOOK') {
+      console.log('[SECURITY_DEPOSIT][FAIL][BOOKING_TYPE_MISMATCH]', {
+        received: booking.bookingType,
+        expected: 'PREBOOK',
+      });
+
       return res.status(400).json({
         success:false,
         message: 'Security deposity can not be paid for BOOK type bookings.'
@@ -783,6 +820,7 @@ exports.initiateSecurityDeposit = async (req, res) => {
       });
     }
   } catch (err) {
+    console.log('[SECURITY_DEPOSIT][ERROR]', err);
     return res.status(500).json({ success: false, message: err.message });
   }
 };
