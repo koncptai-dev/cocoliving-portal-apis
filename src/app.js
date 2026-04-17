@@ -72,9 +72,15 @@ app.post(
   require("./controllers/PhonePeWebhookController").phonePeWebhook
 );
 
+// app.use(bodyParser.json());
+//  app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+// Correct static serving for uploads folder (since app.js is in src/)
 app.use(bodyParser.json());
-app.use(sanitize);
+
+// Serve uploads folder from src/uploads (as per your current structure)
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+console.log("✅ Uploads folder is being served from:", path.join(__dirname, "uploads"));
 
 app.use("/api/admin", admin);
 app.use("/api/user", User);

@@ -18,10 +18,11 @@ const storage = multer.diskStorage({
             folder = 'dailyCleaning';
         else if (file.fieldname === 'tenantSignature' || file.fieldname === 'guardianSignature' || file.fieldname === 'adminSignature') folder = 'signatures';
         else if (file.fieldname === 'proofOfWork') folder = 'proofOfWork';
-else if (file.fieldname === 'thumbnail')              folder = 'blogs';
-else if (file.fieldname === 'resolutionImages') folder = 'ticketResolution';
-  const uploadDir = path.join(__dirname, '..', 'uploads', folder);
-
+        // else if (file.fieldname === 'thumbnail')              folder = 'blogs';
+        else if (file.fieldname === 'thumbnail' || file.fieldname === 'upload') folder = 'blogs';   // ← Fixed for both thumbnail and CKEditor
+        else if (file.fieldname === 'resolutionImages') folder = 'ticketResolution';
+//   const uploadDir = path.join(__dirname, '..', 'uploads', folder);
+      const uploadDir = path.join(__dirname, '..', 'uploads', folder);
 // const uploadDir = path.join(__dirname, '..', '..', 'uploads', folder);  // go up two levels to project root
     console.log('MULTER destination folder:', uploadDir);
     console.log('MULTER fieldname:', file.fieldname);
