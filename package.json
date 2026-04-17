@@ -37,7 +37,7 @@
     "pg-hstore": "^2.3.4",
     "puppeteer": "^23.11.1",
     "qrcode": "^1.5.4",
-    "sanitize-html": "^2.17.2",
+    "sanitize-html": "^2.17.3",
     "sequelize": "^6.37.7",
     "sharp": "^0.34.5",
     "xml2js": "^0.6.2"
