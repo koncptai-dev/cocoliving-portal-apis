@@ -4,7 +4,7 @@ const puppeteer = require("puppeteer");
 const { PDFDocument } = require("pdf-lib");
 const { Booking, User, Rooms, Property, Contract } = require("../models");
 const { mailsender } = require("../utils/emailService");
-const { securityDepositPaymentEmail } = require("../utils/emailTemplates/emailTemplates");
+const { contractSignedEmail, securityDepositPaymentEmail } = require("../utils/emailTemplates/emailTemplates");
 const { notifySecurityDeposit } = require('../utils/notificationService');
 const { numberToRupeesWords } = require("../utils/numberToWords");
 
