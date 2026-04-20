@@ -4,7 +4,7 @@ const puppeteer = require("puppeteer");
 const { PDFDocument } = require("pdf-lib");
 const { Booking, User, Rooms, Property, Contract } = require("../models");
 const { mailsender } = require("../utils/emailService");
-const { securityDepositPaymentEmail } = require("../utils/emailTemplates/emailTemplates");
+const { contractSignedEmail, securityDepositPaymentEmail } = require("../utils/emailTemplates/emailTemplates");
 const { notifySecurityDeposit } = require('../utils/notificationService');
 const { numberToRupeesWords } = require("../utils/numberToWords");
 
@@ -281,11 +281,22 @@ exports.adminSignContract = async (req, res) => {
     fs.unlinkSync(adminSigPath);
 
     // Send confirmation email with the FULLY signed contract
+    const contractEmail = contractSignedEmail({
+      userName: booking.user.fullName,
+      bookingId: booking.id
+    });
+
     await mailsender(
       booking.user.email,
       "Your Fully Signed Rental Agreement - CoCo Living",
-      "<p>Please find attached your fully signed rental agreement (signed by both Resident and Operator).</p>",
-      [{ filename: `contract-${bookingId}.pdf`, path: contract.signedPdfPath }]
+      contractEmail.html,
+      [
+        ...contractEmail.attachments,
+        {
+          filename: `contract-${bookingId}.pdf`,
+          path: contract.signedPdfPath
+        }
+      ]
     );
 
     // Send Security Deposit email
