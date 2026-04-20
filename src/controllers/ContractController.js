@@ -281,7 +281,7 @@ exports.adminSignContract = async (req, res) => {
     fs.unlinkSync(adminSigPath);
 
     // Send confirmation email with the FULLY signed contract
-    const email = contractSignedEmail({
+    const contractEmail = contractSignedEmail({
       userName: booking.user.fullName,
       bookingId: booking.id
     });
@@ -289,9 +289,9 @@ exports.adminSignContract = async (req, res) => {
     await mailsender(
       booking.user.email,
       "Your Fully Signed Rental Agreement - CoCo Living",
-      email.html,
+      contractEmail.html,
       [
-        ...email.attachments,
+        ...contractEmail.attachments,
         {
           filename: `contract-${bookingId}.pdf`,
           path: contract.signedPdfPath
