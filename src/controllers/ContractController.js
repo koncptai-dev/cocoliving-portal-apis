@@ -281,11 +281,22 @@ exports.adminSignContract = async (req, res) => {
     fs.unlinkSync(adminSigPath);
 
     // Send confirmation email with the FULLY signed contract
+    const email = contractSignedEmail({
+      userName: booking.user.fullName,
+      bookingId: booking.id
+    });
+
     await mailsender(
       booking.user.email,
       "Your Fully Signed Rental Agreement - CoCo Living",
-      "<p>Please find attached your fully signed rental agreement (signed by both Resident and Operator).</p>",
-      [{ filename: `contract-${bookingId}.pdf`, path: contract.signedPdfPath }]
+      email.html,
+      [
+        ...email.attachments,
+        {
+          filename: `contract-${bookingId}.pdf`,
+          path: contract.signedPdfPath
+        }
+      ]
     );
 
     // Send Security Deposit email

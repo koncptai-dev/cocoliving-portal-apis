@@ -66,10 +66,19 @@ padding:28px 20px;font-size:12px;line-height:1.6;">
 </tr>
 `;
 
+// bg logo quality tech community
+
 // ---------- WELCOME EMAIL ----------
 function welcomeEmail() {
   return {
-    attachments: baseAttachments,
+    attachments: [
+      { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
+      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' },
+      { filename: 'quality.png', path: path.join(__dirname, 'assets/quality-spaces.png'), cid: 'quality' },
+      { filename: 'tech.png', path: path.join(__dirname, 'assets/smart-tech.png'), cid: 'tech' },
+      { filename: 'community.png', path: path.join(__dirname, 'assets/handshaking.png'), cid: 'community' },
+      ...FOOTER_ATTACHMENTS
+    ],
     html: `
 <!DOCTYPE html>
 <html>
@@ -156,7 +165,6 @@ ${FOOTER}
   };  
 };
 
-
 // ---------- OTP EMAIL (REDESIGNED) ----------
 function otpEmail({ otp }) {
   return {
@@ -227,11 +235,14 @@ ${FOOTER}
   };
 }
 
+
+
 function refundInitiatedEmail({ userName, bookingId, propertyName, refundAmount, reason }) {
   return {
     attachments: [
       { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
       { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' },
+      ...FOOTER_ATTACHMENTS
     ],
     html :`
 <!DOCTYPE html>
@@ -291,7 +302,11 @@ ${FOOTER}
 
 function refundCompletedEmail({ userName, bookingId, propertyName, refundAmount }) {
   return {
-    attachments: baseAttachments,
+    attachments: [
+      { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
+      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' },
+      ...FOOTER_ATTACHMENTS
+    ],
     html: `
 <!DOCTYPE html>
 <html>
@@ -490,7 +505,11 @@ ${FOOTER}
 
 function securityDepositPaymentEmail({ userName, propertyName, bookingId }) {
   return {
-    attachments: baseAttachments,
+    attachments: [
+      { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
+      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' },
+      ...FOOTER_ATTACHMENTS
+    ],
     html: `
 <!DOCTYPE html>
 <html>
@@ -857,6 +876,88 @@ ${FOOTER}
   };
 }
 
+function contractSignedEmail({ userName, bookingId }) {
+  return {
+    attachments: [
+      { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
+      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' },
+      ...FOOTER_ATTACHMENTS
+    ],
+    html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8" /></head>
+
+<body style="margin:0;background:#f3efe9;
+font-family:'Rethink Sans','Inter','Segoe UI',Arial,sans-serif;">
+
+<table width="100%" align="center">
+<tr><td align="center">
+
+<table width="600" style="max-width:600px;">
+
+<!-- HEADER -->
+<tr>
+<td align="center"
+style="background-color:#4F3421;
+background-image:url(cid:bg);
+background-repeat:repeat;
+background-size:400px 400px;
+padding:28px 28px 90px;">
+  <img src="cid:logo" width="140" />
+</td>
+</tr>
+
+<!-- CONTENT -->
+<tr>
+<td align="center" style="background:#f3efe9;padding:0 24px 40px;">
+  <div style="background:#f3efe9;border-radius:80px 80px 0 0;
+  padding:40px 24px 0;max-width:520px;margin:-60px auto 0;">
+
+    <h1 style="margin:0 0 16px;font-size:32px;font-weight:700;">
+      Agreement Successfully Signed 🎉
+    </h1>
+
+    <p style="max-width:420px;margin:0 auto 20px;font-size:15px;line-height:1.6;">
+      Hi <strong>${userName}</strong>,<br/><br/>
+      Your rental agreement has been successfully signed by both you and CoCo Living.
+    </p>
+
+    <div style="background:#ffffff;padding:20px;border-radius:12px;
+    margin:24px 0;text-align:left;font-size:15px;
+    box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+
+      <strong>Booking ID:</strong> ${bookingId}<br/><br/>
+      Please find your <strong>fully signed agreement attached</strong> with this email for your records.
+
+    </div>
+
+    <p style="font-size:15px;margin:20px 0;">
+      Welcome to Coco Living. We're excited to have you onboard!
+    </p>
+
+    <a href="${BASE_URL}/my-bookings"
+    style="display:inline-block;padding:14px 32px;background:#D36517;
+    color:#fff;text-decoration:none;border-radius:24px;font-weight:600;">
+      View Booking
+    </a>
+
+  </div>
+</td>
+</tr>
+
+${FOOTER}
+
+</table>
+</td></tr>
+</table>
+
+</body>
+</html>
+`
+  };
+}
+
 module.exports = {
   welcomeEmail,
   otpEmail,
@@ -870,6 +971,7 @@ module.exports = {
   couponShareEmail,
   onboardingOtpEmail,
   guestQrEmail,
+  contractSignedEmail,
   FOOTER,
   FOOTER_ATTACHMENTS
 };
