@@ -32,7 +32,7 @@ const FOOTER = `
 padding:28px 20px;font-size:12px;line-height:1.6;">
 
   <div>© ${CURRENT_YEAR} COCO LIVING</div>
-  <div>The Spark Tower S.G. Highway, Ahmedabad</div>
+  <div>904-905 Palak Prime, Ambli Rd, Opp. DoubleTree by Hilton, Ahmedabad, Gujarat 380058</div>
 
   <div>
     <img src="cid:phone" width="9"/> +91-7041454455
