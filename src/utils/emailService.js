@@ -153,8 +153,8 @@ ${FOOTER}
 
     // Important: Add the same attachments as your other branded emails
     const attachments = [
-      { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
-      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' },
+      { filename: 'logo.png', path: path.join(__dirname, '/emailTemplates/assets/logo.png'), cid: 'logo' },
+      { filename: 'bg-pattern.png', path: path.join(__dirname, '/emailTemplates/assets/bg-pattern.png'), cid: 'bg' },
       ...FOOTER_ATTACHMENTS
     ];
 
