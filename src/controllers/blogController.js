@@ -12,7 +12,17 @@ exports.createBlog = async (req, res) => {
       return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { title, url, content, status } = req.body;
+   const { 
+  title, 
+  url, 
+  content, 
+  status,
+  metaTitle,
+  metaDescription,
+  customCss,
+  customJs, 
+  altText
+} = req.body;
 
     let thumbnail = null;
     // if (req.file) {
@@ -26,12 +36,18 @@ exports.createBlog = async (req, res) => {
 }
 
     const blog = await Blog.create({
-      title: title.trim(),
-      url: url.trim(),
-      content,
-      thumbnail,
-      status: status || 'draft',
-    });
+  title: title.trim(),
+  url: url.trim(),
+  content,
+  thumbnail,
+  status: status || 'draft',
+
+  metaTitle,
+  metaDescription,
+  customCss,
+  customJs,
+  altText,
+});
 
     return res.status(201).json({
       success: true,
@@ -120,7 +136,17 @@ exports.updateBlog = async (req, res) => {
       });
     }
 
-    const { title, url, content, status } = req.body;
+    const { 
+  title, 
+  url, 
+  content, 
+  status,
+  metaTitle,
+  metaDescription,
+  customCss,
+  customJs,
+  altText
+} = req.body;
 
     if (req.file) {
       blog.thumbnail = `/uploads/blogs/${req.file.filename}`;
@@ -130,6 +156,11 @@ exports.updateBlog = async (req, res) => {
     if (url)      blog.url     = url.trim();
     if (content)  blog.content = content;
     if (status)   blog.status  = status;
+    if (metaTitle) blog.metaTitle = metaTitle;
+    if (metaDescription) blog.metaDescription = metaDescription;
+    if (customCss) blog.customCss = customCss;
+    if (customJs) blog.customJs = customJs;
+    if (altText !== undefined) blog.altText = altText;
 
     await blog.save();
 
