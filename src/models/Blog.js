@@ -20,9 +20,30 @@ const Blog = sequelize.define('Blog', {
         type: DataTypes.STRING(500),
         allowNull: true,
     },
-    content: {
+    altText: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+  },
+   content: {
+   type: DataTypes.TEXT,
+   allowNull: false,
+},
+
+metaTitle: {
+  type: DataTypes.STRING(255),
+  allowNull: true,
+},
+metaDescription: {
   type: DataTypes.TEXT,
-  allowNull: false,
+  allowNull: true,
+},
+customCss: {
+  type: DataTypes.TEXT,
+  allowNull: true,
+},
+customJs: {
+  type: DataTypes.TEXT,
+  allowNull: true,
 },
     // status: {
     //     type: DataTypes.ENUM('draft', 'published', 'live', 'inactive'),
@@ -32,6 +53,8 @@ const Blog = sequelize.define('Blog', {
   type: DataTypes.ENUM('draft', 'published', 'inactive'),
   defaultValue: 'draft',
 },
+
+
 }, {
     tableName: 'blogs',
     timestamps: true,
