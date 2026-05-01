@@ -41,10 +41,6 @@ customCss: {
   type: DataTypes.TEXT,
   allowNull: true,
 },
-customJs: {
-  type: DataTypes.TEXT,
-  allowNull: true,
-},
     // status: {
     //     type: DataTypes.ENUM('draft', 'published', 'live', 'inactive'),
     //     defaultValue: 'draft',

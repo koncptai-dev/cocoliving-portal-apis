@@ -20,7 +20,6 @@ exports.createBlog = async (req, res) => {
   metaTitle,
   metaDescription,
   customCss,
-  customJs, 
   altText
 } = req.body;
 
@@ -45,7 +44,6 @@ exports.createBlog = async (req, res) => {
   metaTitle,
   metaDescription,
   customCss,
-  customJs,
   altText,
 });
 
@@ -144,7 +142,6 @@ exports.updateBlog = async (req, res) => {
   metaTitle,
   metaDescription,
   customCss,
-  customJs,
   altText
 } = req.body;
 
@@ -159,7 +156,6 @@ exports.updateBlog = async (req, res) => {
     if (metaTitle) blog.metaTitle = metaTitle;
     if (metaDescription) blog.metaDescription = metaDescription;
     if (customCss) blog.customCss = customCss;
-    if (customJs) blog.customJs = customJs;
     if (altText !== undefined) blog.altText = altText;
 
     await blog.save();
