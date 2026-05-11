@@ -1,6 +1,8 @@
 const sequelize = require('../config/database');
 const { Op } = require('sequelize');
 const { logApiCall } = require("../helpers/auditLog");
+const moment = require('moment');
+const { logActivity } = require('../helpers/activityLogger');
 
 const Booking=require('../models/bookRoom');
 const Rooms=require('../models/rooms');
@@ -699,5 +701,220 @@ exports.rejectExtension = async (req, res) => {
     return res.json({ success: true, message: 'Extension rejected' });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+
+exports.createBookingForOfflinePayments = async (req, res) => {
+  const t = await sequelize.transaction();
+
+  try {
+    const {
+      userId,
+      roomId,
+      checkInDate,
+      duration,
+      bookingType,
+    } = req.body;
+
+    if (
+      !userId ||
+      !roomId ||
+      !checkInDate ||
+      !duration ||
+      !bookingType
+    ) {
+      await t.rollback();
+
+      return res.status(400).json({
+        success: false,
+        message:
+          "userId, roomId, checkInDate, duration, bookingType are required",
+      });
+    }
+
+    const normalizedBookingType = bookingType.toUpperCase();
+
+    if (!["BOOK", "PREBOOK"].includes(normalizedBookingType)) {
+      await t.rollback();
+
+      return res.status(400).json({
+        success: false,
+        message: "bookingType must be BOOK or PREBOOK",
+      });
+    }
+
+    const user = await User.findByPk(userId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!user) {
+      await t.rollback();
+
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const room = await Rooms.findByPk(roomId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!room) {
+      await t.rollback();
+
+      return res.status(404).json({
+        success: false,
+        message: "Room not found",
+      });
+    }
+
+    const activeCount = await Booking.count({
+      where: {
+        roomId: room.id,
+        status: {
+          [Op.in]: ["pending", "approved", "active"],
+        },
+      },
+      transaction: t,
+    });
+
+    if (activeCount >= room.capacity) {
+      await t.rollback();
+
+      return res.status(400).json({
+        success: false,
+        message: "Room is already full",
+      });
+    }
+
+    const rateCard = await PropertyRateCard.findOne({
+      where: {
+        propertyId: room.propertyId,
+        roomType: room.roomType,
+      },
+      transaction: t,
+    });
+
+    if (!rateCard) {
+      await t.rollback();
+
+      return res.status(404).json({
+        success: false,
+        message: "Rate card not found",
+      });
+    }
+const checkOutDate = moment(checkInDate)
+      .add(Number(duration), "months")
+      .format("YYYY-MM-DD");
+    const overlap = await Booking.findOne({
+      where: {
+        userId: userId,
+        status: { [Op.in]: ['approved', 'active', 'pending'] },
+        [Op.or]: [
+          { checkOutDate: { [Op.is]: null }, checkInDate: { [Op.lte]: checkOutDate } },
+          { checkOutDate: { [Op.gte]: checkInDate }, checkInDate: { [Op.lte]: checkOutDate } }
+        ]
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE
+    });
+
+    if (overlap) {
+      await t.rollback();
+
+      return res.status(400).json({
+        success: false,
+        message: "User already has an active booking",
+      });
+    }
+
+    
+
+    const monthlyRent = room.monthlyRent;
+
+    const totalAmount =
+      monthlyRent * Number(duration) + room.depositAmount;
+
+    const booking = await Booking.create(
+      {
+        propertyId: room.propertyId,
+        userId,
+        rateCardId: rateCard.id,
+
+        roomType: room.roomType,
+        roomId: room.id,
+
+        assignedItems: [],
+
+        checkInDate,
+        checkOutDate,
+
+        duration,
+
+        monthlyRent,
+
+        totalAmount,
+        remainingAmount: totalAmount,
+
+        bookingType: normalizedBookingType,
+
+        paymentStatus: "INITIATED",
+
+        status: "approved",
+
+        bookingSource: "OFFLINE",
+
+        onboardingStatus: "NOT_INITIATED",
+
+        contractStatus: "NOT_SIGNED",
+        adminContractStatus: "NOT_SIGNED",
+      },
+      { transaction: t }
+    );
+
+    const newActiveCount = activeCount + 1;
+
+    room.status =
+      newActiveCount >= room.capacity
+        ? "booked"
+        : "available";
+
+    await room.save({ transaction: t });
+
+    await logActivity({
+      userId,
+      name: user.fullName,
+      role: user.role,
+      action: "Offline Booking Created",
+      entityType: "Booking",
+      entityId: booking.id,
+      details: {
+        roomId: room.id,
+        propertyId: room.propertyId,
+      },
+    });
+
+    await t.commit();
+
+    return res.status(201).json({
+      success: true,
+      message: "Offline booking created successfully",
+      booking,
+    });
+
+  } catch (err) {
+    await t.rollback();
+
+    console.error("Offline Booking Error:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: err.message,
+    });
   }
 };

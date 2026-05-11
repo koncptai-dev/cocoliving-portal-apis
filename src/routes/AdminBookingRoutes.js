@@ -19,5 +19,5 @@ router.get( "/inventory/sets/:propertyId/:roomId", authMiddleware, AdminBooking.
 router.get('/getExtension/:bookingId',authMiddleware, AdminBooking.getPendingBookingExtension);
 router.patch('/approveExtension/:extensionId', authMiddleware, authorizeRole(1,3),authorizePage("Bookings", "write"), AdminBooking.approveExtension);
 router.patch('/rejectExtension/:extensionId', authMiddleware, authorizeRole(1,3),authorizePage("Bookings", "write"), AdminBooking.rejectExtension);
-
+router.post('/createBooking', authMiddleware, authorizeRole(1,3), authorizePage("Property Management", "write"), AdminBooking.createBookingForOfflinePayments);
 module.exports=router
