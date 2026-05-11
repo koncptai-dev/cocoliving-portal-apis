@@ -28,6 +28,12 @@ const Booking = sequelize.define(
       references: { model: PropertyRateCard, key: 'id' }, 
     },
 
+    bookingSource: {
+      type: DataTypes.ENUM('ONLINE', 'OFFLINE'),
+      allowNull: false,
+      defaultValue: 'ONLINE'
+    },
+
     roomType: {
       type: DataTypes.STRING,
       allowNull: false,

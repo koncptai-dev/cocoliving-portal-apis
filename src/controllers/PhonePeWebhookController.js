@@ -248,7 +248,7 @@ async function createBookingFromPending(tx, t) {
     status: 'pending',
     monthlyPlanSelected: isMonthly,
     monthlyInstallment: isMonthly ? pb.monthlyRent : null,
-
+    bookingSource: 'ONLINE',
     meta: pb?.meta || null,
   }, { transaction: t });
 
