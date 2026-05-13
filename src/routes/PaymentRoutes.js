@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const PaymentController = require('../controllers/PaymentController');
+const upload = require('../middleware/upload');
 const authenticateToken = require('../middleware/auth');
 const authorizeRole = require("../middleware/authorizeRole");
 
@@ -10,6 +11,7 @@ router.get('/status/:merchantOrderId', authenticateToken,authorizeRole(2), Payme
 //for admin,superadmin,user too
 router.get('/user-transactions', authenticateToken,authorizeRole(1,2,3), PaymentController.getUserTransactions);
 // admin
+router.post('/create', authenticateToken, authorizeRole(1, 3), upload.single('paymentImage'), PaymentController.createOfflinePayment );
 router.get('/transactions', authenticateToken, authorizeRole(1,3), PaymentController.getTransactions);
 router.get('/refund-info/:transactionId',authenticateToken, authorizeRole(1,3), PaymentController.getRefundInfo);
 

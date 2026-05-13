@@ -1,4 +1,5 @@
 const PaymentTransaction = require('../models/paymentTransaction');
+const Booking = require('../models/bookRoom');
 const User = require('../models/user');
 const { getOrderStatus } = require('../utils/phonepe/phonepeApi');
 const { Op } = require('sequelize');
@@ -80,10 +81,12 @@ exports.getUserTransactions = async (req, res) => {
     const q = (req.query.q || '').trim();
     const filterType = req.query.type;
     const filterStatus = req.query.status;
+    const paymentMode = req.query.paymentMode;
 
     const where = { userId };
     if (filterType) where.type = filterType;
     if (filterStatus) where.status = filterStatus;
+    if (paymentMode) where.paymentMode = paymentMode.toUpperCase();
 
     if (q) {
       const Op = require('sequelize').Op;
@@ -116,6 +119,12 @@ exports.getUserTransactions = async (req, res) => {
         redirectUrl: r.redirectUrl || null,
         rawResponse: r.rawResponse || null,
         refundReason: r.refundReason || null,
+        paymentMode: r.paymentMode,
+        offlinePaymentType: r.offlinePaymentType,
+        adminNote: r.adminNote,
+        paymentImage: r.paymentImage,
+        discountAmount: r.discountAmount,
+        createdByAdminId: r.createdByAdminId,
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
       };
@@ -230,5 +239,164 @@ exports.getRefundInfo = async (req, res) => {
     console.error('Refund Info Error:', err);
     await logApiCall(req, res, 500, "Error occurred while fetching refund info", "payment", parseInt(req.params.transactionId) || 0);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.createOfflinePayment = async (req, res) => {
+  try {
+    const adminId = req.user?.id;
+
+    const {
+      bookingId,
+      amount,
+      adminNote,
+      paymentType,
+      discountAmount = 0,
+    } = req.body;
+
+    if (!bookingId || !amount || !paymentType) {
+      return res.status(400).json({
+        success: false,
+        message: 'bookingId, amount and paymentType are required'
+      });
+    }
+
+    if (!['CASH', 'CHEQUE', 'UPI'].includes(paymentType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid paymentType'
+      });
+    }
+
+    const booking = await Booking.findByPk(bookingId);
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found'
+      });
+    }
+
+    const payableAmount = Number(amount);
+    const finalDiscount = Number(discountAmount || 0);
+
+    if (payableAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Amount must be greater than 0'
+      });
+    }
+
+    const amountPaise = Math.round(payableAmount * 100);
+
+    const paymentImage = req.file
+      ? `/uploads/paymentProofs/${req.file.filename}`
+      : null;
+
+    const transaction = await PaymentTransaction.create({
+      bookingId: booking.id,
+      userId: booking.userId,
+
+      merchantOrderId: `OFFLINE-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+
+      amount: amountPaise,
+
+      type: 'OFFLINE',
+
+      status: 'SUCCESS',
+
+      paymentMode: 'OFFLINE',
+
+      offlinePaymentType: paymentType,
+
+      adminNote: adminNote || null,
+
+      paymentImage,
+
+      discountAmount: finalDiscount,
+
+      createdByAdminId: adminId,
+
+      rawResponse: {
+        manuallyCreated: true,
+        createdAt: new Date().toISOString(),
+      },
+
+      meta: {
+        source: 'admin-panel'
+      }
+    });
+
+    booking.bookingSource = 'OFFLINE';
+
+    const currentRemaining = Number(booking.remainingAmount || 0);
+
+    const updatedRemaining =
+      currentRemaining - payableAmount - finalDiscount;
+
+    booking.remainingAmount = Math.max(
+      Math.round(updatedRemaining),
+      0
+    );
+
+    const successfulPayments = await PaymentTransaction.findAll({
+      where: {
+        bookingId: booking.id,
+        status: 'SUCCESS',
+        type: {
+          [Op.ne]: 'REFUND'
+        }
+      }
+    });
+
+    const totalPaidPaise = successfulPayments.reduce(
+      (sum, tx) => sum + Number(tx.amount || 0),
+      0
+    );
+
+    const totalPaidRupees = totalPaidPaise / 100;
+
+    const effectivePaid =
+      totalPaidRupees + finalDiscount;
+
+    if (effectivePaid >= Number(booking.totalAmount || 0)) {
+      booking.paymentStatus = 'COMPLETED';
+    } else if (effectivePaid > 0) {
+      booking.paymentStatus = 'PARTIAL';
+    }
+
+    await booking.save();
+
+    await logApiCall(
+      req,
+      res,
+      200,
+      `Offline payment created for booking ${booking.id}`,
+      'payment',
+      adminId
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: 'Offline payment created successfully',
+      transaction,
+    });
+
+  } catch (err) {
+    console.error('[createOfflinePayment]', err);
+
+    await logApiCall(
+      req,
+      res,
+      500,
+      'Error while creating offline payment',
+      'payment',
+      req.user?.id || 0
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: err.message || 'Server error'
+    });
   }
 };
