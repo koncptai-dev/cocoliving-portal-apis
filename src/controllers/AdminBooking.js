@@ -807,7 +807,7 @@ exports.createBookingForOfflinePayments = async (req, res) => {
         message: "Rate card not found",
       });
     }
-const checkOutDate = moment(checkInDate)
+    const checkOutDate = moment(checkInDate)
       .add(Number(duration), "months")
       .format("YYYY-MM-DD");
     const overlap = await Booking.findOne({

@@ -21,6 +21,7 @@ const storage = multer.diskStorage({
         // else if (file.fieldname === 'thumbnail')              folder = 'blogs';
         else if (file.fieldname === 'thumbnail' || file.fieldname === 'upload') folder = 'blogs';   // ← Fixed for both thumbnail and CKEditor
         else if (file.fieldname === 'resolutionImages') folder = 'ticketResolution';
+        else if (file.fieldname === 'paymentImage') folder = 'paymentProofs';
 //   const uploadDir = path.join(__dirname, '..', 'uploads', folder);
       const uploadDir = path.join(__dirname, '..', 'uploads', folder);
 // const uploadDir = path.join(__dirname, '..', '..', 'uploads', folder);  // go up two levels to project root
@@ -43,7 +44,7 @@ const storage = multer.diskStorage({
 
 //file filter allow only images
 const fileFilter = (req, file, cb) => {
-    if (['profileImage', 'roomImages', 'propertyImages', 'ticketImage', 'eventImage', 'resolutionImages'].includes(file.fieldname) || file.fieldname.startsWith('roomImages_')
+    if (['profileImage', 'roomImages', 'propertyImages', 'ticketImage', 'eventImage', 'resolutionImages', 'paymentImage'].includes(file.fieldname) || file.fieldname.startsWith('roomImages_')
     ||  file.fieldname.startsWith('floorImages_') 
     ) {
         const allowedTypes = /jpeg|jpg|png/;

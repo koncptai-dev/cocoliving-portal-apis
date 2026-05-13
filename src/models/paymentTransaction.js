@@ -45,13 +45,44 @@ const PaymentTransaction = sequelize.define(
       comment: 'Amount in paise (integer)',
     },
     type: {
-      type: DataTypes.ENUM('PREBOOK', 'FULL', 'REMAINING','SECURITY_DEPOSIT','MONTHLY_RENT', 'REFUND', 'EXTENSION', 'BOOK_DEPOSIT'),
+      type: DataTypes.ENUM('PREBOOK', 'FULL', 'REMAINING','SECURITY_DEPOSIT','MONTHLY_RENT', 'REFUND', 'EXTENSION', 'BOOK_DEPOSIT','OFFLINE'),
       allowNull: false,
     },
     status: {
       type: DataTypes.ENUM('PENDING', 'SUCCESS', 'FAILED', 'EXPIRED'),
       allowNull: false,
       defaultValue: 'PENDING',
+    },
+    paymentMode: {
+      type: DataTypes.ENUM('ONLINE', 'OFFLINE'),
+      allowNull: false,
+      defaultValue: 'ONLINE',
+    },
+
+    offlinePaymentType: {
+      type: DataTypes.ENUM('CASH', 'CHEQUE', 'UPI'),
+      allowNull: true,
+    },
+
+    adminNote: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+
+    paymentImage: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+
+    discountAmount: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
+
+    createdByAdminId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
     },
     rawResponse: {
       type: DataTypes.JSON,
