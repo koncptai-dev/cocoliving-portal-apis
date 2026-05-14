@@ -809,6 +809,7 @@ exports.createBookingForOfflinePayments = async (req, res) => {
     }
     const checkOutDate = moment(checkInDate)
       .add(Number(duration), "months")
+      .subtract(1, "day")
       .format("YYYY-MM-DD");
     const overlap = await Booking.findOne({
       where: {
