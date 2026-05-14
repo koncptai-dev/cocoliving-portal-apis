@@ -290,7 +290,7 @@ exports.getRoomsByProperty = async (req, res) => {
 
     const rooms = await Rooms.findAll({
       where: { propertyId },
-      attributes: ["id", "roomNumber", "roomType", "status"],
+      attributes: ["id", "roomNumber", "roomType", "status", "monthlyRent"],
     });
 
     if (!rooms || rooms.length === 0) {
