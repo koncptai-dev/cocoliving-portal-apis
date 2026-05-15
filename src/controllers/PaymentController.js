@@ -4,6 +4,7 @@ const User = require('../models/user');
 const { getOrderStatus } = require('../utils/phonepe/phonepeApi');
 const { Op } = require('sequelize');
 const { logApiCall } = require("../helpers/auditLog");
+const { generateAndSendInvoice } = require('../utils/invoiceService');
 
 exports.checkOrderStatus = async (req, res) => {
   try {
@@ -122,11 +123,11 @@ exports.getUserTransactions = async (req, res) => {
         paymentMode: r.paymentMode,
         offlinePaymentType: r.offlinePaymentType,
         adminNote: r.adminNote,
-        paymentImage: r.paymentImage,
         discountAmount: r.discountAmount,
         createdByAdminId: r.createdByAdminId,
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
+        invoicePdfPath: r.invoicePdfPath,
       };
     });
 
@@ -326,6 +327,8 @@ exports.createOfflinePayment = async (req, res) => {
         source: 'admin-panel'
       }
     });
+
+    await generateAndSendInvoice(transaction);
 
     booking.bookingSource = 'OFFLINE';
 

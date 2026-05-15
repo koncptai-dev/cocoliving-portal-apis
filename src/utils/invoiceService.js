@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const puppeteer = require("puppeteer");
+const crypto = require('crypto');
 
 const Booking = require("../models/bookRoom");
 const User = require("../models/user");
@@ -137,7 +138,11 @@ async function generateAndSendInvoice(transaction) {
       fs.mkdirSync(invoiceDir, { recursive: true });
     }
 
-    const filePath = path.join(invoiceDir, `${invoiceNo}.pdf`);
+    const secureInvoiceName = `${Date.now()}_${crypto
+      .randomBytes(12)
+      .toString('hex')}.pdf`;
+
+    const filePath = path.join(invoiceDir, secureInvoiceName);
 
     const amountInWords = numberToWordsINR(total);
     const partyAddress = (user.address || "Ahmedabad").replace(/\n/g, "<br />");
@@ -270,6 +275,9 @@ async function generateAndSendInvoice(transaction) {
 </html>`;
 
     await renderHtmlToPdf(invoiceHtml, filePath);
+
+    transaction.invoicePdfPath = `uploads/invoices/${secureInvoiceName}`;
+    await transaction.save();
 
     /* SEND EMAIL */
     const template = invoiceEmail({
