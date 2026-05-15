@@ -73,6 +73,10 @@ const PaymentTransaction = sequelize.define(
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    invoicePdfPath: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
 
     discountAmount: {
       type: DataTypes.INTEGER,
