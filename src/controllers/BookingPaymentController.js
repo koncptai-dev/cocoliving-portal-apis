@@ -1245,6 +1245,28 @@ exports.initiateExtension = async (req, res) => {
     }
 
     const amountRupees = booking.monthlyRent * months;
+
+    if (booking.bookingSource === 'OFFLINE') {
+      const extensionRequest = await BookingExtension.create({
+        bookingId: booking.id,
+        userId,
+        requestedMonths: months,
+        oldCheckOutDate: booking.checkOutDate,
+        newCheckOutDate,
+        amountRupees,
+        status: 'pending',
+        paymentTransactionId: null,
+      });
+
+      return res.json({
+        success: true,
+        isOfflineFlow: true,
+        message:
+          'Extension request submitted successfully and is pending admin approval',
+        extensionRequest,
+      });
+    }
+
     const amountPaise = Math.round(amountRupees * 100);
 
     const tx = await PaymentTransaction.create({

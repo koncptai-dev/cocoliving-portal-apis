@@ -48,7 +48,7 @@ const BookingExtension = sequelize.define('BookingExtension', {
 
   paymentTransactionId: {
     type: DataTypes.BIGINT,
-    allowNull: false,
+    allowNull: true,
   },
 }, {
   tableName: 'booking_extensions',
