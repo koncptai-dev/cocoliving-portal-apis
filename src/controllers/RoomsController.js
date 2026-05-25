@@ -779,6 +779,13 @@ exports.getRoomRechargeHistory = async (
 
     const room = await Rooms.findByPk(roomId);
 
+    if (!room) {
+      return res.status(404).json({
+        success: false,
+        message: 'Room not found',
+      });
+    }
+
     if (!room?.alisteRoomId) {
       return res.status(400).json({
         success: false,
@@ -787,28 +794,63 @@ exports.getRoomRechargeHistory = async (
       });
     }
 
-    const startDate =
-      req.query.startDate || '2022-01-01';
+    const payload = {
+      roomId: room.alisteRoomId,
 
-    const endDate =
-      req.query.endDate ||
-      new Date(
-        Date.now() +
-          365 * 24 * 60 * 60 * 1000
-      )
-        .toISOString()
-        .split('T')[0];
+      startDate: req.query.startDate,
+
+      endDate: req.query.endDate,
+    };
+
+    console.log(
+      'ALISTE RECHARGE HISTORY PAYLOAD:',
+      JSON.stringify(payload, null, 2)
+    );
 
     const response =
-      await getRechargeHistory({
-        roomId: room.alisteRoomId,
-        startDate,
-        endDate,
+      await getRechargeHistory(payload);
+
+    console.log(
+      'ALISTE RECHARGE HISTORY RESPONSE:',
+      JSON.stringify(
+        response.body,
+        null,
+        2
+      )
+    );
+
+    if (!response.success) {
+      return res.status(
+        response.status || 500
+      ).json({
+        success: false,
+        message:
+          response.body?.message ||
+          'Failed to fetch recharge history',
+        error: response.body,
       });
+    }
+
+    const rechargeHistory =
+      response.body?.data?.recharges || [];
+
+    rechargeHistory.sort(
+      (a, b) =>
+        new Date(b.rechargeDate) -
+        new Date(a.rechargeDate)
+    );
+
+    const formattedHistory =
+      rechargeHistory.map(recharge => ({
+        userName: recharge.tenantName,
+        amount: recharge.balanceAdded,
+        rechargeDate:
+          recharge.rechargeDate,
+      }));
 
     return res.status(200).json({
       success: true,
-      data: response.body,
+      data: formattedHistory,
     });
   } catch (error) {
     console.error(
