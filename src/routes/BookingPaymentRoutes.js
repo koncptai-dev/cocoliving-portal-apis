@@ -28,4 +28,6 @@ router.get('/:bookingId/summary', authenticateToken,authorizeRole(1,2,3), Bookin
 // user
 router.post('/initiate-extension',authenticateToken,authorizeRole(2),BookingPaymentController.initiateExtension);
 
+router.post('/initiate-electricity-recharge', authenticateToken, BookingPaymentController.initiateElectricityRecharge );
+
 module.exports = router;

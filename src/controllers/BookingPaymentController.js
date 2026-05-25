@@ -16,6 +16,7 @@ const BookingExtension = require('../models/bookingExtension');
 const UserKYC = require('../models/userKYC');
 const Coupon = require('../models/coupon');
 
+const { initiateRecharge } = require('../utils/aliste/alisteApi');
 const { logApiCall } = require("../helpers/auditLog");
 
 function canonicalizeMetadata(metadata) {
@@ -1604,5 +1605,125 @@ exports.getBookingPaymentSummary = async (req, res) => {
   } catch (err) {
     console.error('[BookingPaymentController] getBookingPaymentSummary error', err);
     return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+exports.initiateElectricityRecharge = async (req, res) => {
+  try {
+    const { amount, roomId } = req.body;
+
+    if (!amount || !roomId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Amount and roomId are required',
+      });
+    }
+    if (!Number(amount) || Number(amount) <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid recharge amount',
+      });
+    }
+    const booking = await Booking.findOne({
+      where: {
+        userId: req.user.id,
+        roomId,
+        onboardingStatus: 'COMPLETED',
+        status: 'approved',
+      },
+      include: [
+        {
+          model: Room,
+          as: 'room',
+          required: true,
+          where: {
+            alisteRoomId: {
+              [Op.ne]: null,
+            },
+          },
+        },
+        {
+          model: User,
+          as: 'user',
+        },
+      ],
+      order: [['createdAt', 'DESC']],
+    });
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: 'Active booking not found',
+      });
+    }
+    if (!booking.alisteUserId) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Booking is not synced with Aliste user',
+      });
+    }
+    const payload = {
+      roomId: booking.room.alisteRoomId,
+      userIdentifier: booking.alisteUserId,
+      amount: Number(amount),
+    };
+    console.log(
+      'ALISTE RECHARGE PAYLOAD:',
+      JSON.stringify(payload, null, 2)
+    );
+    const rechargeResponse = await initiateRecharge(payload);
+    console.log(
+      'ALISTE RECHARGE RESPONSE:',
+      JSON.stringify(rechargeResponse.body, null, 2)
+    );
+    if (!rechargeResponse.success) {
+      return res.status(rechargeResponse.status || 500).json({
+        success: false,
+        message: 'Failed to initiate recharge',
+        error: rechargeResponse.body,
+      });
+    }
+
+    const redirectUrl =
+      rechargeResponse.body?.data?.redirectUrl ||
+      rechargeResponse.body?.redirectUrl;
+
+    const rechargeId =
+      rechargeResponse.body?.data?.rechargeId ||
+      rechargeResponse.body?.rechargeId;
+
+    const transaction = await PaymentTransaction.create({
+      bookingId: booking.id,
+      userId: booking.userId,
+      merchantOrderId: `TEMP_${Date.now()}`,
+      amount: Math.round(Number(amount) * 100),
+      type: 'ELECTRICITY_RECHARGE',
+      status: 'PENDING',
+      paymentGateway: 'ALISTE',
+      meta: {
+        roomId: booking.roomId,
+        alisteRoomId: booking.room.alisteRoomId,
+        propertyId: booking.propertyId,
+        rechargeId,
+      },
+      rawResponse: rechargeResponse.body,
+    });
+
+    await transaction.update({
+      merchantOrderId: `ELEC_RCRG_${transaction.id}`,
+    });
+
+    return res.status(200).json({
+      success: true,
+      redirectUrl,
+    });
+  } catch (error) {
+    console.error('Initiate Electricity Recharge Error:', error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };

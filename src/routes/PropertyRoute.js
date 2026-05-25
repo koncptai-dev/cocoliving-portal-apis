@@ -15,6 +15,8 @@ router.put("/edit/:id",upload.any(),editPropertyValidate, validate, authMiddlewa
 router.delete("/delete/:id", authMiddleware, authorizeRole(1,3), authorizePage("Property Management","write"), propertyController.deleteProperty);
 router.delete("/deleteRateCard", authMiddleware, authorizeRole(1,3), authorizePage("Property Management","write"), propertyController.deleteRateCard);
 router.delete("/deleteFloorLayout", authMiddleware, authorizeRole(1,3), authorizePage("Property Management","write"), propertyController.deleteFloorLayout);
+router.post('/:propertyId/integrate-aliste', authMiddleware, authorizeRole(1,3), propertyController.integrateElectricityProvider );
+router.post('/:propertyId/sync-aliste-rooms', authMiddleware, authorizeRole(1,3), propertyController.syncAlisteRooms );
 
 //for user
 router.get("/getPropertiesForUser", propertyController.getPropertiesForUser);
