@@ -794,12 +794,20 @@ exports.getRoomRechargeHistory = async (
       });
     }
 
+    const startDate = '2026-01-01';
+
+    const tomorrow = new Date();
+
+    tomorrow.setDate(
+      tomorrow.getDate() + 1
+    );
+
+    const endDate = tomorrow.toISOString().split('T')[0];
+
     const payload = {
       roomId: room.alisteRoomId,
-
-      startDate: req.query.startDate,
-
-      endDate: req.query.endDate,
+      startDate,
+      endDate,
     };
 
     console.log(
