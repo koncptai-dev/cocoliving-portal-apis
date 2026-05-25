@@ -1610,12 +1610,12 @@ exports.getBookingPaymentSummary = async (req, res) => {
 
 exports.initiateElectricityRecharge = async (req, res) => {
   try {
-    const { amount, roomId } = req.body;
+    const { amount } = req.body;
 
-    if (!amount || !roomId) {
+    if (!amount) {
       return res.status(400).json({
         success: false,
-        message: 'Amount and roomId are required',
+        message: 'Amount is required',
       });
     }
     if (!Number(amount) || Number(amount) <= 0) {
@@ -1624,12 +1624,18 @@ exports.initiateElectricityRecharge = async (req, res) => {
         message: 'Invalid recharge amount',
       });
     }
+    const today = new Date();
     const booking = await Booking.findOne({
       where: {
         userId: req.user.id,
-        roomId,
         onboardingStatus: 'COMPLETED',
         status: 'approved',
+        checkInDate: {
+          [Op.lte]: today,
+        },
+        checkOutDate: {
+          [Op.gte]: today,
+        },
       },
       include: [
         {
