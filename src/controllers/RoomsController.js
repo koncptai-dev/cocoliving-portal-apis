@@ -838,27 +838,60 @@ exports.getRoomRechargeHistory = async (
         error: response.body,
       });
     }
+    const roomDetailsResponse =
+      await getRoomDetails({
+        roomId: room.alisteRoomId,
+      });
+
+    console.log(
+      'ALISTE ROOM DETAILS RESPONSE:',
+      JSON.stringify(
+        roomDetailsResponse.body,
+        null,
+        2
+      )
+    );
+
+    const currentBalance =
+      roomDetailsResponse.body?.data?.room
+        ?.currentBalance || 0;
 
     const rechargeHistory =
       response.body?.data?.recharges || [];
 
-    rechargeHistory.sort(
-      (a, b) =>
-        new Date(b.rechargeDate) -
-        new Date(a.rechargeDate)
-    );
-
     const formattedHistory =
-      rechargeHistory.map(recharge => ({
-        userName: recharge.tenantName,
-        amount: recharge.balanceAdded,
-        rechargeDate:
-          recharge.rechargeDate,
-      }));
+      rechargeHistory
+        .sort(
+          (a, b) =>
+            new Date(b.rechargeDate) -
+            new Date(a.rechargeDate)
+        )
+        .map(recharge => ({
+          userName: recharge.tenantName,
+          amount: recharge.balanceAdded,
+          rechargeDate:
+            recharge.rechargeDate,
+        }));
+
+    console.log(
+      'FORMATTED RECHARGE HISTORY:',
+      JSON.stringify(
+        formattedHistory,
+        null,
+        2
+      )
+    );
 
     return res.status(200).json({
       success: true,
-      data: formattedHistory,
+      message:
+        'Recharge history fetched successfully',
+
+      data: {
+        currentBalance,
+
+        recharges: formattedHistory,
+      },
     });
   } catch (error) {
     console.error(
