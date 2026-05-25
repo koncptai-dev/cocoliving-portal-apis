@@ -11,7 +11,7 @@ const { generateInventoryCode } = require('../helpers/InventoryCode');
 const { logApiCall } = require("../helpers/auditLog");
 const fs = require('fs');
 const path = require('path');
-const { getRechargeHistory } = require('../utils/aliste/alisteApi');
+const { getRechargeHistory, getRoomDetails } = require('../utils/aliste/alisteApi');
 const { Op } = require('sequelize');
 
 
