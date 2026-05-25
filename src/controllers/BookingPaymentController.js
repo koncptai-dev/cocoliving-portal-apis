@@ -1812,9 +1812,8 @@ exports.initiateElectricityRecharge = async (req, res) => {
     }
 
     const redirectUrl =
-      rechargeResponse.body?.data?.redirectUrl ||
-      rechargeResponse.body?.redirectUrl;
-
+      rechargeResponse.body?.data?.paymentLink ||
+      rechargeResponse.body?.paymentLink;
     const rechargeId =
       rechargeResponse.body?.data?.rechargeId ||
       rechargeResponse.body?.rechargeId;
