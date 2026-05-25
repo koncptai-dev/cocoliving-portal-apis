@@ -1624,39 +1624,159 @@ exports.initiateElectricityRecharge = async (req, res) => {
         message: 'Invalid recharge amount',
       });
     }
+    console.log(
+      '\n========== ELECTRICITY RECHARGE DEBUG =========='
+    );
+
+    console.log('USER ID:', req.user.id);
+
+    console.log('REQUEST BODY:', req.body);
+
     const today = new Date();
+
+    console.log('RAW TODAY DATE:', today);
+
+    console.log(
+      'ISO TODAY:',
+      today.toISOString()
+    );
+
+    console.log(
+      'DATE ONLY:',
+      today.toISOString().split('T')[0]
+    );
+
+    const allUserBookings = await Booking.findAll({
+      where: {
+        userId: req.user.id,
+      },
+
+      include: [
+        {
+          model: Room,
+          as: 'room',
+        },
+      ],
+
+      order: [['createdAt', 'DESC']],
+    });
+
+    console.log(
+      '\nALL USER BOOKINGS:\n',
+      JSON.stringify(allUserBookings, null, 2)
+    );
+
     const booking = await Booking.findOne({
       where: {
         userId: req.user.id,
+
         onboardingStatus: 'COMPLETED',
         status: 'approved',
         checkInDate: {
           [Op.lte]: today,
         },
+
         checkOutDate: {
           [Op.gte]: today,
         },
       },
+
       include: [
         {
           model: Room,
           as: 'room',
+
           required: true,
+
           where: {
             alisteRoomId: {
               [Op.ne]: null,
             },
           },
         },
+
         {
           model: User,
           as: 'user',
         },
       ],
+
       order: [['createdAt', 'DESC']],
     });
 
+    console.log(
+      '\nMATCHED BOOKING:\n',
+      JSON.stringify(booking, null, 2)
+    );
+
     if (!booking) {
+      console.log(
+        '\n❌ NO ACTIVE BOOKING FOUND'
+      );
+
+      console.log(
+        '\nDEBUG CONDITIONS CHECK'
+      );
+
+      for (const b of allUserBookings) {
+        console.log('\n----------------');
+
+        console.log('BOOKING ID:', b.id);
+
+        console.log(
+          'STATUS:',
+          b.status
+        );
+
+        console.log(
+          'ONBOARDING STATUS:',
+          b.onboardingStatus
+        );
+
+        console.log(
+          'CHECKIN:',
+          b.checkInDate
+        );
+
+        console.log(
+          'CHECKOUT:',
+          b.checkOutDate
+        );
+
+        console.log(
+          'ROOM EXISTS:',
+          !!b.room
+        );
+
+        console.log(
+          'ALISTE ROOM ID:',
+          b.room?.alisteRoomId
+        );
+
+        console.log(
+          'CHECKIN VALID:',
+          new Date(b.checkInDate) <= today
+        );
+
+        console.log(
+          'CHECKOUT VALID:',
+          new Date(b.checkOutDate) >= today
+        );
+
+        console.log(
+          'STATUS VALID:',
+          ['approved', 'active'].includes(
+            b.status
+          )
+        );
+
+        console.log(
+          'ONBOARDING VALID:',
+          b.onboardingStatus ===
+            'COMPLETED'
+        );
+      }
+
       return res.status(404).json({
         success: false,
         message: 'Active booking not found',
