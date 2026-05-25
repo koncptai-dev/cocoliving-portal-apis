@@ -839,9 +839,7 @@ exports.getRoomRechargeHistory = async (
       });
     }
     const roomDetailsResponse =
-      await getRoomDetails({
-        roomId: room.alisteRoomId,
-      });
+      await getRoomDetails( room.alisteRoomId );
 
     console.log(
       'ALISTE ROOM DETAILS RESPONSE:',
