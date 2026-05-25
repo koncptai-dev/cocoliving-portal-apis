@@ -83,7 +83,7 @@ async function getPropertyRooms(propertyId) {
 
 async function getRechargeHistory(payload) {
   return alisteRequest(
-    '/integration/recharge/history',
+    '/integration/room/recharges',
     'POST',
     payload
   );
