@@ -1,6 +1,7 @@
 const Booking = require('../models/bookRoom');
 const BookingOnboarding = require('../models/bookingOnboarding');
 const User = require('../models/user');
+const Rooms = require('../models/rooms');
 const OTP = require('../models/otp');
 const otpGenerator = require('otp-generator');
 const { smsSender } = require('../utils/smsService');
