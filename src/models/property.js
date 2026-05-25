@@ -31,6 +31,18 @@ const Property = sequelize.define('Property', {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
     },
+    alisteIntegrated: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    alistePropertyId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    minimumBalance: {
+      type: DataTypes.INTEGER,
+      defaultValue: 500
+    },
     lateFeePerDay: {
       type: DataTypes.INTEGER,
       defaultValue: 100

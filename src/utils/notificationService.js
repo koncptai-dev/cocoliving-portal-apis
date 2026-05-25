@@ -188,3 +188,109 @@ exports.notifyTenureEnding = async (booking) => {
     dedupeKey
   );
 };
+
+exports.notifyLowElectricityBalance = async (
+  booking,
+  currentBalance,
+  minimumBalance
+) => {
+  console.log(
+    '\n==== notifyLowElectricityBalance ===='
+  );
+
+  console.log(
+    'Booking:',
+    booking?.id
+  );
+
+  const user = await User.findByPk(
+    booking.userId
+  );
+
+  if (!user) {
+    console.log(
+      '❌ User not found for booking:',
+      booking?.id
+    );
+
+    return;
+  }
+
+  console.log(
+    '✅ User found:',
+    user.id
+  );
+
+  const dedupeKey = `low_balance_${booking.id}_${new Date().toISOString().slice(0, 10)}`;
+
+  await sendPushNotification(
+    user.id,
+
+    'Low Electricity Balance',
+
+    `Your electricity balance is ₹${currentBalance}. Minimum recommended balance is ₹${minimumBalance}. Please recharge to avoid power interruption.`,
+
+    {
+      type: 'low_electricity_balance',
+
+      bookingId:
+        booking.id.toString(),
+    },
+
+    'pushNotifications',
+
+    dedupeKey
+  );
+};
+
+exports.notifyElectricityUnblocked =
+  async booking => {
+    console.log(
+      '\n==== notifyElectricityUnblocked ===='
+    );
+
+    console.log(
+      'Booking:',
+      booking?.id
+    );
+
+    const user = await User.findByPk(
+      booking.userId
+    );
+
+    if (!user) {
+      console.log(
+        '❌ User not found for booking:',
+        booking?.id
+      );
+
+      return;
+    }
+
+    console.log(
+      '✅ User found:',
+      user.id
+    );
+
+    const dedupeKey = `electricity_unblocked_${booking.id}_${new Date().toISOString().slice(0, 10)}`;
+
+    await sendPushNotification(
+      user.id,
+
+      'Electricity Restored',
+
+      'Your room electricity meter has been successfully recharged and unblocked.',
+
+      {
+        type:
+          'electricity_unblocked',
+
+        bookingId:
+          booking.id.toString(),
+      },
+
+      'pushNotifications',
+
+      dedupeKey
+    );
+  };

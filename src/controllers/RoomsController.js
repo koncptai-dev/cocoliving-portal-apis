@@ -5,11 +5,13 @@ const Booking = require('../models/bookRoom');
 const Property = require('../models/property');
 const PropertyRateCard = require('../models/propertyRateCard');
 const Inventory = require('../models/inventory');
+const PaymentTransaction = require('../models/paymentTransaction');
+const User = require('../models/user');
 const { generateInventoryCode } = require('../helpers/InventoryCode');
 const { logApiCall } = require("../helpers/auditLog");
 const fs = require('fs');
 const path = require('path');
-
+const { getRechargeHistory } = require('../utils/aliste/alisteApi');
 const { Op } = require('sequelize');
 
 
@@ -696,7 +698,6 @@ exports.importRooms = async (req, res) => {
 
   }
 };
-const User = require('../models/user');
 
 exports.getRoomOccupants = async (req, res) => {
   try {
@@ -766,5 +767,58 @@ exports.downloadRoomCsvTemplate = async (req, res) => {
   } catch (error) {
     console.error("Template download error:", error);
     res.status(500).json({ message: "Failed to download template" });
+  }
+};
+
+exports.getRoomRechargeHistory = async (
+  req,
+  res
+) => {
+  try {
+    const { roomId } = req.params;
+
+    const room = await Rooms.findByPk(roomId);
+
+    if (!room?.alisteRoomId) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Room is not integrated with Aliste',
+      });
+    }
+
+    const startDate =
+      req.query.startDate || '2022-01-01';
+
+    const endDate =
+      req.query.endDate ||
+      new Date(
+        Date.now() +
+          365 * 24 * 60 * 60 * 1000
+      )
+        .toISOString()
+        .split('T')[0];
+
+    const response =
+      await getRechargeHistory({
+        roomId: room.alisteRoomId,
+        startDate,
+        endDate,
+      });
+
+    return res.status(200).json({
+      success: true,
+      data: response.body,
+    });
+  } catch (error) {
+    console.error(
+      'Get Room Recharge History Error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };

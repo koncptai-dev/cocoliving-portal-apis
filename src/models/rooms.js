@@ -44,6 +44,10 @@ const Rooms = sequelize.define('Rooms', {
     preferredUserType: {
         type: DataTypes.STRING
     },
+    alisteRoomId: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
     // amenities: {
     //     type: DataTypes.ARRAY(DataTypes.STRING),
     //     allowNull: true,

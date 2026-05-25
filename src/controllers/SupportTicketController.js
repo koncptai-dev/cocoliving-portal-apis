@@ -11,6 +11,7 @@ const { generateSupportTicketCode } = require('../helpers/SupportTicketCode');
 const { logApiCall } = require("../helpers/auditLog");
 const { createFromTicket } = require("./serviceHistoryController");
 const { notifyRequestUpdate } = require("../utils/notificationService");
+const { createTicket: createAlisteTicket } = require('../utils/aliste/alisteApi');
 
 //create tickets
 exports.createTicket = async (req, res) => {
@@ -42,8 +43,63 @@ exports.createTicket = async (req, res) => {
                 "Feedback",
                 "Other",
             ],
+            "Electricity Recharge": [
+                "Deductions",
+                "Recharge",
+                "Balance",
+                "Room",
+                "Other",
+            ],
         };
-        const { roomNumber, date, issue, description, priority, inventoryId, category , subCategory } = req.body;
+
+        const ALISTE_SUBCATEGORY_MAP = {
+            "Deductions": [
+                "Over consumption",
+                "Can't see deduction",
+            ],
+
+            "Recharge": [
+                "Recharge not reflected",
+                "Unable to recharge",
+            ],
+
+            "Balance": [
+                "Wrong balance being shown",
+            ],
+
+            "Room": [
+                "Wrong room number",
+                "Room mate not added",
+            ],
+
+            "Other": [
+                "Other",
+            ],
+        };
+
+        const ALISTE_CATEGORY_MAPPING = {
+            "Deductions": 1,
+            "Recharge": 2,
+            "Balance": 3,
+            "Room": 4,
+            "Other": 5,
+        };
+
+        const ALISTE_SUBCATEGORY_MAPPING = {
+            "Over consumption": 0,
+            "Can't see deduction": 1,
+
+            "Recharge not reflected": 0,
+            "Unable to recharge": 1,
+
+            "Wrong balance being shown": 0,
+
+            "Wrong room number": 0,
+            "Room mate not added": 1,
+
+            Other: 0,
+        };
+        const { roomNumber, date, issue, description, priority, inventoryId, category , subCategory , alisteSubcategory } = req.body;
 
         //validation
         if (!roomNumber || !date || !issue || !category || !subCategory) {
@@ -55,13 +111,35 @@ exports.createTicket = async (req, res) => {
                 message: "Invalid category/subCategory combination"
             });
         }
+        if ( category === 'Electricity Recharge' ) {
+            if (
+                !alisteSubcategory ||
+                !ALISTE_SUBCATEGORY_MAP[
+                    subCategory
+                ]?.includes(alisteSubcategory)
+            ) {
+                return res.status(400).json({
+                    message:
+                        'Invalid Aliste subcategory',
+                });
+            }
+        }
         //check room exists
         const room = await Rooms.findOne({ where: { roomNumber } });
         if (!room) {
             await logApiCall(req, res, 404, `Failed to create support ticket - room not found (${roomNumber})`, "supportTicket");
             return res.status(404).json({ message: "Room not found" });
         }
-
+        if (
+            category ===
+                'Electricity Recharge' &&
+            !room.alisteRoomId
+        ) {
+            return res.status(400).json({
+                message:
+                    'Room is not integrated with Aliste',
+            });
+        }
         //check user has booked the room 
         const booking = await Booking.findOne({
             where: { userId },
@@ -128,8 +206,58 @@ exports.createTicket = async (req, res) => {
             inventoryId: inventoryId || null,
             inventoryName: inventoryName || null,
             category,
-            subCategory
+            subCategory,
+            alisteSubcategory: alisteSubcategory || null,
         })
+        try {
+            if (
+                category ===
+                    'Electricity Recharge' &&
+                room.alisteRoomId &&
+                booking.alisteUserId
+            ) {
+                const alisteCategory =
+                    ALISTE_CATEGORY_MAPPING[
+                        subCategory
+                    ];
+
+                const alisteSubcategoryNumber =
+                    ALISTE_SUBCATEGORY_MAPPING[
+                        alisteSubcategory
+                    ];
+
+                const response =
+                    await createAlisteTicket({
+                        category: alisteCategory,
+
+                        subcategory:
+                            alisteSubcategoryNumber,
+
+                        subject: issue,
+
+                        description:
+                            description || issue,
+
+                        userIdentifier:
+                            booking.alisteUserId,
+
+                        roomId:
+                            room.alisteRoomId,
+
+                        attachmentsURLs: [],
+                    });
+
+                ticket.externalTicketId =
+                    response?.body?.data?.ticketId;
+
+                await ticket.save();
+            }
+        } catch (error) {
+            console.error(
+                'Create Aliste Ticket Error:',
+                error.message
+            );
+        }
         await logTicketEvent({
             ticketId: ticket.id,
             actionType: "TICKET_CREATED",

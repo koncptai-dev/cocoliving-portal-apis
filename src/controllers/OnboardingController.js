@@ -8,6 +8,7 @@ const { onboardingOtpEmail } = require('../utils/emailTemplates/emailTemplates')
 const { mailsender } = require('../utils/emailService');
 const assertAdmin = (role) => role === 1 || role === 3;
 const { notifyOnboardingSuccess } = require('../utils/notificationService');
+const { addUserToRoom } = require('../utils/aliste/alisteApi');
 
 exports.startOnboarding = async (req, res) => {
   const checklist = [
@@ -161,7 +162,10 @@ exports.verifyOnboardingOtp = async (req, res) => {
   }
 
   const booking = await Booking.findByPk(bookingId, {
-    include: [{ model: User, as: 'user' }]
+    include: [
+      { model: User, as: 'user' },
+      { model: Rooms, as: 'room' }
+    ]
   });
 
   if (!booking || !booking.user) {
@@ -206,6 +210,53 @@ exports.verifyOnboardingOtp = async (req, res) => {
 
   await notifyOnboardingSuccess(booking);
 
+  try {
+    if (booking.room?.alisteRoomId) {
+      if (booking.alisteUserId) {
+        return;
+      }
+      const response = await addUserToRoom({
+        roomId: booking.room.alisteRoomId,
+
+        userId: `USER_${booking.id}`,
+
+        phoneNumber: booking.user.phone,
+
+        firstName:
+          booking.user.fullName?.split(' ')[0] ||
+          'User',
+
+        lastName:
+          booking.user.fullName
+            ?.split(' ')
+            .slice(1)
+            .join(' ') || '',
+
+        email: booking.user.email,
+      });
+      if (!response.success) {
+        throw new Error(
+          response?.body?.message ||
+          'Failed to add user to Aliste'
+        );
+      }
+      booking.alisteUserId =
+        response?.body?.data?.userId ||
+        `USER_${booking.id}`;
+
+      await booking.save();
+
+      console.log(
+        'ALISTE ADD USER RESPONSE:',
+        JSON.stringify(response.body, null, 2)
+      );
+    }
+  } catch (error) {
+    console.error(
+      'Aliste Add User Error:',
+      error.message
+    );
+  }
   return res.json({ success: true });
 };
 

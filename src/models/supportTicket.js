@@ -115,6 +115,15 @@ const SupportTicket = sequelize.define('SupportTicket', {
         type: DataTypes.STRING,
         allowNull: false,
     },
+    alisteSubcategory: {
+        type: DataTypes.STRING,
+        allowNull: true,
+    },
+
+    externalTicketId: {
+        type: DataTypes.STRING,
+        allowNull: true,
+    },
 },
     {
         tableName: 'support_tickets'

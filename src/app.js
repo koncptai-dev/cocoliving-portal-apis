@@ -48,6 +48,7 @@ const ExportRoutes = require("./routes/ExportRoutes");
 const CouponRoute = require('./routes/CouponRoute');
 const BlogRoutes = require("./routes/blogRoutes");
 
+const VerifyWebhook = require('./middleware/alisteWebhookAuth');
 // cron job for admin notifications about users with pending rent
 require('./utils/rentDetailsCron');
 
@@ -56,6 +57,8 @@ require('./utils/cronJobs/scheduleVisitCron');
 require('./utils/cronJobs/checkInReminderCron');
 require('./utils/cronJobs/rentDueUserCron');
 require('./utils/cronJobs/tenureEndingCron');
+require('./utils/cronJobs/aliste/checkoutRemovalCron');
+require('./utils/cronJobs/aliste/lowBalanceNotificationCron');
 
 app.use(
   cors({
@@ -76,6 +79,18 @@ app.post(
 //  app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 // Correct static serving for uploads folder (since app.js is in src/)
 app.use(bodyParser.json());
+
+app.post(
+  '/api/aliste-recharge-status',
+  VerifyWebhook,
+  require('./controllers/AlisteRechargeWebhookController').webhook
+);
+
+app.post(
+  '/api/aliste-ticket-status',
+  VerifyWebhook,
+  require("./controllers/AlisteTicketWebhookController").webhook
+);
 
 // Serve uploads folder from src/uploads (as per your current structure)
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
