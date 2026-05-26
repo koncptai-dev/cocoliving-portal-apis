@@ -79,6 +79,7 @@ console.log(
 
     switch (normalizedStatus) {
       case 'SUCCESS':
+      case 'PAID':
         transactionStatus = 'SUCCESS';
         break;
 
