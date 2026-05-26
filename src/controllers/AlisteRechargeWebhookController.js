@@ -9,7 +9,19 @@ exports.webhook = async (req, res) => {
   try {
     const payload = req.body;
 
+    console.log(
+      '\n========== ALISTE RECHARGE WEBHOOK =========='
+    );
+
+    console.log(
+      'FULL PAYLOAD:',
+      JSON.stringify(payload, null, 2)
+    );
     const rechargeId = payload?.rechargeId;
+    console.log(
+      'RECHARGE ID:',
+      rechargeId
+    );
     console.log(
       'ALISTE WEBHOOK HEADERS:',
       JSON.stringify(req.headers, null, 2)
@@ -20,7 +32,9 @@ exports.webhook = async (req, res) => {
         message: 'Recharge ID missing',
       });
     }
-
+    console.log(
+  'SEARCHING TRANSACTION USING rechargeId'
+);
     const transaction = await PaymentTransaction.findOne({
       where: {
         type: 'ELECTRICITY_RECHARGE',
@@ -30,7 +44,10 @@ exports.webhook = async (req, res) => {
       },
       order: [['createdAt', 'DESC']],
     });
-
+    console.log(
+  'FOUND TRANSACTION:',
+  JSON.stringify(transaction, null, 2)
+);
     if (!transaction) {
       return res.status(404).json({
         success: false,
@@ -39,7 +56,15 @@ exports.webhook = async (req, res) => {
     }
 
     const normalizedStatus = String(payload?.status || '').toUpperCase();
+    console.log(
+  'INCOMING STATUS:',
+  payload?.status
+);
 
+console.log(
+  'NORMALIZED STATUS:',
+  normalizedStatus
+);
     // idempotency
     if (
       transaction.status === 'SUCCESS'
@@ -65,7 +90,10 @@ exports.webhook = async (req, res) => {
       default:
         transactionStatus = 'PENDING';
     }
-
+    console.log(
+  'FINAL TRANSACTION STATUS:',
+  transactionStatus
+);
     transaction.status = transactionStatus;
 
     transaction.meta = {
@@ -81,11 +109,33 @@ exports.webhook = async (req, res) => {
     };
 
     transaction.rawResponse = payload;
-
+    console.log(
+  'TRANSACTION BEFORE SAVE:',
+  JSON.stringify(
+    {
+      id: transaction.id,
+      status: transaction.status,
+      meta: transaction.meta,
+    },
+    null,
+    2
+  )
+);
     await transaction.save();
-
+console.log(
+  '✅ TRANSACTION SAVED'
+);
     if (transactionStatus === 'SUCCESS') {
-      await Booking.update(
+      console.log(
+  'UPDATING BOOKING firstElectricityRechargeDone'
+);
+
+console.log(
+  'BOOKING ID:',
+  transaction.bookingId
+);
+      const bookingUpdateResult =
+  await Booking.update(
         {
           firstElectricityRechargeDone: true,
         },
@@ -95,6 +145,10 @@ exports.webhook = async (req, res) => {
           },
         }
       );
+      console.log(
+  'BOOKING UPDATE RESULT:',
+  bookingUpdateResult
+);
       const oldBalance =
         Number(payload?.roomBalance || 0) -
         Number(payload?.balanceAdded || 0);
@@ -102,7 +156,9 @@ exports.webhook = async (req, res) => {
       const newBalance = Number(
         payload?.roomBalance || 0
       );
-
+      console.log(
+  'FETCHING BOOKING WITH PROPERTY'
+);
       const booking = await Booking.findOne({
         where: {
           id: transaction.bookingId,
@@ -114,7 +170,10 @@ exports.webhook = async (req, res) => {
           },
         ],
       });
-
+      console.log(
+  'FULL BOOKING:',
+  JSON.stringify(booking, null, 2)
+);
       const minimumBalance = booking?.property?.minimumBalance || 0;
       if (!booking) {
         return res.status(404).json({
@@ -124,11 +183,18 @@ exports.webhook = async (req, res) => {
       }
 
 
-      console.log({
-        oldBalance,
-        newBalance,
-        minimumBalance,
-      });
+      console.log(
+  '\n========== BALANCE CHECK =========='
+);
+
+console.log({
+  oldBalance,
+  newBalance,
+  minimumBalance,
+  shouldUnblock:
+    oldBalance < minimumBalance &&
+    newBalance >= minimumBalance,
+});
       if (
         oldBalance < minimumBalance &&
         newBalance >= minimumBalance
@@ -136,13 +202,20 @@ exports.webhook = async (req, res) => {
         console.log(
           '✅ Meter unblocked notification'
         );
-
+        console.log(
+  'TRIGGERING notifyElectricityUnblocked'
+);
         await notifyElectricityUnblocked(
           booking
         );
+        console.log(
+  '✅ notifyElectricityUnblocked completed'
+);
       }
     }
-
+    console.log(
+  '✅ notifyElectricityUnblocked completed'
+);
     return res.status(200).json({
       success: true,
       message: 'Recharge webhook processed successfully',
