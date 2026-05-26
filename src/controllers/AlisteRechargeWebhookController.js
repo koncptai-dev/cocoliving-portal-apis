@@ -2,8 +2,9 @@ const { Sequelize, Op } = require('sequelize');
 
 const PaymentTransaction = require('../models/paymentTransaction');
 const Booking = require('../models/bookRoom');
+const Property = require('../models/property');
 const { notifyElectricityUnblocked } = require('../utils/notificationService');
-const { Property } = require('../models');
+const { generateAndSendInvoice } = require('../utils/invoiceService');
 
 exports.webhook = async (req, res) => {
   try {
@@ -38,8 +39,9 @@ exports.webhook = async (req, res) => {
     const transaction = await PaymentTransaction.findOne({
       where: {
         type: 'ELECTRICITY_RECHARGE',
-        [Op.and]: Sequelize.literal(
-          `"PaymentTransaction"."meta"->>'rechargeId' = '${rechargeId}'`
+        [Op.and]: Sequelize.where(
+          Sequelize.json('meta.rechargeId'),
+          rechargeId
         ),
       },
       order: [['createdAt', 'DESC']],
@@ -212,6 +214,20 @@ console.log({
         console.log(
   '✅ notifyElectricityUnblocked completed'
 );
+      }
+      try {
+        await generateAndSendInvoice(
+          transaction
+        );
+
+        console.log(
+          '✅ Invoice generated'
+        );
+      } catch (invoiceError) {
+        console.error(
+          '❌ Invoice generation failed:',
+          invoiceError
+        );
       }
     }
     console.log(
