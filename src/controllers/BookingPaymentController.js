@@ -1787,7 +1787,7 @@ exports.initiateElectricityRecharge = async (req, res) => {
     }
     const payload = {
       roomId: booking.room.alisteRoomId,
-      userIdentifier: booking.user.phone,
+      userIdentifier: `+91${booking.user.phone.slice(-10)}`,
       amount: Number(amount),
     };
     console.log(
