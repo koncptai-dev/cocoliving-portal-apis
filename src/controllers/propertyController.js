@@ -203,7 +203,7 @@ exports.editProperties = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { id } = req.params;
-    let { name, address, description, images, amenities, is_active, removedImages, rateCard } = req.body;
+    let { name, address, description, images, amenities, is_active, removedImages, rateCard, minimumBalance } = req.body;
 
     const property = await Property.findByPk(id, { transaction: t });
     if (!property) {
@@ -284,6 +284,7 @@ exports.editProperties = async (req, res) => {
       images: updatedImages,
       amenities: amenities !== undefined ? amenitiesArray : property.amenities,
       is_active: is_active !== undefined ? is_active : property.is_active,
+      minimumBalance: minimumBalance !== undefined ? parseInt(minimumBalance) : property.minimumBalance,
     }, { transaction: t });
 
     //for ratecard roomImages
