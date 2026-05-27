@@ -12,6 +12,7 @@ const PropertyRateCard = require("../models/propertyRateCard");
 const BookingExtension = require('../models/bookingExtension');
 const Inventory = require("../models/inventory");
 const { sendPushNotification } = require("../helpers/notificationHelper");
+const { removeUserFromRoom } = require('../utils/aliste/alisteApi');
 
 const releaseInventoryForBooking = async (booking, transaction = null) => {
   if (!booking.assignedItems || booking.assignedItems.length === 0) return;
@@ -231,6 +232,34 @@ exports.cancelBooking = async (req, res) => {
       }
     }
 
+    if (
+      !booking.removedUserFromAliste &&
+      booking.alisteUserId
+    ) {
+      try {
+        const [bookingUser, room] = await Promise.all([
+          User.findByPk(booking.userId),
+          Rooms.findByPk(booking.roomId),
+        ]);
+
+        if (room?.alisteRoomId) {
+          await removeUserFromRoom({
+            roomId: room.alisteRoomId,
+            userId: booking.alisteUserId,
+            phone: bookingUser?.phone,
+          });
+
+          booking.removedUserFromAliste = true;
+
+          await booking.save({ transaction: t });
+        }
+      } catch (error) {
+        console.error(
+          `Failed to remove booking ${booking.id} user from Aliste:`,
+          error.message
+        );
+      }
+    }
     await logApiCall(req, res, 200, `Cancelled booking (ID: ${bookingId})`, "booking", parseInt(bookingId));
     await t.commit();
     return res.status(200).json({
@@ -304,6 +333,34 @@ exports.approveCancellation = async (req, res) => {
           activeCount >= room.capacity ? 'booked' : 'available';
 
         await room.save();
+      }
+    }
+    if (
+      !booking.removedUserFromAliste &&
+      booking.alisteUserId
+    ) {
+      try {
+        const [bookingUser, room] = await Promise.all([
+          User.findByPk(booking.userId),
+          Rooms.findByPk(booking.roomId),
+        ]);
+
+        if (room?.alisteRoomId) {
+          await removeUserFromRoom({
+            roomId: room.alisteRoomId,
+            userId: booking.alisteUserId,
+            phone: bookingUser?.phone,
+          });
+
+          booking.removedUserFromAliste = true;
+
+          await booking.save({ transaction: t });
+        }
+      } catch (error) {
+        console.error(
+          `Failed to remove booking ${booking.id} user from Aliste:`,
+          error.message
+        );
       }
     }
     await logApiCall(
