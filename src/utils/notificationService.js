@@ -85,7 +85,7 @@ exports.notifyOnboardingSuccess = async (booking) => {
   await sendPushNotification(
     user.id,
     "Welcome",
-    `Welcome to ${propertyName}. Please complete your first electricity recharge to activate uninterrupted power supply for your room.`,
+    `Welcome to ${propertyName}. Please complete your first electricity recharge to activate power supply for your room.`,
     { type: "onboarding_success" },
     "pushNotifications"
   );
