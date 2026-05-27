@@ -1661,10 +1661,6 @@ exports.initiateElectricityRecharge = async (req, res) => {
       order: [['createdAt', 'DESC']],
     });
 
-    console.log(
-      '\nALL USER BOOKINGS:\n',
-      JSON.stringify(allUserBookings, null, 2)
-    );
 
     const booking = await Booking.findOne({
       where: {
@@ -1791,7 +1787,7 @@ exports.initiateElectricityRecharge = async (req, res) => {
     }
     const payload = {
       roomId: booking.room.alisteRoomId,
-      userIdentifier: booking.alisteUserId,
+      userIdentifier: booking.user.phone,
       amount: Number(amount),
     };
     console.log(
