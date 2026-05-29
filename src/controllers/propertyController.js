@@ -1129,6 +1129,37 @@ exports.syncAlisteRooms = async (req, res) => {
 
     const { propertyId } = req.params;
 
+    const { alistePropertyId } = req.body;
+    if (
+      alistePropertyId &&
+      typeof alistePropertyId !== "string"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid alistePropertyId",
+      });
+    }
+    const property = await Property.findByPk(propertyId);
+
+    if (!property) {
+      return res.status(404).json({
+        success: false,
+        message: "Property not found",
+      });
+    }
+
+    if (alistePropertyId) {
+      property.alistePropertyId = alistePropertyId;
+      property.alisteIntegrated = true;
+      await property.save();
+    }
+
+    if (!property.alistePropertyId) {
+      return res.status(400).json({
+        success: false,
+        message: "Property does not have Aliste mapping",
+      });
+    }
     console.log(
       'PROPERTY ID PARAM:',
       propertyId
