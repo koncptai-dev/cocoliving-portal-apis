@@ -1,4 +1,5 @@
 const cron = require('node-cron');
+const { Op } = require('sequelize');
 
 const Property = require('../../../models/property');
 const Rooms = require('../../../models/rooms');
@@ -6,7 +7,7 @@ const Booking = require('../../../models/bookRoom');
 const User = require('../../../models/user');
 
 const {
-  getRoomDetails,
+  getPropertyRooms,
 } = require('../../../utils/aliste/alisteApi');
 
 const {
@@ -29,97 +30,154 @@ cron.schedule(
     );
 
     try {
-      const rooms = await Rooms.findAll({
-        where: {
-          alisteRoomId: {
-            [require('sequelize').Op.ne]:
-              null,
-          },
-        },
+      const today = new Date();
 
-        include: [
-          {
-            model: Property,
-            as: 'property',
-          },
-          {
-            model: Booking,
-            as: 'bookings',
-            where: {
-              status: 'approved',
+      const properties =
+        await Property.findAll({
+          where: {
+            alistePropertyId: {
+              [Op.ne]: null,
             },
-            required: false,
-            include: [
-              {
-                model: User,
-                as: 'user',
-              },
-            ],
           },
-        ],
-      });
+        });
 
       console.log(
-        `Found ${rooms.length} rooms`
+        `Found ${properties.length} integrated properties`
       );
 
-      for (const room of rooms) {
+      for (const property of properties) {
         try {
-          const response =
-            await getRoomDetails(
-              room.alisteRoomId
-            );
-
-          const roomData =
-            response?.body?.data;
-
-          if (!roomData) {
-            continue;
-          }
-
-          const balance = Number(
-            roomData.balance || 0
+          console.log(
+            `Checking property ${property.id}`
           );
 
-          const minimumBalance =
-            Number(
-              room.property
-                ?.minimumBalance || 0
+          const response =
+            await getPropertyRooms(
+              property.alistePropertyId
             );
 
-          console.log({
-            room: room.roomNumber,
-            balance,
-            minimumBalance,
-          });
+          const alisteRooms =
+            response?.body?.data?.room ||
+            response?.body?.data?.rooms ||
+            [];
 
-          if (
-            balance > minimumBalance
-          ) {
+          if (!Array.isArray(alisteRooms)) {
+            console.log(
+              'No rooms returned from Aliste'
+            );
             continue;
           }
 
-          for (const booking of room.bookings) {
-            console.log(
-              `⚠️ Low balance notification for booking ${booking.id}`
-            );
-            await notifyLowElectricityBalance(
-                booking,
-                balance,
-                minimumBalance
-            );
+          const lowBalanceRooms =
+            alisteRooms.filter(room => {
+              const balance = Number(
+                room.balance || 0
+              );
+
+              return (
+                balance <
+                Number(
+                  property.minimumBalance || 0
+                ) + 200
+              );
+            });
+
+          console.log(
+            `Found ${lowBalanceRooms.length} low balance rooms`
+          );
+
+          if (!lowBalanceRooms.length) {
+            continue;
           }
-        } catch (error) {
+
+          const localRooms =
+            await Rooms.findAll({
+              where: {
+                propertyId: property.id,
+                alisteRoomId: {
+                  [Op.ne]: null,
+                },
+              },
+            });
+
+          const roomMap = new Map(
+            localRooms.map(room => [
+              room.alisteRoomId,
+              room,
+            ])
+          );
+
+          for (const alisteRoom of lowBalanceRooms) {
+            try {
+              const localRoom =
+                roomMap.get(
+                  alisteRoom.alisteId
+                );
+
+              if (!localRoom) {
+                console.log(
+                  `No local mapping found for ${alisteRoom.alisteId}`
+                );
+                continue;
+              }
+
+              const bookings =
+                await Booking.findAll({
+                  where: {
+                    roomId: localRoom.id,
+
+                    status: 'approved',
+
+                    checkInDate: {
+                      [Op.lte]: today,
+                    },
+
+                    checkOutDate: {
+                      [Op.gte]: today,
+                    },
+                  },
+
+                  include: [
+                    {
+                      model: User,
+                      as: 'user',
+                    },
+                  ],
+                });
+
+              console.log(
+                `Room ${localRoom.roomNumber} has ${bookings.length} active occupants`
+              );
+
+              for (const booking of bookings) {
+                await notifyLowElectricityBalance(
+                  booking,
+                  Number(
+                    alisteRoom.balance || 0
+                  ),
+                  Number(
+                    property.minimumBalance || 0
+                  )
+                );
+              }
+            } catch (roomError) {
+              console.error(
+                `Failed room ${alisteRoom.alisteId}`,
+                roomError
+              );
+            }
+          }
+        } catch (propertyError) {
           console.error(
-            `❌ Failed room ${room.id}`,
-            error.message
+            `Failed property ${property.id}`,
+            propertyError
           );
         }
       }
     } catch (error) {
       console.error(
         '🔥 Low Balance Cron Error:',
-        error.message
+        error
       );
     }
   },
