@@ -245,8 +245,7 @@ exports.cancelBooking = async (req, res) => {
         if (room?.alisteRoomId) {
           await removeUserFromRoom({
             roomId: room.alisteRoomId,
-            userId: booking.alisteUserId,
-            phone: bookingUser?.phone,
+            phoneNumber: bookingUser?.phone,
           });
 
           booking.removedUserFromAliste = true;
