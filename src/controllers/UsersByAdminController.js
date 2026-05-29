@@ -99,7 +99,7 @@ exports.getNormalUsers = async (req, res) => {
   try {
     const users = await User.findAll({
       where: { role: 2 }, // only normal users
-      attributes: ["id", "fullName"],
+      attributes: ["id", "fullName", "email"],
       order: [["fullName", "ASC"]],
     });
 

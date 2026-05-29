@@ -5,11 +5,13 @@ const Booking = require('../models/bookRoom');
 const Property = require('../models/property');
 const PropertyRateCard = require('../models/propertyRateCard');
 const Inventory = require('../models/inventory');
+const PaymentTransaction = require('../models/paymentTransaction');
+const User = require('../models/user');
 const { generateInventoryCode } = require('../helpers/InventoryCode');
 const { logApiCall } = require("../helpers/auditLog");
 const fs = require('fs');
 const path = require('path');
-
+const { getRechargeHistory, getRoomDetails } = require('../utils/aliste/alisteApi');
 const { Op } = require('sequelize');
 
 
@@ -696,7 +698,6 @@ exports.importRooms = async (req, res) => {
 
   }
 };
-const User = require('../models/user');
 
 exports.getRoomOccupants = async (req, res) => {
   try {
@@ -766,5 +767,145 @@ exports.downloadRoomCsvTemplate = async (req, res) => {
   } catch (error) {
     console.error("Template download error:", error);
     res.status(500).json({ message: "Failed to download template" });
+  }
+};
+
+exports.getRoomRechargeHistory = async (
+  req,
+  res
+) => {
+  try {
+    const { roomId } = req.params;
+
+    const room = await Rooms.findByPk(roomId);
+
+    if (!room) {
+      return res.status(404).json({
+        success: false,
+        message: 'Room not found',
+      });
+    }
+
+    if (!room?.alisteRoomId) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Room is not integrated with Aliste',
+      });
+    }
+
+    const startDate = '2026-01-01';
+
+    const tomorrow = new Date();
+
+    tomorrow.setDate(
+      tomorrow.getDate() + 1
+    );
+
+    const endDate = tomorrow.toISOString().split('T')[0];
+
+    const payload = {
+      roomId: room.alisteRoomId,
+      startDate,
+      endDate,
+    };
+
+    console.log(
+      'ALISTE RECHARGE HISTORY PAYLOAD:',
+      JSON.stringify(payload, null, 2)
+    );
+
+    const response =
+      await getRechargeHistory(payload);
+
+    console.log(
+      'ALISTE RECHARGE HISTORY RESPONSE:',
+      JSON.stringify(
+        response.body,
+        null,
+        2
+      )
+    );
+
+    if (!response.success) {
+      return res.status(
+        response.status || 500
+      ).json({
+        success: false,
+        message:
+          response.body?.message ||
+          'Failed to fetch recharge history',
+        error: response.body,
+      });
+    }
+    const roomDetailsResponse =
+      await getRoomDetails( room.alisteRoomId );
+
+    console.log(
+      'ALISTE ROOM DETAILS RESPONSE:',
+      JSON.stringify(
+        roomDetailsResponse.body,
+        null,
+        2
+      )
+    );
+
+    const currentBalance =
+      roomDetailsResponse.body?.data?.room
+        ?.currentBalance || 0;
+
+    const rechargeHistory =
+      response.body?.data?.recharges || [];
+
+    const formattedHistory =
+      rechargeHistory
+        .filter(
+          recharge =>
+            String(
+              recharge.status || ''
+            ).toLowerCase() === 'paid'
+        )
+        .sort(
+          (a, b) =>
+            new Date(b.rechargeDate) -
+            new Date(a.rechargeDate)
+        )
+        .map(recharge => ({
+          userName: recharge.tenantName,
+          amount: recharge.balanceAdded,
+          rechargeDate:
+            recharge.rechargeDate,
+        }));
+
+    console.log(
+      'FORMATTED RECHARGE HISTORY:',
+      JSON.stringify(
+        formattedHistory,
+        null,
+        2
+      )
+    );
+
+    return res.status(200).json({
+      success: true,
+      message:
+        'Recharge history fetched successfully',
+
+      data: {
+        currentBalance,
+
+        recharges: formattedHistory,
+      },
+    });
+  } catch (error) {
+    console.error(
+      'Get Room Recharge History Error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };

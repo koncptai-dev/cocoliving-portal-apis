@@ -16,6 +16,7 @@ const BookingExtension = require('../models/bookingExtension');
 const UserKYC = require('../models/userKYC');
 const Coupon = require('../models/coupon');
 
+const { initiateRecharge } = require('../utils/aliste/alisteApi');
 const { logApiCall } = require("../helpers/auditLog");
 
 function canonicalizeMetadata(metadata) {
@@ -345,6 +346,7 @@ exports.initiate = async (req, res) => {
       amount: amountPaise,
       type: rebuiltMeta.bookingType === 'PREBOOK' ? 'PREBOOK' : paymentMode === 'MONTHLY' ? 'BOOK_DEPOSIT' : 'FULL',
       status: 'PENDING',
+      discountAmount: discountApplied,
       pendingBookingData: {
         bookingType: rebuiltMeta.bookingType,
         paymentMode,
@@ -1604,5 +1606,246 @@ exports.getBookingPaymentSummary = async (req, res) => {
   } catch (err) {
     console.error('[BookingPaymentController] getBookingPaymentSummary error', err);
     return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+exports.initiateElectricityRecharge = async (req, res) => {
+  try {
+    const { amount } = req.body;
+
+    if (!amount) {
+      return res.status(400).json({
+        success: false,
+        message: 'Amount is required',
+      });
+    }
+    if (!Number(amount) || Number(amount) <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid recharge amount',
+      });
+    }
+    console.log(
+      '\n========== ELECTRICITY RECHARGE DEBUG =========='
+    );
+
+    console.log('USER ID:', req.user.id);
+
+    console.log('REQUEST BODY:', req.body);
+
+    const today = new Date();
+
+    console.log('RAW TODAY DATE:', today);
+
+    console.log(
+      'ISO TODAY:',
+      today.toISOString()
+    );
+
+    console.log(
+      'DATE ONLY:',
+      today.toISOString().split('T')[0]
+    );
+
+    const allUserBookings = await Booking.findAll({
+      where: {
+        userId: req.user.id,
+      },
+
+      include: [
+        {
+          model: Room,
+          as: 'room',
+        },
+      ],
+
+      order: [['createdAt', 'DESC']],
+    });
+
+
+    const booking = await Booking.findOne({
+      where: {
+        userId: req.user.id,
+
+        onboardingStatus: 'COMPLETED',
+        status: 'approved',
+        checkInDate: {
+          [Op.lte]: today,
+        },
+
+        checkOutDate: {
+          [Op.gte]: today,
+        },
+      },
+
+      include: [
+        {
+          model: Room,
+          as: 'room',
+
+          required: true,
+
+          where: {
+            alisteRoomId: {
+              [Op.ne]: null,
+            },
+          },
+        },
+
+        {
+          model: User,
+          as: 'user',
+        },
+      ],
+
+      order: [['createdAt', 'DESC']],
+    });
+
+    console.log(
+      '\nMATCHED BOOKING:\n',
+      JSON.stringify(booking, null, 2)
+    );
+
+    if (!booking) {
+      console.log(
+        '\n❌ NO ACTIVE BOOKING FOUND'
+      );
+
+      console.log(
+        '\nDEBUG CONDITIONS CHECK'
+      );
+
+      for (const b of allUserBookings) {
+        console.log('\n----------------');
+
+        console.log('BOOKING ID:', b.id);
+
+        console.log(
+          'STATUS:',
+          b.status
+        );
+
+        console.log(
+          'ONBOARDING STATUS:',
+          b.onboardingStatus
+        );
+
+        console.log(
+          'CHECKIN:',
+          b.checkInDate
+        );
+
+        console.log(
+          'CHECKOUT:',
+          b.checkOutDate
+        );
+
+        console.log(
+          'ROOM EXISTS:',
+          !!b.room
+        );
+
+        console.log(
+          'ALISTE ROOM ID:',
+          b.room?.alisteRoomId
+        );
+
+        console.log(
+          'CHECKIN VALID:',
+          new Date(b.checkInDate) <= today
+        );
+
+        console.log(
+          'CHECKOUT VALID:',
+          new Date(b.checkOutDate) >= today
+        );
+
+        console.log(
+          'STATUS VALID:',
+          ['approved', 'active'].includes(
+            b.status
+          )
+        );
+
+        console.log(
+          'ONBOARDING VALID:',
+          b.onboardingStatus ===
+            'COMPLETED'
+        );
+      }
+
+      return res.status(404).json({
+        success: false,
+        message: 'Active booking not found',
+      });
+    }
+    if (!booking.alisteUserId) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Booking is not synced with Aliste user',
+      });
+    }
+    const payload = {
+      roomId: booking.room.alisteRoomId,
+      userIdentifier: `+91${booking.user.phone.slice(-10)}`,
+      amount: Number(amount),
+    };
+    console.log(
+      'ALISTE RECHARGE PAYLOAD:',
+      JSON.stringify(payload, null, 2)
+    );
+    const rechargeResponse = await initiateRecharge(payload);
+    console.log(
+      'ALISTE RECHARGE RESPONSE:',
+      JSON.stringify(rechargeResponse.body, null, 2)
+    );
+    if (!rechargeResponse.success) {
+      return res.status(rechargeResponse.status || 500).json({
+        success: false,
+        message: 'Failed to initiate recharge',
+        error: rechargeResponse.body,
+      });
+    }
+
+    const redirectUrl =
+      rechargeResponse.body?.data?.paymentLink ||
+      rechargeResponse.body?.paymentLink;
+    const rechargeId =
+      rechargeResponse.body?.data?.rechargeId ||
+      rechargeResponse.body?.rechargeId;
+
+    const transaction = await PaymentTransaction.create({
+      bookingId: booking.id,
+      userId: booking.userId,
+      merchantOrderId: `TEMP_${Date.now()}`,
+      amount: Math.round(Number(amount) * 100),
+      type: 'ELECTRICITY_RECHARGE',
+      status: 'PENDING',
+      paymentGateway: 'ALISTE',
+      meta: {
+        roomId: booking.roomId,
+        alisteRoomId: booking.room.alisteRoomId,
+        propertyId: booking.propertyId,
+        rechargeId,
+      },
+      rawResponse: rechargeResponse.body,
+    });
+
+    await transaction.update({
+      merchantOrderId: `ELEC_RCRG_${transaction.id}`,
+    });
+
+    return res.status(200).json({
+      success: true,
+      redirectUrl,
+    });
+  } catch (error) {
+    console.error('Initiate Electricity Recharge Error:', error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };

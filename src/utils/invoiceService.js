@@ -147,6 +147,12 @@ async function generateAndSendInvoice(transaction) {
     const amountInWords = numberToWordsINR(total);
     const partyAddress = (user.address || "Ahmedabad").replace(/\n/g, "<br />");
 
+    const isElectricityRecharge = transaction.type === 'ELECTRICITY_RECHARGE';
+
+    const serviceDescription = isElectricityRecharge ? 'ELECTRICITY RECHARGE' : 'Accommodation, Food and Beverage Services';
+
+    const hsnSacCode = isElectricityRecharge ? '9969' : '9963';
+
     const invoiceHtml = `<!doctype html>
 <html lang="en">
   <head>
@@ -222,11 +228,11 @@ async function generateAndSendInvoice(transaction) {
           <tr>
             <td class="nowrap">1</td>
             <td class="particulars">
-              <div><strong>Accommodation, Food and Beverage Services</strong></div>
+              <div><strong>${serviceDescription}</strong></div>
               <div class="mt-8">CGST Output 2.5%</div>
               <div>SGST Output 2.5%</div>
             </td>
-            <td class="center">9963</td>
+            <td class="center">${hsnSacCode}</td>
             <td class="center">5%</td>
             <td class="amount-cell">
               ${displayBase.toFixed(2)}<br />

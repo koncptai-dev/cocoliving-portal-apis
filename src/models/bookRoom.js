@@ -147,6 +147,18 @@ const Booking = sequelize.define(
       type: DataTypes.INTEGER,
       defaultValue: 0
     },
+    firstElectricityRechargeDone: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    alisteUserId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    removedUserFromAliste: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
     meta: {
       type: DataTypes.JSON,
       allowNull: true,

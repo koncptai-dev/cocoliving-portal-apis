@@ -12,6 +12,7 @@ const { logApiCall } = require("../helpers/auditLog");
 const UserPermission = require('../models/userPermissoin');
 const PropertyFloorLayout = require("../models/floorLayout");
 const { ALLOWED_AMENITIES } = require("../constants/amenities");
+const { integrateProperty, getPropertyRooms } = require('../utils/aliste/alisteApi');
 
 //helper for preventing adding image into property and room Image
 const deleteFiles = (files) => {
@@ -202,7 +203,7 @@ exports.editProperties = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { id } = req.params;
-    let { name, address, description, images, amenities, is_active, removedImages, rateCard } = req.body;
+    let { name, address, description, images, amenities, is_active, removedImages, rateCard, minimumBalance } = req.body;
 
     const property = await Property.findByPk(id, { transaction: t });
     if (!property) {
@@ -283,6 +284,7 @@ exports.editProperties = async (req, res) => {
       images: updatedImages,
       amenities: amenities !== undefined ? amenitiesArray : property.amenities,
       is_active: is_active !== undefined ? is_active : property.is_active,
+      minimumBalance: minimumBalance !== undefined ? parseInt(minimumBalance) : property.minimumBalance,
     }, { transaction: t });
 
     //for ratecard roomImages
@@ -844,5 +846,449 @@ exports.deleteFloorLayout = async (req, res) => {
     console.error(err);
     await logApiCall(req, res, 500, "Error occurred while deleting floor layout", "property");
     res.status(500).json({ message: "Failed to delete floor layout." });
+  }
+};
+exports.integrateElectricityProvider = async (req, res) => {
+  try {
+    console.log(
+      '\n========== INTEGRATE ELECTRICITY PROVIDER =========='
+    );
+
+    console.log(
+      'NODE_ENV:',
+      process.env.NODE_ENV
+    );
+
+    console.log(
+      'ALISTE_ENV_PREFIX:',
+      process.env.ALISTE_ENV_PREFIX
+    );
+
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(403).json({
+        success: false,
+        message:
+          'Direct Aliste onboarding is disabled in production',
+      });
+    }
+
+    const { propertyId } = req.params;
+
+    console.log(
+      'PROPERTY ID PARAM:',
+      propertyId
+    );
+
+    const {
+      supportEmails = [],
+      supportNumbers = [],
+    } = req.body;
+
+    console.log(
+      'SUPPORT EMAILS:',
+      supportEmails
+    );
+
+    console.log(
+      'SUPPORT NUMBERS:',
+      supportNumbers
+    );
+
+    const property = await Property.findByPk(
+      propertyId
+    );
+
+    console.log(
+      'PROPERTY FROM DB:',
+      JSON.stringify(property, null, 2)
+    );
+
+    if (!property) {
+      return res.status(404).json({
+        success: false,
+        message: 'Property not found',
+      });
+    }
+
+    const rooms = await Rooms.findAll({
+      where: { propertyId },
+      order: [['roomNumber', 'ASC']],
+    });
+
+    console.log(
+      'TOTAL ROOMS:',
+      rooms.length
+    );
+
+    console.log(
+      'ROOM SAMPLE:',
+      JSON.stringify(
+        rooms.slice(0, 5),
+        null,
+        2
+      )
+    );
+
+    if (!rooms.length) {
+      return res.status(400).json({
+        success: false,
+        message: 'No rooms found for property',
+      });
+    }
+
+    const payload = {
+      properties: [
+        {
+          id: `${process.env.ALISTE_ENV_PREFIX}_PROP_${property.id}`,
+
+          name: property.name,
+
+          cpu: 8,
+          cpdu: 8,
+
+          city: 'Delhi',
+
+          cluster: 'CoCo Living',
+
+          supportNumbers: supportNumbers,
+
+          supportEmails: supportEmails,
+
+          rooms: rooms.map(room => ({
+            id: `${process.env.ALISTE_ENV_PREFIX}_ROOM_${room.id}`,
+
+            name: String(room.roomNumber),
+          })),
+
+          commonAreas: [],
+        },
+      ],
+    };
+
+    console.log(
+      '\nALISTE ONBOARD PAYLOAD:\n',
+      JSON.stringify(payload, null, 2)
+    );
+
+    const response =
+      await integrateProperty(payload);
+
+    console.log(
+      '\nFULL ALISTE RESPONSE:\n',
+      JSON.stringify(response, null, 2)
+    );
+
+    const propertyResult =
+      response.body?.data?.properties?.[0];
+
+    console.log(
+      '\nPROPERTY RESULT:\n',
+      JSON.stringify(propertyResult, null, 2)
+    );
+
+    if (!propertyResult?.success) {
+      console.log(
+        'PROPERTY CREATION FAILED'
+      );
+
+      return res.status(400).json({
+        success: false,
+        message:
+          propertyResult?.message ||
+          'Property integration failed',
+
+        fullResponse: response.body,
+      });
+    }
+
+    console.log(
+      'PROPERTY CREATION SUCCESS'
+    );
+
+    property.alisteIntegrated = true;
+
+    property.alistePropertyId =
+      propertyResult?.data?.id;
+
+    console.log(
+      'STORING PROPERTY ID:',
+      property.alistePropertyId
+    );
+
+    await property.save();
+
+    console.log(
+      'PROPERTY SAVED'
+    );
+
+    console.log(
+      '\n========== FETCHING PROPERTY ROOMS =========='
+    );
+
+    const syncedRoomsResponse =
+      await getPropertyRooms(
+        property.alistePropertyId
+      );
+
+    console.log(
+      '\nFULL PROPERTY ROOMS RESPONSE:\n',
+      JSON.stringify(
+        syncedRoomsResponse,
+        null,
+        2
+      )
+    );
+
+    const alisteRooms =
+      syncedRoomsResponse?.body?.data?.room ||
+      syncedRoomsResponse?.body?.data?.rooms ||
+      syncedRoomsResponse?.body?.data ||
+      [];
+
+    console.log(
+      '\nPARSED ALISTE ROOMS:\n',
+      JSON.stringify(alisteRooms, null, 2)
+    );
+
+    for (const room of rooms) {
+      console.log(
+        '\nCHECKING LOCAL ROOM:',
+        room.roomNumber
+      );
+
+      const matchedRoom =
+        alisteRooms.find(alisteRoom => {
+          console.log(
+            'COMPARING WITH:',
+            alisteRoom
+          );
+
+          return (
+            Number(
+              String(
+                alisteRoom.name
+              ).trim()
+            ) ===
+            Number(room.roomNumber)
+          );
+        });
+
+      if (!matchedRoom) {
+        console.log(
+          'NO MATCH FOUND'
+        );
+
+        continue;
+      }
+
+      console.log(
+        'MATCH FOUND:',
+        matchedRoom
+      );
+
+      room.alisteRoomId =
+        matchedRoom.alisteId ||
+        matchedRoom.id;
+
+      await room.save();
+
+      console.log(
+        'ROOM SAVED WITH ALISTE ID:',
+        room.alisteRoomId
+      );
+    }
+
+    console.log(
+      '\n========== DONE =========='
+    );
+
+    return res.status(200).json({
+      success: true,
+      message:
+        'Property integrated successfully',
+    });
+  } catch (error) {
+    console.error(
+      '\n🔥 INTEGRATE ELECTRICITY PROVIDER ERROR:\n',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+      stack: error.stack,
+    });
+  }
+};
+
+exports.syncAlisteRooms = async (req, res) => {
+  try {
+    console.log(
+      '\n========== SYNC ALISTE ROOMS =========='
+    );
+
+    const { propertyId } = req.params;
+
+    const { alistePropertyId } = req.body;
+    if (
+      alistePropertyId &&
+      typeof alistePropertyId !== "string"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid alistePropertyId",
+      });
+    }
+    const property = await Property.findByPk(propertyId);
+
+    if (!property) {
+      return res.status(404).json({
+        success: false,
+        message: "Property not found",
+      });
+    }
+
+    if (alistePropertyId) {
+      property.alistePropertyId = alistePropertyId;
+      property.alisteIntegrated = true;
+      await property.save();
+    }
+
+    if (!property.alistePropertyId) {
+      return res.status(400).json({
+        success: false,
+        message: "Property does not have Aliste mapping",
+      });
+    }
+    const rooms = await Rooms.findAll({
+      where: {
+        propertyId,
+      },
+    });
+
+    console.log(
+      'TOTAL LOCAL ROOMS:',
+      rooms.length
+    );
+
+    console.log(
+      'CALLING getPropertyRooms WITH:',
+      property.alistePropertyId
+    );
+
+    const syncedRoomsResponse =
+      await getPropertyRooms(
+        property.alistePropertyId
+      );
+
+    console.log(
+      '\nFULL SYNC RESPONSE:\n',
+      JSON.stringify(
+        syncedRoomsResponse,
+        null,
+        2
+      )
+    );
+
+    const alisteRooms =
+      syncedRoomsResponse?.body?.data?.room ||
+      syncedRoomsResponse?.body?.data?.rooms ||
+      syncedRoomsResponse?.body?.data ||
+      [];
+
+    console.log(
+      '\nPARSED ALISTE ROOMS:\n',
+      JSON.stringify(alisteRooms, null, 2)
+    );
+
+    console.log(
+      '\nLOCAL ROOMS:\n',
+      JSON.stringify(
+        rooms.map(r => ({
+          id: r.id,
+          roomNumber: r.roomNumber,
+        })),
+        null,
+        2
+      )
+    );
+
+    const synced = [];
+
+    for (const room of rooms) {
+      console.log(
+        '\nMATCHING ROOM:',
+        room.roomNumber
+      );
+
+      const matchedRoom =
+        alisteRooms.find(alisteRoom => {
+          console.log(
+            'COMPARING AGAINST:',
+            alisteRoom
+          );
+
+          return (
+            Number(
+              String(
+                alisteRoom.name
+              ).trim()
+            ) ===
+            Number(room.roomNumber)
+          );
+        });
+
+      if (!matchedRoom) {
+        console.log(
+          'NO MATCH FOUND'
+        );
+
+        continue;
+      }
+
+      console.log(
+        'MATCH FOUND:',
+        matchedRoom
+      );
+
+      room.alisteRoomId =
+        matchedRoom.alisteId ||
+        matchedRoom.id;
+
+      await room.save();
+
+      synced.push({
+        roomId: room.id,
+        roomNumber: room.roomNumber,
+        alisteRoomId:
+          matchedRoom.alisteId ||
+          matchedRoom.id,
+      });
+
+      console.log(
+        'ROOM SYNCED'
+      );
+    }
+
+    console.log(
+      '\nFINAL SYNCED:',
+      JSON.stringify(synced, null, 2)
+    );
+
+    return res.status(200).json({
+      success: true,
+      synced,
+    });
+  } catch (error) {
+    console.error(
+      '\n🔥 SYNC ALISTE ROOMS ERROR:\n',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+      stack: error.stack,
+    });
   }
 };
