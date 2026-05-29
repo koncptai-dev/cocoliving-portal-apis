@@ -1685,11 +1685,11 @@ exports.initiateElectricityRecharge = async (req, res) => {
 
           required: true,
 
-          // where: {
-          //   alisteRoomId: {
-          //     [Op.ne]: null,
-          //   },
-          // },
+          where: {
+            alisteRoomId: {
+              [Op.ne]: null,
+            },
+          },
         },
 
         {
