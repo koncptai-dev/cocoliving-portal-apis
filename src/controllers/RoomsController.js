@@ -859,6 +859,12 @@ exports.getRoomRechargeHistory = async (
 
     const formattedHistory =
       rechargeHistory
+        .filter(
+          recharge =>
+            String(
+              recharge.status || ''
+            ).toLowerCase() === 'paid'
+        )
         .sort(
           (a, b) =>
             new Date(b.rechargeDate) -
