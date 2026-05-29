@@ -111,7 +111,7 @@ async function sendRefundCompletedEmailIfNeeded(refundTx) {
 async function recomputeBookingTotals(booking, t = null) {
   const rows = await sequelize.query(
     `SELECT
-       COALESCE(SUM(CASE WHEN type != 'REFUND' AND status = 'SUCCESS' THEN amount ELSE 0 END), 0) as paid
+       COALESCE(SUM(CASE WHEN type != 'REFUND' AND status = 'SUCCESS' THEN amount + COALESCE("discountAmount", 0) * 100 ELSE 0 END), 0) as paid
      FROM payment_transactions
      WHERE "bookingId" = :bookingId`,
     {

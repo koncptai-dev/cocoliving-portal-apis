@@ -346,6 +346,7 @@ exports.initiate = async (req, res) => {
       amount: amountPaise,
       type: rebuiltMeta.bookingType === 'PREBOOK' ? 'PREBOOK' : paymentMode === 'MONTHLY' ? 'BOOK_DEPOSIT' : 'FULL',
       status: 'PENDING',
+      discountAmount: discountApplied,
       pendingBookingData: {
         bookingType: rebuiltMeta.bookingType,
         paymentMode,
