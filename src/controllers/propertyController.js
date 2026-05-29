@@ -1160,27 +1160,6 @@ exports.syncAlisteRooms = async (req, res) => {
         message: "Property does not have Aliste mapping",
       });
     }
-    console.log(
-      'PROPERTY ID PARAM:',
-      propertyId
-    );
-
-    const property =
-      await Property.findByPk(propertyId);
-
-    console.log(
-      'PROPERTY:',
-      JSON.stringify(property, null, 2)
-    );
-
-    if (!property?.alistePropertyId) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'Property does not have Aliste mapping',
-      });
-    }
-
     const rooms = await Rooms.findAll({
       where: {
         propertyId,
