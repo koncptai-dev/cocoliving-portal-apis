@@ -147,7 +147,12 @@ exports.createTicket = async (req, res) => {
                 model: Rooms,
                 as: "room",
                 where: { roomNumber }
-            }]
+            },
+            {
+                model: User,
+                as: 'user',
+                attributes: ['phone']
+            },]
         });
 
         if (!booking || !booking.roomId) {
@@ -239,7 +244,7 @@ exports.createTicket = async (req, res) => {
                             description || issue,
 
                         userIdentifier:
-                            booking.alisteUserId,
+                            `+91${booking.user.phone.slice(-10)}`,
 
                         roomId:
                             room.alisteRoomId,
