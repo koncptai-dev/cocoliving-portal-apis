@@ -127,84 +127,76 @@ exports.createTicket = async (req, res) => {
                 });
             }
         }
-        //check room exists
-        const room = await Rooms.findOne({ where: { roomNumber } });
-        if (!room) {
-            await logApiCall(req, res, 404, `Failed to create support ticket - room not found (${roomNumber})`, "supportTicket");
-            return res.status(404).json({ message: "Room not found" });
-        }
-        console.log(
-            'ROOM LOOKUP RESULT:',
-            room
-                ? {
-                    id: room.id,
-                    roomNumber: room.roomNumber,
-                    propertyId: room.propertyId,
-                    alisteRoomId: room.alisteRoomId,
-                }
-                : null
-        );
-        if (
-            category ===
-                'Electricity Recharge' &&
-            !room.alisteRoomId
-        ) {
-            return res.status(400).json({
-                message:
-                    'Room is not integrated with Aliste',
-            });
-        }
-        console.log(
-            'LOOKING FOR BOOKING =>',
-            JSON.stringify(
-                {
-                    userId,
-                    roomNumber,
-                },
-                null,
-                2
-            )
-        );
-        //check user has booked the room 
-        const booking = await Booking.findOne({
-            where: { userId },
-            include: [{
-                model: Rooms,
-                as: "room",
-                where: { roomNumber }
-            },
-            {
-                model: User,
-                as: 'user',
-                attributes: ['phone']
-            },]
-        });
-        console.log(
-            'BOOKING FULL DATA:',
-            JSON.stringify(
-                booking,
-                null,
-                2
-            )
-        );
-        console.log(
-            'BOOKING RESULT:',
-            booking
-                ? {
-                    id: booking.id,
-                    roomId: booking.roomId,
-                    alisteUserId:
-                        booking.alisteUserId,
-                    status: booking.status,
-                    phone:
-                        booking.user?.phone,
-                }
-                : null
-        );
-        if (!booking || !booking.roomId) {
-            await logApiCall(req, res, 403, `Failed to create support ticket - user has not booked room (${roomNumber})`, "supportTicket");
-            return res.status(403).json({ message: "You have not booked this room" });
-        }
+        const today = new Date();
+
+console.log(
+    '\n========== ACTIVE BOOKING LOOKUP =========='
+);
+
+const booking = await Booking.findOne({
+    where: {
+        userId,
+
+        onboardingStatus: 'COMPLETED',
+
+        status: 'approved',
+
+        checkInDate: {
+            [Op.lte]: today,
+        },
+
+        checkOutDate: {
+            [Op.gte]: today,
+        },
+    },
+
+    include: [
+        {
+            model: Rooms,
+            as: 'room',
+            required: true,
+        },
+
+        {
+            model: User,
+            as: 'user',
+            attributes: ['phone'],
+        },
+    ],
+
+    order: [['createdAt', 'DESC']],
+});
+
+console.log(
+    'ACTIVE BOOKING:',
+    JSON.stringify(
+        booking,
+        null,
+        2
+    )
+);
+
+if (!booking) {
+    return res.status(404).json({
+        message: 'Active booking not found',
+    });
+}
+
+const room = booking.room;
+
+console.log(
+    'ROOM FROM BOOKING:',
+    JSON.stringify(
+        {
+            id: room.id,
+            roomNumber: room.roomNumber,
+            propertyId: room.propertyId,
+            alisteRoomId: room.alisteRoomId,
+        },
+        null,
+        2
+    )
+);
         // Optional inventory item linking
         let inventoryName = null;
         if (inventoryId) {
