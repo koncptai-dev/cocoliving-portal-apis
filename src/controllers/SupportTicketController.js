@@ -17,6 +17,9 @@ const { createTicket: createAlisteTicket } = require('../utils/aliste/alisteApi'
 exports.createTicket = async (req, res) => {
     try {
         const userId = req.user.id;
+        console.log('\n========== CREATE TICKET ==========');
+        console.log('USER ID:', userId);
+        console.log('REQUEST BODY:', JSON.stringify(req.body, null, 2));
         const CATEGORY_MAP = {
             "Maintenance": [
                 "Plumbing",
@@ -130,6 +133,17 @@ exports.createTicket = async (req, res) => {
             await logApiCall(req, res, 404, `Failed to create support ticket - room not found (${roomNumber})`, "supportTicket");
             return res.status(404).json({ message: "Room not found" });
         }
+        console.log(
+            'ROOM LOOKUP RESULT:',
+            room
+                ? {
+                    id: room.id,
+                    roomNumber: room.roomNumber,
+                    propertyId: room.propertyId,
+                    alisteRoomId: room.alisteRoomId,
+                }
+                : null
+        );
         if (
             category ===
                 'Electricity Recharge' &&
@@ -140,6 +154,17 @@ exports.createTicket = async (req, res) => {
                     'Room is not integrated with Aliste',
             });
         }
+        console.log(
+            'LOOKING FOR BOOKING =>',
+            JSON.stringify(
+                {
+                    userId,
+                    roomNumber,
+                },
+                null,
+                2
+            )
+        );
         //check user has booked the room 
         const booking = await Booking.findOne({
             where: { userId },
@@ -154,7 +179,28 @@ exports.createTicket = async (req, res) => {
                 attributes: ['phone']
             },]
         });
-
+        console.log(
+            'BOOKING FULL DATA:',
+            JSON.stringify(
+                booking,
+                null,
+                2
+            )
+        );
+        console.log(
+            'BOOKING RESULT:',
+            booking
+                ? {
+                    id: booking.id,
+                    roomId: booking.roomId,
+                    alisteUserId:
+                        booking.alisteUserId,
+                    status: booking.status,
+                    phone:
+                        booking.user?.phone,
+                }
+                : null
+        );
         if (!booking || !booking.roomId) {
             await logApiCall(req, res, 403, `Failed to create support ticket - user has not booked room (${roomNumber})`, "supportTicket");
             return res.status(403).json({ message: "You have not booked this room" });
@@ -194,7 +240,19 @@ exports.createTicket = async (req, res) => {
         }
 
         const supportCode = await generateSupportTicketCode(room.propertyId , room.roomNumber);
-
+        console.log(
+            'CREATING SUPPORT TICKET:',
+            {
+                roomId: room.id,
+                roomNumber:
+                    room.roomNumber,
+                propertyId:
+                    room.propertyId,
+                category,
+                subCategory,
+                alisteSubcategory,
+            }
+        );
         const ticket = await SupportTicket.create({
             supportCode,
             roomId: room.id,
@@ -215,9 +273,34 @@ exports.createTicket = async (req, res) => {
             alisteSubcategory: alisteSubcategory || null,
         })
         try {
+            console.log(
+                '\n========== ALISTE TICKET CHECK =========='
+            );
+
+            console.log(
+                'CATEGORY:',
+                category
+            );
+
+            console.log(
+                'ROOM ALISTE ID:',
+                room.alisteRoomId
+            );
+
+            console.log(
+                'BOOKING ALISTE USER ID:',
+                booking.alisteUserId
+            );
+
+            console.log(
+                'ALISTE CONDITION RESULT:',
+                category === 'Electricity Recharge',
+                !!room.alisteRoomId,
+                !!booking.alisteUserId
+            );
+
             if (
-                category ===
-                    'Electricity Recharge' &&
+                category === 'Electricity Recharge' &&
                 room.alisteRoomId &&
                 booking.alisteUserId
             ) {
@@ -231,36 +314,116 @@ exports.createTicket = async (req, res) => {
                         alisteSubcategory
                     ];
 
+                console.log(
+                    'SUB CATEGORY:',
+                    subCategory
+                );
+
+                console.log(
+                    'ALISTE SUBCATEGORY:',
+                    alisteSubcategory
+                );
+
+                console.log(
+                    'ALISTE CATEGORY:',
+                    alisteCategory
+                );
+
+                console.log(
+                    'ALISTE SUBCATEGORY NUMBER:',
+                    alisteSubcategoryNumber
+                );
+
+                console.log(
+                    'BOOKING USER:',
+                    JSON.stringify(
+                        booking.user,
+                        null,
+                        2
+                    )
+                );
+
+                const payload = {
+                    category: alisteCategory,
+                    subcategory:
+                        alisteSubcategoryNumber,
+                    subject: issue,
+                    description:
+                        description || issue,
+                    userIdentifier:
+                        `+91${booking.user.phone.slice(-10)}`,
+                    roomId:
+                        room.alisteRoomId,
+                    attachmentsURLs: [],
+                };
+
+                console.log(
+                    '\nALISTE PAYLOAD:\n',
+                    JSON.stringify(
+                        payload,
+                        null,
+                        2
+                    )
+                );
+
                 const response =
-                    await createAlisteTicket({
-                        category: alisteCategory,
+                    await createAlisteTicket(
+                        payload
+                    );
 
-                        subcategory:
-                            alisteSubcategoryNumber,
+                console.log(
+                    '\nALISTE RESPONSE:\n',
+                    JSON.stringify(
+                        response,
+                        null,
+                        2
+                    )
+                );
 
-                        subject: issue,
-
-                        description:
-                            description || issue,
-
-                        userIdentifier:
-                            `+91${booking.user.phone.slice(-10)}`,
-
-                        roomId:
-                            room.alisteRoomId,
-
-                        attachmentsURLs: [],
-                    });
+                console.log(
+                    'EXTERNAL TICKET ID:',
+                    response?.body?.data?.ticketId
+                );
 
                 ticket.externalTicketId =
                     response?.body?.data?.ticketId;
 
                 await ticket.save();
+
+                console.log(
+                    'TICKET UPDATED WITH EXTERNAL ID'
+                );
+            } else {
+                console.log(
+                    'SKIPPING ALISTE TICKET CREATION'
+                );
+
+                console.log({
+                    category,
+                    roomAlisteId:
+                        room.alisteRoomId,
+                    bookingAlisteUserId:
+                        booking.alisteUserId,
+                });
             }
         } catch (error) {
             console.error(
-                'Create Aliste Ticket Error:',
+                '\n🔥 CREATE ALISTE TICKET ERROR'
+            );
+
+            console.error(
+                'MESSAGE:',
                 error.message
+            );
+
+            console.error(
+                'STACK:',
+                error.stack
+            );
+
+            console.error(
+                'FULL ERROR:',
+                error
             );
         }
         await logTicketEvent({
