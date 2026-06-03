@@ -10,12 +10,12 @@ if (!adminEmails) {
 const emailList = adminEmails.split(',').map(e => e.trim());
 exports.createScheduledVisit = async (req, res) => {
   try {
-    const { name, email, phone, visitDate, recaptchaToken } = req.body;
+    const { name, phone, visitDate, recaptchaToken } = req.body;
 
     // ────────────────────────────────────────────────
     // 1. Basic field validation + require token
     // ────────────────────────────────────────────────
-    if (!name || !email || !phone || !visitDate) {
+    if (!name || !phone || !visitDate) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
@@ -89,7 +89,6 @@ if (verificationData.action !== 'book_a_visit') {
     // ────────────────────────────────────────────────
     const visit = await ScheduledVisit.create({
       name,
-      email,
       phone,
       visitDate,
     });
@@ -97,23 +96,22 @@ if (verificationData.action !== 'book_a_visit') {
     // ────────────────────────────────────────────────
     // 5. Email + logging (your original code)
     // ────────────────────────────────────────────────
-    const { html, attachments } = scheduledVisitEmail({
-      name,
-      visitDate,
-    });
+    // const { html, attachments } = scheduledVisitEmail({
+    //   name,
+    //   visitDate,
+    // });
 
-    await mailsender(
-      `${email}`,
-      "Visit Approved - Coco Living",
-      html,
-      attachments
-    );
+    // await mailsender(
+    //   `${email}`,
+    //   "Visit Approved - Coco Living",
+    //   html,
+    //   attachments
+    // );
     const adminHtml = `
     <p>A new visit request has been submitted.</p>
 
     <p>
     <strong>Name:</strong> ${name}<br/>
-    <strong>Email:</strong> ${email}<br/>
     <strong>Phone:</strong> ${phone}<br/>
     <strong>Visit Date:</strong> ${new Date(visitDate).toLocaleDateString('en-IN')}
     </p>
