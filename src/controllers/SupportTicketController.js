@@ -124,36 +124,51 @@ exports.createTicket = async (req, res) => {
                 });
             }
         }
-        //check room exists
-        const room = await Rooms.findOne({ where: { roomNumber } });
-        if (!room) {
-            await logApiCall(req, res, 404, `Failed to create support ticket - room not found (${roomNumber})`, "supportTicket");
-            return res.status(404).json({ message: "Room not found" });
-        }
-        if (
-            category ===
-                'Electricity Recharge' &&
-            !room.alisteRoomId
-        ) {
-            return res.status(400).json({
-                message:
-                    'Room is not integrated with Aliste',
-            });
-        }
-        //check user has booked the room 
-        const booking = await Booking.findOne({
-            where: { userId },
-            include: [{
-                model: Rooms,
-                as: "room",
-                where: { roomNumber }
-            }]
-        });
+        const today = new Date();
 
-        if (!booking || !booking.roomId) {
-            await logApiCall(req, res, 403, `Failed to create support ticket - user has not booked room (${roomNumber})`, "supportTicket");
-            return res.status(403).json({ message: "You have not booked this room" });
-        }
+const booking = await Booking.findOne({
+    where: {
+        userId,
+
+        onboardingStatus: 'COMPLETED',
+
+        status: 'approved',
+
+        checkInDate: {
+            [Op.lte]: today,
+        },
+
+        checkOutDate: {
+            [Op.gte]: today,
+        },
+    },
+
+    include: [
+        {
+            model: Rooms,
+            as: 'room',
+            required: true,
+        },
+
+        {
+            model: User,
+            as: 'user',
+            attributes: ['phone'],
+        },
+    ],
+
+    order: [['createdAt', 'DESC']],
+});
+
+
+if (!booking) {
+    return res.status(404).json({
+        message: 'Active booking not found',
+    });
+}
+
+const room = booking.room;
+
         // Optional inventory item linking
         let inventoryName = null;
         if (inventoryId) {
@@ -189,7 +204,6 @@ exports.createTicket = async (req, res) => {
         }
 
         const supportCode = await generateSupportTicketCode(room.propertyId , room.roomNumber);
-
         const ticket = await SupportTicket.create({
             supportCode,
             roomId: room.id,
@@ -210,9 +224,9 @@ exports.createTicket = async (req, res) => {
             alisteSubcategory: alisteSubcategory || null,
         })
         try {
+
             if (
-                category ===
-                    'Electricity Recharge' &&
+                category === 'Electricity Recharge' &&
                 room.alisteRoomId &&
                 booking.alisteUserId
             ) {
@@ -225,32 +239,30 @@ exports.createTicket = async (req, res) => {
                     ALISTE_SUBCATEGORY_MAPPING[
                         alisteSubcategory
                     ];
+                const payload = {
+                    category: alisteCategory,
+                    subcategory:
+                        alisteSubcategoryNumber,
+                    subject: issue,
+                    description:
+                        description || issue,
+                    userIdentifier:
+                        `+91${booking.user.phone.slice(-10)}`,
+                    roomId:
+                        room.alisteRoomId,
+                    attachmentsURLs: [],
+                };
 
                 const response =
-                    await createAlisteTicket({
-                        category: alisteCategory,
-
-                        subcategory:
-                            alisteSubcategoryNumber,
-
-                        subject: issue,
-
-                        description:
-                            description || issue,
-
-                        userIdentifier:
-                            booking.alisteUserId,
-
-                        roomId:
-                            room.alisteRoomId,
-
-                        attachmentsURLs: [],
-                    });
+                    await createAlisteTicket(
+                        payload
+                    );
 
                 ticket.externalTicketId =
                     response?.body?.data?.ticketId;
 
                 await ticket.save();
+
             }
         } catch (error) {
             console.error(

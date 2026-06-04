@@ -19,7 +19,7 @@ const ScheduledVisit = sequelize.define(
 
     email: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
     },
 
     phone: {
