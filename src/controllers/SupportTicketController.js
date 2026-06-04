@@ -203,6 +203,73 @@ const room = booking.room;
             return res.status(400).json({ message: "You can upload a maximum of 3 videos." });
         }
 
+        let externalTicketId = null;
+
+        if (category === 'Electricity Recharge') {
+
+            if (
+                !room.alisteRoomId ||
+                !booking.alisteUserId
+            ) {
+                return res.status(400).json({
+                    message: 'Room is not linked with Aliste',
+                });
+            }
+
+            const alisteCategory =
+                ALISTE_CATEGORY_MAPPING[
+                    subCategory
+                ];
+
+            const alisteSubcategoryNumber =
+                ALISTE_SUBCATEGORY_MAPPING[
+                    alisteSubcategory
+                ];
+
+            const payload = {
+                category: alisteCategory,
+                subcategory: alisteSubcategoryNumber,
+                subject: issue,
+                description: description || issue,
+                userIdentifier: `+91${booking.user.phone.slice(-10)}`,
+                roomId: room.alisteRoomId,
+                attachmentsURLs: [],
+            };
+
+            let response;
+
+            try {
+                response =
+                    await createAlisteTicket(
+                        payload
+                    );
+            } catch (error) {
+                console.error(
+                    'Create Aliste Ticket Error:',
+                    error.message
+                );
+
+                return res.status(500).json({
+                    message: 'Failed to create ticket in Aliste',
+                });
+            }
+            console.log(
+                '[ALISTE CREATE TICKET RESPONSE]',
+                JSON.stringify(response?.body, null, 2)
+            );
+            externalTicketId =
+                response?.body?.data?.ticketId;
+            console.log(
+                '[ALISTE TICKET ID]',
+                response?.body?.data?.ticketId
+            );
+            if (!externalTicketId) {
+                return res.status(500).json({
+                    message:
+                        'Aliste ticket creation failed',
+                });
+            }
+        }
         const supportCode = await generateSupportTicketCode(room.propertyId , room.roomNumber);
         const ticket = await SupportTicket.create({
             supportCode,
@@ -222,54 +289,8 @@ const room = booking.room;
             category,
             subCategory,
             alisteSubcategory: alisteSubcategory || null,
+            externalTicketId,
         })
-        try {
-
-            if (
-                category === 'Electricity Recharge' &&
-                room.alisteRoomId &&
-                booking.alisteUserId
-            ) {
-                const alisteCategory =
-                    ALISTE_CATEGORY_MAPPING[
-                        subCategory
-                    ];
-
-                const alisteSubcategoryNumber =
-                    ALISTE_SUBCATEGORY_MAPPING[
-                        alisteSubcategory
-                    ];
-                const payload = {
-                    category: alisteCategory,
-                    subcategory:
-                        alisteSubcategoryNumber,
-                    subject: issue,
-                    description:
-                        description || issue,
-                    userIdentifier:
-                        `+91${booking.user.phone.slice(-10)}`,
-                    roomId:
-                        room.alisteRoomId,
-                    attachmentsURLs: [],
-                };
-
-                const response =
-                    await createAlisteTicket(
-                        payload
-                    );
-
-                ticket.externalTicketId =
-                    response?.body?.data?.ticketId;
-
-                await ticket.save();
-
-            }
-        } catch (error) {
-            console.error(
-                'Create Aliste Ticket Error:',
-                error.message
-            );
-        }
         await logTicketEvent({
             ticketId: ticket.id,
             actionType: "TICKET_CREATED",

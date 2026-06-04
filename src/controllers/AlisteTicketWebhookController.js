@@ -81,17 +81,20 @@ exports.webhook = async (req, res) => {
       payload?.activity || [];
 
     for (const activity of activities) {
-      await TicketLog.create({
-        ticketId: ticket.id,
-        actionType:
-          activity.status || 'UPDATE',
-        oldValue: null,
-        newValue: activity,
-        metadata: payload,
-        performedBy: 0,
-        performedByName: 'ALISTE',
-        performedByRole: 0,
-      });
+      try {
+        await TicketLog.create({
+          ticketId: ticket.id,
+          actionType: activity.status || 'UPDATE',
+          oldValue: null,
+          newValue: activity,
+          metadata: payload,
+          performedBy: 1,
+          performedByName: 'ALISTE',
+          performedByRole: 0,
+        });
+      } catch (err) {
+        console.error('TicketLog create failed', err);
+      }
     }
 
     return res.status(200).json({

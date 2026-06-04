@@ -162,8 +162,8 @@ PaymentTransaction.belongsTo(User, { foreignKey: "userId", as: "user" });
 SupportTicket.hasMany(TicketLog, { foreignKey: "ticketId", as: "logs" });
 TicketLog.belongsTo(SupportTicket, { foreignKey: "ticketId", as: "ticket" });
 
-User.hasMany(TicketLog, { foreignKey: "performedBy", as: "performedLogs", onDelete: "CASCADE" });
-TicketLog.belongsTo(User, { foreignKey: "performedBy", as: "actor" });
+// User.hasMany(TicketLog, { foreignKey: "performedBy", as: "performedLogs", onDelete: "CASCADE" });
+// TicketLog.belongsTo(User, { foreignKey: "performedBy", as: "actor" });
 
 // Gate Pass associations
 User.hasMany(GatePass, { foreignKey: "userId", as: "gatePasses", onDelete: "CASCADE" });
