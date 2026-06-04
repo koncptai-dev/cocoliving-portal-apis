@@ -39,20 +39,40 @@ exports.webhook = async (req, res) => {
     const normalizedStatus = String( payload?.status || '' ).toLowerCase();
 
     switch (normalizedStatus) {
-        case 'created':
-            ticket.status = 'open';
-            break;
+      case 'resolved':
+        ticket.status = 'resolved';
+        break;
 
-        case 'resolved':
-            ticket.status = 'resolved';
-            break;
+      case 'ongoing':
+        ticket.status = 'in-progress';
+        break;
 
-        case 'in-progress':
-            ticket.status = 'in-progress';
-            break;
+      case 'pending':
+        ticket.status = 'pending';
+        break;
 
-        default:
-            ticket.status = normalizedStatus;
+      case 'onhold':
+        ticket.status = 'onhold';
+        break;
+
+      case 'reopened':
+        ticket.status = 'open';
+        break;
+
+      case 'inactive':
+        ticket.status = 'inactive';
+        break;
+
+      case 'archived':
+        ticket.status = 'archived';
+        break;
+
+      default:
+        console.warn(
+          '[ALISTE WEBHOOK] Unknown status:',
+          normalizedStatus
+        );
+        ticket.status = normalizedStatus;
     }
 
     await ticket.save();
