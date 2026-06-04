@@ -5,6 +5,14 @@ exports.webhook = async (req, res) => {
   try {
     const payload = req.body;
 
+    console.log('ALISTE WEBHOOK RECEIVED:', JSON.stringify(payload, null, 2));
+    console.log('Ticket ID:', payload?.ticketId);
+    console.log('Status:', payload?.status);
+    console.log(
+      'Activities:',
+      JSON.stringify(payload?.activity, null, 2)
+    );
+
     const ticketId = payload?.ticketId;
 
     if (!ticketId) {
