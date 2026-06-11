@@ -275,7 +275,6 @@ exports.adminSignContract = async (req, res) => {
     booking.adminContractStatus = "SIGNED";
     await booking.save();
 
-    await notifySecurityDeposit(booking);
 
     // Cleanup temp signature file
     fs.unlinkSync(adminSigPath);
@@ -299,19 +298,26 @@ exports.adminSignContract = async (req, res) => {
       ]
     );
 
-    // Send Security Deposit email
-    const email = securityDepositPaymentEmail({
-      userName: booking.user.fullName,
-      propertyName: booking.room.property.name,
-      bookingId: booking.id
-    });
+    if (!booking.securityDepositPaid) {
+      await notifySecurityDeposit(booking);
 
-    await mailsender(
-      booking.user.email,
-      "Security Deposit Payment Required - CoCo Living",
-      email.html,
-      email.attachments
-    );
+      const email = securityDepositPaymentEmail({
+        userName: booking.user.fullName,
+        propertyName: booking.room.property.name,
+        bookingId: booking.id
+      });
+
+      await mailsender(
+        booking.user.email,
+        "Security Deposit Payment Required - CoCo Living",
+        email.html,
+        email.attachments
+      );
+    } else {
+      console.log(
+        `Security deposit already paid for booking ${booking.id}. Skipping reminder.`
+      );
+    }
 
     return res.json({
       message: "Admin signature added successfully",
