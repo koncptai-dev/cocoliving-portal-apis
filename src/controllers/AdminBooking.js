@@ -771,6 +771,7 @@ exports.createBookingForOfflinePayments = async (req, res) => {
       checkInDate,
       duration,
       bookingType,
+      monthlyRent
     } = req.body;
 
     if (
@@ -786,6 +787,18 @@ exports.createBookingForOfflinePayments = async (req, res) => {
         success: false,
         message:
           "userId, roomId, checkInDate, duration, bookingType are required",
+      });
+    }
+
+    if (
+      monthlyRent !== undefined &&
+      monthlyRent !== null &&
+      (isNaN(Number(monthlyRent)) || Number(monthlyRent) <= 0)
+    ) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "monthlyRent must be a positive number",
       });
     }
 
@@ -891,10 +904,15 @@ exports.createBookingForOfflinePayments = async (req, res) => {
 
     
 
-    const monthlyRent = room.monthlyRent;
+    const finalMonthlyRent =
+      monthlyRent !== undefined &&
+      monthlyRent !== null &&
+      !isNaN(Number(monthlyRent))
+        ? Number(monthlyRent)
+        : room.monthlyRent;
 
     const totalAmount =
-      monthlyRent * Number(duration) + room.depositAmount;
+      finalMonthlyRent * Number(duration) + room.depositAmount;
 
     const booking = await Booking.create(
       {
@@ -912,7 +930,7 @@ exports.createBookingForOfflinePayments = async (req, res) => {
 
         duration,
 
-        monthlyRent,
+        monthlyRent: finalMonthlyRent,
 
         totalAmount,
         remainingAmount: totalAmount,
