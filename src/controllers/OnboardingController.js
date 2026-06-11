@@ -29,7 +29,20 @@ exports.startOnboarding = async (req, res) => {
   if (!booking) {
     return res.status(404).json({ message: 'Booking not found' });
   }
+  if (booking.status !== 'approved') {
+    return res.status(422).json({
+      message: 'Booking must be approved before onboarding can be started'
+    });
+  }
 
+  if (
+    booking.paymentStatus !== 'COMPLETED' &&
+    booking.monthlyPlanSelected === false
+  ) {
+    return res.status(422).json({
+      message: 'Payment must be completed before onboarding can be started'
+    });
+  }
   if (
     booking.status !== 'approved' ||
     ( booking.paymentStatus !== 'COMPLETED' && booking.monthlyPlanSelected === false ) 

@@ -64,9 +64,12 @@ exports.createGuestVisit = async (req, res) => {
       propertyId, // only for workers
     } = req.body;
 
-    if (!permitType || !guestName || !guestPhone || !visitDate) {
+    if (!permitType || !guestName || !guestPhone || !visitDate || !guestEmail ) {
       await logApiCall(req, res, 400, 'Missing required fields', 'guestVisit');
       return res.status(400).json({ message: 'Missing required fields' });
+    }
+    if (!isValidEmail(guestEmail)) {
+      return res.status(400).json({ message: 'Please provide a valid email address' });
     }
 
     const visitDay = new Date(visitDate);
@@ -148,28 +151,24 @@ exports.createGuestVisit = async (req, res) => {
       status: 'scheduled',
     });
 
-    if (guestEmail && isValidEmail(guestEmail)) {
-      console.log(guestEmail);
+    console.log(guestEmail);
 
-      const qrBuffer = await generateQrBuffer(qrToken);
-      const mail = guestQrEmail({ guestName, visitDate });
+    const qrBuffer = await generateQrBuffer(qrToken);
+    const mail = guestQrEmail({ guestName, visitDate });
 
-      await mailsender(
-        guestEmail,
-        'COCO Living - Guest Entry QR',
-        mail.html,
-        [
-          {
-            filename: 'guest-qr.png',
-            content: qrBuffer,
-            cid: 'guest-qr',
-          },
-          ...mail.attachments
-        ]
-      );
-      //  console.log('Mail sent:', info);
-      // console.log('Mail sent successfully');
-    }
+    await mailsender(
+      guestEmail,
+      'COCO Living - Guest Entry QR',
+      mail.html,
+      [
+        {
+          filename: 'guest-qr.png',
+          content: qrBuffer,
+          cid: 'guest-qr',
+        },
+        ...mail.attachments
+      ]
+    );
     await notifyGuestRequest(visit);
     await logApiCall(
       req,

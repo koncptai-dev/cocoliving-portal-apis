@@ -17,10 +17,27 @@ exports.AddUser = async (req, res) => {
             return res.status(400).json({ message: "Required fields are missing" });
         }
 
-        const existing = await User.findOne({ where: { email } });
-        if (existing) {
-            await logApiCall(req, res, 400, `Added user - email already exists (${email})`, "user");
-            return res.status(400).json({ message: "Email already exists" });
+        const existingUser = await User.findOne({
+            where: {
+                [Op.or]: [
+                    { email },
+                    { phone }
+                ]
+            }
+        });
+
+        if (existingUser) {
+            if (existingUser.email === email) {
+                return res.status(400).json({
+                    message: "Email already exists"
+                });
+            }
+
+            if (existingUser.phone === phone) {
+                return res.status(400).json({
+                    message: "Mobile number already exists"
+                });
+            }
         }
 
         const newUser = await User.create({
