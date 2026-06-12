@@ -178,6 +178,12 @@ exports.cancelBooking = async (req, res) => {
     const { bookingId } = req.params;
     const { reason } = req.body || {};
 
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({
+        message: "Cancellation reason is required"
+      });
+    }
+
     const booking = await Booking.findByPk(bookingId, {
       transaction: t,
       lock: t.LOCK.UPDATE
@@ -194,7 +200,7 @@ exports.cancelBooking = async (req, res) => {
     }
 
     booking.status = "cancelled";
-    booking.adminCancelReason = reason || null;
+    booking.adminCancelReason = reason.trim();
     await booking.save({transaction: t});
     await releaseInventoryForBooking(booking,t);
     const updatedBooking = await Booking.findByPk(booking.id, {
@@ -771,6 +777,7 @@ exports.createBookingForOfflinePayments = async (req, res) => {
       checkInDate,
       duration,
       bookingType,
+      monthlyRent
     } = req.body;
 
     if (
@@ -786,6 +793,18 @@ exports.createBookingForOfflinePayments = async (req, res) => {
         success: false,
         message:
           "userId, roomId, checkInDate, duration, bookingType are required",
+      });
+    }
+
+    if (
+      monthlyRent !== undefined &&
+      monthlyRent !== null &&
+      (isNaN(Number(monthlyRent)) || Number(monthlyRent) <= 0)
+    ) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "monthlyRent must be a positive number",
       });
     }
 
@@ -891,10 +910,15 @@ exports.createBookingForOfflinePayments = async (req, res) => {
 
     
 
-    const monthlyRent = room.monthlyRent;
+    const finalMonthlyRent =
+      monthlyRent !== undefined &&
+      monthlyRent !== null &&
+      !isNaN(Number(monthlyRent))
+        ? Number(monthlyRent)
+        : room.monthlyRent;
 
     const totalAmount =
-      monthlyRent * Number(duration) + room.depositAmount;
+      finalMonthlyRent * Number(duration) + room.depositAmount;
 
     const booking = await Booking.create(
       {
@@ -912,7 +936,7 @@ exports.createBookingForOfflinePayments = async (req, res) => {
 
         duration,
 
-        monthlyRent,
+        monthlyRent: finalMonthlyRent,
 
         totalAmount,
         remainingAmount: totalAmount,
