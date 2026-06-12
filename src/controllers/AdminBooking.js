@@ -178,6 +178,12 @@ exports.cancelBooking = async (req, res) => {
     const { bookingId } = req.params;
     const { reason } = req.body || {};
 
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({
+        message: "Cancellation reason is required"
+      });
+    }
+
     const booking = await Booking.findByPk(bookingId, {
       transaction: t,
       lock: t.LOCK.UPDATE
@@ -194,7 +200,7 @@ exports.cancelBooking = async (req, res) => {
     }
 
     booking.status = "cancelled";
-    booking.adminCancelReason = reason || null;
+    booking.adminCancelReason = reason.trim();
     await booking.save({transaction: t});
     await releaseInventoryForBooking(booking,t);
     const updatedBooking = await Booking.findByPk(booking.id, {
