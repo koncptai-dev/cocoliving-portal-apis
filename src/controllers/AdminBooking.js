@@ -918,7 +918,7 @@ exports.createBookingForOfflinePayments = async (req, res) => {
         : room.monthlyRent;
 
     const totalAmount =
-      finalMonthlyRent * Number(duration) + room.depositAmount;
+      finalMonthlyRent * Number(duration) + finalMonthlyRent * 2;
 
     const booking = await Booking.create(
       {
