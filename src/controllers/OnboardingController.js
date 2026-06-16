@@ -36,19 +36,12 @@ exports.startOnboarding = async (req, res) => {
   }
 
   if (
+    booking.bookingSource === 'ONLINE' &&
     booking.paymentStatus !== 'COMPLETED' &&
     booking.monthlyPlanSelected === false
   ) {
     return res.status(422).json({
       message: 'Payment must be completed before onboarding can be started'
-    });
-  }
-  if (
-    booking.status !== 'approved' ||
-    ( booking.paymentStatus !== 'COMPLETED' && booking.monthlyPlanSelected === false ) 
-  ) {
-    return res.status(422).json({
-      message: 'Booking not eligible for onboarding'
     });
   }
 
