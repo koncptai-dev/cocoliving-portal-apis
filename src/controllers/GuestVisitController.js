@@ -108,6 +108,10 @@ exports.createGuestVisit = async (req, res) => {
         return res.status(403).json({ message: 'No active booking found' });
       }
 
+      if(resolvedBooking.onboardingStatus !== 'COMPLETED'){
+        return res.status(422).json({ message: 'Must complete onboarding before creating guest visits!' });
+      }
+
       resolvedPropertyId = resolvedBooking.propertyId;
       resolvedRoomId = resolvedBooking.roomId;
       residentUserId = targetUserId;
