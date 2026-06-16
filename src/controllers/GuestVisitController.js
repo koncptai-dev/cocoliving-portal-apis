@@ -101,13 +101,15 @@ exports.createGuestVisit = async (req, res) => {
           userId: targetUserId,
           checkInDate: { [Op.lte]: today },
           checkOutDate: { [Op.gte]: today },
+          status: 'approved'
         },
       });
 
       if (!resolvedBooking) {
         return res.status(403).json({ message: 'No active booking found' });
       }
-
+      console.log("resolvedBooking",resolvedBooking);
+      console.log("resolvedBooking.onboardingStatus : ",resolvedBooking.onboardingStatus);
       if(resolvedBooking.onboardingStatus !== 'COMPLETED'){
         return res.status(422).json({ message: 'Must complete onboarding before creating guest visits!' });
       }
