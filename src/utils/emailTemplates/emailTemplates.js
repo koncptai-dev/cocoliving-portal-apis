@@ -35,7 +35,7 @@ padding:28px 20px;font-size:12px;line-height:1.6;">
   <div>904-905 Palak Prime, Ambli Rd, Opp. DoubleTree by Hilton, Ahmedabad, Gujarat 380058</div>
 
   <div>
-    <img src="cid:phone" width="9"/> +91-7041454455
+    <img src="cid:phone" width="9"/> +91-8141676967
     &nbsp;
     <img src="cid:mail" width="10"/> info@cocoliving.in
   </div>
@@ -555,7 +555,7 @@ To complete your booking process, please pay the
 Please visit your <strong>My Booking</strong> page to complete the payment.
 </div>
 
-<a href="${BASE_URL}/my-bookings"
+<a href="${BASE_URL}/user/bookings"
 style="display:inline-block;padding:14px 32px;background:#D36517;color:#fff;text-decoration:none;border-radius:24px;font-weight:600;">
 Pay Security Deposit
 </a>
@@ -936,7 +936,7 @@ padding:28px 28px 90px;">
       Welcome to Coco Living. We're excited to have you onboard!
     </p>
 
-    <a href="${BASE_URL}/my-bookings"
+    <a href="${BASE_URL}/user/bookings"
     style="display:inline-block;padding:14px 32px;background:#D36517;
     color:#fff;text-decoration:none;border-radius:24px;font-weight:600;">
       View Booking
