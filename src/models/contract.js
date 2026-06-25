@@ -18,9 +18,28 @@ const Contract = sequelize.define("Contract", {
     type: DataTypes.STRING,
     allowNull: false,
   },
+  tenantSignature: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+
+  adminSignature: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+
+  residentSignedAt: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+
+  adminSignedAt: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
   signedAt: {
     type: DataTypes.DATE,
-    allowNull: false,
+    allowNull: true,
   },
 }, {
   tableName: "contracts",

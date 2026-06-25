@@ -254,7 +254,11 @@ table tr {
 ol.dos-list,
 ol.donts-list {
   margin: 0 0 4mm 0;
-  padding-left: 6mm;
+  padding-left: 12mm;
+}
+ol.dos-list li,
+ol.donts-list li {
+  padding-left: 2mm;
 }
 
 ol.dos-list li,
