@@ -1,17 +1,23 @@
 const fs = require("fs");
 const path = require("path");
 const puppeteer = require("puppeteer");
-const { StandardFonts, rgb, PDFDocument } = require("pdf-lib");
-const { Booking, User, Rooms, Property, Contract } = require("../models");
+const { Booking, User, Rooms, Property, Contract, Inventory } = require("../models");
 const { mailsender } = require("../utils/emailService");
 const { contractSignedEmail, securityDepositPaymentEmail } = require("../utils/emailTemplates/emailTemplates");
 const { notifySecurityDeposit } = require('../utils/notificationService');
 const { numberToRupeesWords } = require("../utils/numberToWords");
 
+const normalize = str =>
+  str
+    ?.toLowerCase()
+    .replace(/[^a-z0-9 ]/g, "")
+    .trim();
+
+
 /**
  * Renders the HTML template into a PDF buffer using Puppeteer
  */
-const renderContractPdf = async (booking, signatures = {}, signingDates = {}) => {
+const renderContractPdf = async (booking,contract = null) => {
   const templateFile =
     booking.user.userType === "student"
       ? "contract-student.html"
@@ -31,18 +37,70 @@ const renderContractPdf = async (booking, signatures = {}, signingDates = {}) =>
   // Signatures as Base64
   let inventoryTable = "";
 
-  const assignedItems = booking.assignedItems || [];
+  const assignedItemIds = booking.assignedItems || [];
 
-  assignedItems.forEach(item => {
+  const assignedItems = assignedItemIds.length
+    ? await Inventory.findAll({
+        where: {
+          id: assignedItemIds
+        },
+        attributes: ["itemName", "condition"]
+      })
+    : [];
+  const findInventory = keyword =>
+    assignedItems.find(item =>
+      normalize(item.itemName).includes(normalize(keyword))
+    );
+  const dynamicItems = [
+    { keyword: "bed", label: "Bed" },
+    { keyword: "wardrobe", label: "Wardrobe" },
+    { keyword: "study table", label: "Study Table" },
+    { keyword: "chair", label: "Chair" }
+  ];
+
+  dynamicItems.forEach(({ keyword, label }) => {
+    const item = findInventory(keyword);
+
+    if (!item) return;
+
     inventoryTable += `
       <tr>
-        <td>${item.itemName}</td>
+        <td>${label}</td>
         <td>1</td>
-        <td>Good</td>
+        <td>${item.condition || ""}</td>
         <td></td>
       </tr>
     `;
   });
+  inventoryTable += `
+  <tr>
+    <td>Access Card / Key</td>
+    <td></td>
+    <td></td>
+    <td></td>
+  </tr>
+
+  <tr>
+    <td>Linen</td>
+    <td></td>
+    <td></td>
+    <td></td>
+  </tr>
+
+  <tr>
+    <td>AC Remote</td>
+    <td></td>
+    <td></td>
+    <td></td>
+  </tr>
+
+  <tr>
+    <td>Other Items</td>
+    <td></td>
+    <td></td>
+    <td></td>
+  </tr>
+  `;
   const residentAge =
     user.dateOfBirth
       ? Math.floor(
@@ -62,8 +120,15 @@ const renderContractPdf = async (booking, signatures = {}, signingDates = {}) =>
     resident_dob: user.dateOfBirth || "",
     resident_address: user.address || "",
 
-    student_college: user.collegeName || "",
-    student_course: user.course || "",
+    educational_details: 
+      user.collegeName && user.course
+        ? `${user.collegeName} / ${user.course}`
+        : !!user.collegeName
+          ? user.collegeName
+          : !!user.course
+            ? user.course
+            : "",
+
     student_year: user.studyingYear || "",
     guardian_name: user.parentName || "",
     guardian_relation: "Parent",
@@ -71,8 +136,7 @@ const renderContractPdf = async (booking, signatures = {}, signingDates = {}) =>
     guardian_phone: user.parentMobile || "",
     guardian_email: user.parentEmail || "",
 
-    emergency_contact_name: "",
-    emergency_contact_phone: "",
+    emergency_contact: "",
 
     property_name: room?.property?.name || "",
     property_address: room?.property?.address || "",
@@ -107,20 +171,27 @@ const renderContractPdf = async (booking, signatures = {}, signingDates = {}) =>
 
     replacement_charges: "As per actuals",
 
-    operator_signature: signatures.admin
-      ? `data:image/png;base64,${signatures.admin}`
-      : "",
+    resident_signature:
+      contract?.tenantSignature
+        ? `data:image/png;base64,${contract.tenantSignature}`
+        : "",
 
-    resident_signature: signatures.tenant
-      ? `data:image/png;base64,${signatures.tenant}`
-      : "",
+    operator_signature:
+      contract?.adminSignature
+        ? `data:image/png;base64,${contract.adminSignature}`
+        : "",
 
-    guardian_signature: signatures.guardian
-      ? `data:image/png;base64,${signatures.guardian}`
-      : "",
+    guardian_signature: "",
     employer_name: user.companyName || "",
-    resident_signed_date: signingDates.resident || "",
-    operator_signed_date: signingDates.admin || "",
+    resident_signed_date:
+      contract?.residentSignedAt
+        ? new Date(contract.residentSignedAt).toLocaleDateString("en-IN")
+        : "",
+
+    operator_signed_date:
+      contract?.adminSignedAt
+        ? new Date(contract.adminSignedAt).toLocaleDateString("en-IN")
+        : "",
     designation: user.position || "",
     student_id_details: "",
     guardian_id_details: "",
@@ -255,30 +326,27 @@ exports.signContract = async (req, res) => {
       guardianSigPath = req.files.guardianSignature[0].path;
       guardianSigBase64 = fs.readFileSync(guardianSigPath).toString("base64");
     }
-    const residentSignedDate = new Date().toLocaleDateString("en-IN");
-    const pdfBuffer = await renderContractPdf(
-      booking, 
-      {
-        tenant: tenantSigBase64,
-        guardian: guardianSigBase64
-      },
-      {
-        resident: residentSignedDate,
-        guardian: booking.user.userType === "student"
-          ? residentSignedDate
-          : ""
-      }
-    );
-
-    const finalPath = path.join(__dirname, `../uploads/contracts/contract-${bookingId}.pdf`);
-    fs.writeFileSync(finalPath, pdfBuffer);
-
-    await Contract.create({
+    const contract = await Contract.create({
       bookingId,
-      signedPdfPath: finalPath,
-      signedAt: new Date(),
+      signedPdfPath: "",
+      tenantSignature: tenantSigBase64,
+      residentSignedAt: new Date(),
     });
 
+    const pdfBuffer = await renderContractPdf(
+      booking,
+      contract
+    );
+
+    const finalPath = path.join(
+      __dirname,
+      `../uploads/contracts/contract-${bookingId}.pdf`
+    );
+
+    fs.writeFileSync(finalPath, pdfBuffer);
+
+    contract.signedPdfPath = finalPath;
+    await contract.save();
     booking.contractStatus = "SIGNED";
     await booking.save();
 
@@ -324,50 +392,24 @@ exports.adminSignContract = async (req, res) => {
 
     // 1. Get the uploaded admin signature image
     const adminSigPath = req.files.adminSignature[0].path;
-    const adminImageBytes = fs.readFileSync(adminSigPath);
+    const adminSigBase64 = fs
+      .readFileSync(adminSigPath)
+      .toString("base64");
 
-    // 2. Load the existing tenant-signed PDF
-    const existingPdfBytes = fs.readFileSync(contract.signedPdfPath);
-    const pdfDoc = await PDFDocument.load(existingPdfBytes);
+    contract.adminSignature = adminSigBase64;
+    contract.adminSignedAt = new Date();
 
-    // 3. Embed the new admin signature (handle both png and jpg)
-    let adminImage;
-    if (adminSigPath.toLowerCase().endsWith('.png') || adminImageBytes[0] === 0x89) {
-      adminImage = await pdfDoc.embedPng(adminImageBytes);
-    } else {
-      adminImage = await pdfDoc.embedJpg(adminImageBytes);
-    }
+    await contract.save();
 
-    // 4. Signature page is page 13 (0-based index 12)
-    const pages = pdfDoc.getPages();
-    const signaturePage = pages[12];
+    const pdfBuffer = await renderContractPdf(
+      booking,
+      contract
+    );
 
-    // Scale image down if it's too big, max 150x60
-    const { width, height } = adminImage.scaleToFit(150, 60);
-
-    // 5. STAMP the signature onto the last page!
-    // Since we added `page-break-before: always` to the HTML, the signature
-    // box is now GUARANTEED to be at the exact same Y-coordinate on the last page!
-    // -> 0,0 is the BOTTOM-LEFT of the page.
-    signaturePage.drawImage(adminImage, {
-      x: 140,
-      y: 610,
-      width: 100,
-      height: 40,
-    });
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const signedDate = new Date().toLocaleDateString("en-IN");
-    signaturePage.drawText(signedDate, {
-      x: 115,
-      y: 597.5,
-      size: 11,
-      font,
-      color: rgb(0, 0, 0),
-    });
-    // 6. Save the newly stamped PDF, overwriting the old one.
-    const pdfBuffer = await pdfDoc.save();
-    fs.writeFileSync(contract.signedPdfPath, pdfBuffer);
-
+    fs.writeFileSync(
+      contract.signedPdfPath,
+      pdfBuffer
+    );
     // Update status 
     booking.adminContractStatus = "SIGNED";
     await booking.save();
