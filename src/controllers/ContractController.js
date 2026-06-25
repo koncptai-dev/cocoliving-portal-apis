@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const puppeteer = require("puppeteer");
-const { PDFDocument } = require("pdf-lib");
+const { StandardFonts, rgb, PDFDocument } = require("pdf-lib");
 const { Booking, User, Rooms, Property, Contract } = require("../models");
 const { mailsender } = require("../utils/emailService");
 const { contractSignedEmail, securityDepositPaymentEmail } = require("../utils/emailTemplates/emailTemplates");
@@ -11,62 +11,142 @@ const { numberToRupeesWords } = require("../utils/numberToWords");
 /**
  * Renders the HTML template into a PDF buffer using Puppeteer
  */
-const renderContractPdf = async (booking, signatures = {}) => {
-  const templatePath = path.join(__dirname, "../utils/emailTemplates/contractpdf.html");
+const renderContractPdf = async (booking, signatures = {}, signingDates = {}) => {
+  const templateFile =
+    booking.user.userType === "student"
+      ? "contract-student.html"
+      : "contract-professional.html";
+
+  const templatePath = path.join(
+    __dirname,
+    "../utils/emailTemplates",
+    templateFile
+  );
   let html = fs.readFileSync(templatePath, "utf8");
 
   const { user, room } = booking;
-  const duration = booking.duration || 12;
-  const monthlyRent = booking.monthlyRent || 0;
-  const totalAmount = monthlyRent * duration;
   const date = new Date().toLocaleDateString("en-IN");
 
-  // Room Type Checkboxes
-  const roomTypes = ["Single Sharing Room", "Double Sharing Room", "Triple Sharing Room", "Premium Triple Sharing Room", "Quad sharing"];
-  let checkboxesHtml = "";
-  roomTypes.forEach(type => {
-    // Case-insensitive check and handling variations of "Quad"
-    const dbType = (booking.roomType || "").toLowerCase();
-    const currentTabType = type.toLowerCase();
-
-    let isChecked = dbType === currentTabType;
-
-    // Extra handling for variations of Quad sharing
-    if (currentTabType.includes("quad")) {
-      isChecked = dbType.includes("quad") || dbType.includes("four");
-    }
-
-    checkboxesHtml += `<div>${isChecked ? "☑" : "☐"} ${type}</div>`;
-  });
 
   // Signatures as Base64
-  const tenantSigHtml = signatures.tenant ? `<img src="data:image/png;base64,${signatures.tenant}" class="signature-img" />` : "";
+  let inventoryTable = "";
 
-  let guardianSectionHtml = "";
-  if (user.userType === "student") {
-    const guardianSigHtml = signatures.guardian ? `<img src="data:image/png;base64,${signatures.guardian}" class="signature-img" />` : "";
-    guardianSectionHtml = `
-            <div>Guardian Name: <strong>${user.parentName || "Guardian"}</strong></div>
-            <div class="sig-line">
-                ${guardianSigHtml}
-            </div>
-            <div>Guardian Signature</div>
-            <div style="margin-top: 5px;">Date: <strong>${date}</strong></div>
-        `;
-  }
+  const assignedItems = booking.assignedItems || [];
 
+  assignedItems.forEach(item => {
+    inventoryTable += `
+      <tr>
+        <td>${item.itemName}</td>
+        <td>1</td>
+        <td>Good</td>
+        <td></td>
+      </tr>
+    `;
+  });
+  const residentAge =
+    user.dateOfBirth
+      ? Math.floor(
+          (new Date() - new Date(user.dateOfBirth)) /
+          (365.25 * 24 * 60 * 60 * 1000)
+        )
+      : "";
   // Replace placeholders
-  html = html
-    .replace(/{{duration}}/g, duration)
-    .replace(/{{total_amount}}/g, totalAmount.toLocaleString("en-IN"))
-    .replace(/{{total_amount_words}}/g, numberToRupeesWords(totalAmount))
-    .replace(/{{room_type_checkboxes}}/g, checkboxesHtml)
-    .replace(/{{tenant_name}}/g, user.fullName)
-    .replace(/{{tenant_signature}}/g, signatures.tenant ? `data:image/png;base64,${signatures.tenant}` : "")
-    .replace(/{{operator_signature}}/g, signatures.admin ? `data:image/png;base64,${signatures.admin}` : "")
-    .replace(/{{guardian_section}}/g, guardianSectionHtml)
-    .replace(/{{date}}/g, date);
+  const replacements = {
+    agreement_date: date,
 
+    resident_name: user.fullName || "",
+    resident_email: user.email || "",
+    resident_phone: user.phone || "",
+
+    resident_age: residentAge,
+    resident_dob: user.dateOfBirth || "",
+    resident_address: user.address || "",
+
+    student_college: user.collegeName || "",
+    student_course: user.course || "",
+    student_year: user.studyingYear || "",
+    guardian_name: user.parentName || "",
+    guardian_relation: "Parent",
+    guardian_address: user.address || "",
+    guardian_phone: user.parentMobile || "",
+    guardian_email: user.parentEmail || "",
+
+    emergency_contact_name: "",
+    emergency_contact_phone: "",
+
+    property_name: room?.property?.name || "",
+    property_address: room?.property?.address || "",
+
+    room_type: room?.roomType || "",
+    room_number: room?.roomNumber || "",
+    bed_number: booking.bedNumber || "N/A",
+
+    commencement_date: booking.startDate || "",
+    end_date: booking.endDate || "",
+
+    lockin_period: booking.duration || "",
+
+    monthly_rent: booking.monthlyRent || "",
+    security_deposit: booking.monthlyRent * 2 || "",
+    advance_rent: "",
+
+    electricity_rate: 12,
+
+    notice_period: "30 Days",
+
+    meal_preference: user.foodPreference || "",
+
+    special_terms: "",
+
+    late_payment_charges:
+      room?.property?.lateFeePerDay
+        ? `Rs. ${room.property.lateFeePerDay} per day`
+        : "",
+
+    unauthorized_occupancy_charges: "",
+
+    replacement_charges: "As per actuals",
+
+    operator_signature: signatures.admin
+      ? `data:image/png;base64,${signatures.admin}`
+      : "",
+
+    resident_signature: signatures.tenant
+      ? `data:image/png;base64,${signatures.tenant}`
+      : "",
+
+    guardian_signature: signatures.guardian
+      ? `data:image/png;base64,${signatures.guardian}`
+      : "",
+    employer_name: user.companyName || "",
+    resident_signed_date: signingDates.resident || "",
+    operator_signed_date: signingDates.admin || "",
+    designation: user.position || "",
+    student_id_details: "",
+    guardian_id_details: "",
+    government_id_details: "",
+    medical_conditions: "",
+    official_email: "",
+    employee_id: "",
+    office_address: "",
+    inventory_table: inventoryTable,
+  };
+
+  Object.entries(replacements).forEach(([key, value]) => {
+    html = html.replace(
+      new RegExp(`{{${key}}}`, "g"),
+      value ?? ""
+    );
+  });
+  const cssPath = path.join(
+    __dirname,
+    "../utils/emailTemplates/contractBase.css"
+  );
+  const css = fs.readFileSync(cssPath, "utf8");
+  html = html.replace(
+    "</head>",
+    `<style>${css}</style></head>`
+  );
   const browser = await puppeteer.launch({
     headless: "new",
     args: ["--no-sandbox", "--disable-setuid-sandbox"]
@@ -175,11 +255,20 @@ exports.signContract = async (req, res) => {
       guardianSigPath = req.files.guardianSignature[0].path;
       guardianSigBase64 = fs.readFileSync(guardianSigPath).toString("base64");
     }
-
-    const pdfBuffer = await renderContractPdf(booking, {
-      tenant: tenantSigBase64,
-      guardian: guardianSigBase64
-    });
+    const residentSignedDate = new Date().toLocaleDateString("en-IN");
+    const pdfBuffer = await renderContractPdf(
+      booking, 
+      {
+        tenant: tenantSigBase64,
+        guardian: guardianSigBase64
+      },
+      {
+        resident: residentSignedDate,
+        guardian: booking.user.userType === "student"
+          ? residentSignedDate
+          : ""
+      }
+    );
 
     const finalPath = path.join(__dirname, `../uploads/contracts/contract-${bookingId}.pdf`);
     fs.writeFileSync(finalPath, pdfBuffer);
@@ -249,9 +338,9 @@ exports.adminSignContract = async (req, res) => {
       adminImage = await pdfDoc.embedJpg(adminImageBytes);
     }
 
-    // 4. Get the last page of the PDF
+    // 4. Signature page is page 13 (0-based index 12)
     const pages = pdfDoc.getPages();
-    const lastPage = pages[pages.length - 1];
+    const signaturePage = pages[12];
 
     // Scale image down if it's too big, max 150x60
     const { width, height } = adminImage.scaleToFit(150, 60);
@@ -260,13 +349,21 @@ exports.adminSignContract = async (req, res) => {
     // Since we added `page-break-before: always` to the HTML, the signature
     // box is now GUARANTEED to be at the exact same Y-coordinate on the last page!
     // -> 0,0 is the BOTTOM-LEFT of the page.
-    lastPage.drawImage(adminImage, {
-      x: 55,    // Aligns perfectly with the left padding of the box
-      y: 229,   // Aligns perfectly right on top of the signature line
-      width: width,
-      height: height,
+    signaturePage.drawImage(adminImage, {
+      x: 140,
+      y: 610,
+      width: 100,
+      height: 40,
     });
-
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const signedDate = new Date().toLocaleDateString("en-IN");
+    signaturePage.drawText(signedDate, {
+      x: 115,
+      y: 597.5,
+      size: 11,
+      font,
+      color: rgb(0, 0, 0),
+    });
     // 6. Save the newly stamped PDF, overwriting the old one.
     const pdfBuffer = await pdfDoc.save();
     fs.writeFileSync(contract.signedPdfPath, pdfBuffer);

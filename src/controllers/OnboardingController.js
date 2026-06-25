@@ -243,25 +243,22 @@ exports.verifyOnboardingOtp = async (req, res) => {
       });
       if (!response.success) {
         throw new Error(
-          response?.body?.message ||
-          'Failed to add user to Aliste'
+          JSON.stringify(response)
         );
       }
-      booking.alisteUserId =
-        response?.body?.data?.userId ||
-        `USER_${booking.id}`;
+      booking.alisteUserId = `USER_${booking.id}`;
 
       await booking.save();
 
       console.log(
         'ALISTE ADD USER RESPONSE:',
-        JSON.stringify(response.body, null, 2)
+        JSON.stringify(response, null, 2)
       );
     }
   } catch (error) {
     console.error(
-      'Aliste Add User Error:',
-      error.message
+      'ALISTE ADD USER COMPLETE ERROR:',
+      error
     );
   }
   return res.json({ success: true });
