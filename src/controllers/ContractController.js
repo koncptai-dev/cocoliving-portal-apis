@@ -148,7 +148,7 @@ const renderContractPdf = async (booking,contract = null) => {
     commencement_date: booking.startDate || "",
     end_date: booking.endDate || "",
 
-    lockin_period: booking.duration || "",
+    lockin_period: "3 Months",
 
     monthly_rent: booking.monthlyRent || "",
     security_deposit: booking.monthlyRent * 2 || "",
