@@ -1,0 +1,302 @@
+@page {
+  size: A4;
+  margin: 18mm;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  background: #ffffff;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  font-size: 11pt;
+  line-height: 1.35;
+  color: #1a1a1a;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* ------------------------------------------------------------
+   Page break utilities
+   ------------------------------------------------------------ */
+
+.page-break {
+  page-break-before: always;
+  break-before: page;
+}
+
+.no-break {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+/* ------------------------------------------------------------
+   Document title / header block
+   ------------------------------------------------------------ */
+
+.document-title {
+  text-align: center;
+  font-size: 18px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  margin: 0 0 4mm 0;
+  text-transform: uppercase;
+}
+
+.document-subtitle {
+  text-align: center;
+  font-size: 12px;
+  margin: 0 0 8mm 0;
+  color: #333333;
+}
+
+.intro-block p {
+  margin: 0 0 3mm 0;
+  text-align: justify;
+}
+
+.party-heading {
+  font-weight: bold;
+  text-align: center;
+  margin: 5mm 0 3mm 0;
+  letter-spacing: 0.5px;
+}
+
+/* ------------------------------------------------------------
+   Section headings / clauses
+   ------------------------------------------------------------ */
+
+.section-heading {
+  font-size: 13px;
+  font-weight: bold;
+  text-transform: uppercase;
+  margin: 6mm 0 2mm 0;
+  page-break-after: avoid;
+  break-after: avoid;
+}
+
+.clause {
+  margin: 0 0 6mm 0;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.clause-number {
+  font-size: 13px;
+  font-weight: bold;
+  text-transform: uppercase;
+  margin: 0 0 2mm 0;
+  page-break-after: avoid;
+  break-after: avoid;
+}
+
+.clause p {
+  margin: 0 0 3.5mm 0;
+  text-align: justify;
+}
+
+.clause p:last-child {
+  margin-bottom: 0;
+}
+
+/* ------------------------------------------------------------
+   Tables
+   ------------------------------------------------------------ */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 3mm 0 6mm 0;
+  font-size: 11pt;
+  page-break-inside: auto;
+}
+
+table th {
+  background-color: #e8e8e8;
+  border: 1px solid #999999;
+  padding: 3mm;
+  text-align: left;
+  font-weight: bold;
+  vertical-align: top;
+}
+
+table td {
+  border: 1px solid #999999;
+  padding: 2mm 3mm;
+  text-align: left;
+  vertical-align: top;
+}
+
+table tr {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.particulars-table th {
+  width: 40%;
+}
+
+.particulars-table td {
+  width: 60%;
+}
+
+/* ------------------------------------------------------------
+   Signature section
+   ------------------------------------------------------------ */
+
+.signature-section {
+  margin-top: 18mm;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.signature-grid {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 6mm 0;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.signature-column {
+  display: table-cell;
+  width: 50%;
+  vertical-align: top;
+  border: 1px solid #999999;
+  padding: 4mm;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.signature-column-title {
+  font-weight: bold;
+  margin-bottom: 4mm;
+}
+
+.signature-line {
+  margin: 6mm 0 2mm 0;
+  border-bottom: 1px solid #1a1a1a;
+  height: 1px;
+}
+
+.signature-field {
+  margin: 5mm 0 0 0;
+}
+
+.signature-field .label {
+  font-weight: bold;
+}
+
+.signature-img {
+  max-height: 60px;
+  max-width: 180px;
+  object-fit: contain;
+  vertical-align: middle;
+}
+
+.acknowledgement-block {
+  margin-top: 8mm;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.acknowledgement-block p {
+  margin: 0 0 3mm 0;
+  text-align: justify;
+}
+
+/* ------------------------------------------------------------
+   Annexures
+   ------------------------------------------------------------ */
+
+.annexure {
+  page-break-before: always;
+  break-before: page;
+}
+
+.annexure-title {
+  font-size: 14px;
+  font-weight: bold;
+  text-transform: uppercase;
+  text-align: center;
+  margin: 0 0 6mm 0;
+  page-break-after: avoid;
+  break-after: avoid;
+}
+
+.annexure-intro p {
+  margin: 0 0 3mm 0;
+  text-align: justify;
+}
+
+/* ------------------------------------------------------------
+   Do's and Don'ts
+   ------------------------------------------------------------ */
+
+.dos-donts-heading {
+  font-weight: bold;
+  font-size: 13px;
+  margin: 6mm 0 2mm 0;
+  text-transform: uppercase;
+  page-break-after: avoid;
+  break-after: avoid;
+}
+
+ol.dos-list,
+ol.donts-list {
+  margin: 0 0 4mm 0;
+  padding-left: 12mm;
+}
+ol.dos-list li,
+ol.donts-list li {
+  padding-left: 2mm;
+}
+
+ol.dos-list li,
+ol.donts-list li {
+  margin: 0 0 2.5mm 0;
+  text-align: justify;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+/* ------------------------------------------------------------
+   Misc helpers
+   ------------------------------------------------------------ */
+
+.bold {
+  font-weight: bold;
+}
+
+.center {
+  text-align: center;
+}
+
+.italic {
+  font-style: italic;
+}
+
+.small-note {
+  font-size: 10.5px;
+  color: #444444;
+}
+
+.blank-line {
+  display: inline-block;
+  min-width: 45mm;
+  border-bottom: 1px solid #1a1a1a;
+}
+
+p {
+  orphans: 3;
+  widows: 3;
+}
