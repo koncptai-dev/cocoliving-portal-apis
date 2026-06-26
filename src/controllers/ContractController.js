@@ -143,7 +143,7 @@ const renderContractPdf = async (booking,contract = null) => {
 
     room_type: room?.roomType || "",
     room_number: room?.roomNumber || "",
-    bed_number: booking.bedNumber || "N/A",
+    bed_number: findInventory("bed")?.itemName || "N/A",
 
     commencement_date: booking.startDate || "",
     end_date: booking.endDate || "",
