@@ -253,7 +253,20 @@ exports.createOfflinePayment = async (req, res) => {
       adminNote,
       paymentType,
       discountAmount = 0,
+      paymentDate
     } = req.body;
+    let formattedPaymentDate = null;
+
+    if (paymentDate) {
+      if (!/^\d{2}\/\d{2}\/\d{4}$/.test(paymentDate)) {
+        return res.status(400).json({
+          success: false,
+          message: "paymentDate must be in DD/MM/YYYY format",
+        });
+      }
+
+      formattedPaymentDate = paymentDate;
+    }
 
     if (!bookingId || !amount || !paymentType) {
       return res.status(400).json({
@@ -317,6 +330,8 @@ exports.createOfflinePayment = async (req, res) => {
       discountAmount: finalDiscount,
 
       createdByAdminId: adminId,
+
+      paymentDate: formattedPaymentDate,
 
       rawResponse: {
         manuallyCreated: true,

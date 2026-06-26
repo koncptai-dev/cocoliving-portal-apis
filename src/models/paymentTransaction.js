@@ -59,6 +59,11 @@ const PaymentTransaction = sequelize.define(
       defaultValue: 'ONLINE',
     },
 
+    paymentDate: {
+      type: DataTypes.STRING(10),
+      allowNull: true,
+    },
+
     offlinePaymentType: {
       type: DataTypes.ENUM('CASH', 'CHEQUE', 'UPI'),
       allowNull: true,
