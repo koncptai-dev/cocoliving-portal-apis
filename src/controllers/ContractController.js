@@ -145,8 +145,8 @@ const renderContractPdf = async (booking,contract = null) => {
     room_number: room?.roomNumber || "",
     bed_number: findInventory("bed")?.itemName || "N/A",
 
-    commencement_date: booking.startDate || "",
-    end_date: booking.endDate || "",
+    commencement_date: booking.checkInDate || "",
+    end_date: booking.checkOutDate || "",
 
     lockin_period: "3 Months",
 
