@@ -137,7 +137,7 @@ exports.initiate = async (req, res) => {
 
     return res.status(503).json({
       success: false,
-      message: "Online payments are temporarily unavailable. Please contact the property/admin for payment assistance."
+      message: "Online Bookings are temporarily unavailable."
     });
 
     const userId = req.user?.id;
