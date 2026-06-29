@@ -134,6 +134,12 @@ async function checkOverlappingBooking(userId, checkInDate, checkOutDate) {
 
 exports.initiate = async (req, res) => {
   try {
+
+    return res.status(503).json({
+      success: false,
+      message: "Online payments are temporarily unavailable. Please contact the property/admin for payment assistance."
+    });
+
     const userId = req.user?.id;
 
     const isMobile = req.headers['x-client'] === 'mobile';
