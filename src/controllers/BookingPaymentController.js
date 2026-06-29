@@ -134,6 +134,12 @@ async function checkOverlappingBooking(userId, checkInDate, checkOutDate) {
 
 exports.initiate = async (req, res) => {
   try {
+
+    return res.status(503).json({
+      success: false,
+      message: "Online Bookings are temporarily unavailable."
+    });
+
     const userId = req.user?.id;
 
     const isMobile = req.headers['x-client'] === 'mobile';
