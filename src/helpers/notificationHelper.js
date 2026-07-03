@@ -102,8 +102,9 @@ exports.sendPushNotification = async (userId, title, body, data = {}, type, dedu
         const firebaseError = error?.errorInfo?.code;
 
         if (firebaseError) {
-            const cleanMsg = firebaseError.replace('messaging/', '').replace(/-/g, ' ');
-            console.error(`🔥 Firebase error for user ${userId}:`, cleanMsg);
+            // const cleanMsg = firebaseError.replace('messaging/', '').replace(/-/g, ' ');
+            // console.error(`🔥 Firebase error for user ${userId}:`, cleanMsg);
+            console.log(`[ FIREBASE ERROR FOR USER ${userId} ]:`, JSON.stringify(error, null, 2));
             return false;
         }
 
