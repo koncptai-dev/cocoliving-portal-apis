@@ -3,6 +3,12 @@ const Inventory = require('../models/inventory');
 const Property = require('../models/property');
 const Rooms = require('../models/rooms');
 const { logApiCall } = require("../helpers/auditLog");
+const {
+    buildQrText,
+    createPdfDocument,
+    addInventoryBlock,
+    propertyFilename
+} = require("../helpers/qrPdfHelper");
 exports.addInventory = async (req, res) => {
   try {
     const { propertyId, roomId, itemName, category, isCommonAsset } = req.body;
@@ -201,5 +207,261 @@ exports.getAvailableByRoom = async (req, res) => {
     console.error('Get inventory by room error:', err);
     await logApiCall(req, res, 500, "Error occurred while fetching inventory by room", "inventory");
     return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.generateInventoryQr = async (req, res) => {
+  try {
+    const { inventoryId } = req.params;
+
+    const inventory = await Inventory.findByPk(inventoryId, {
+      include: [
+        {
+          model: Property,
+          as: "property",
+        },
+        {
+          model: Rooms,
+          as: "room",
+        },
+      ],
+    });
+
+    if (!inventory) {
+      return res.status(404).json({
+        message: "Inventory not found",
+      });
+    }
+
+    const doc = createPdfDocument(
+      res,
+      `${inventory.inventoryCode}.pdf`
+    );
+
+    await addInventoryBlock(doc, inventory);
+
+    doc.end();
+
+    await logApiCall(
+      req,
+      res,
+      200,
+      `Downloaded QR for inventory ${inventory.inventoryCode}`,
+      "inventory",
+      inventory.id
+    );
+  } catch (error) {
+    console.error(error);
+
+    await logApiCall(
+      req,
+      res,
+      500,
+      "Failed to generate inventory QR",
+      "inventory"
+    );
+
+    return res.status(500).json({
+      message: "Internal Server Error",
+    });
+  }
+};
+
+exports.generateRoomQrPdf = async (req, res) => {
+  try {
+    const { roomId } = req.params;
+
+    const room = await Rooms.findByPk(roomId, {
+      include: [
+        {
+          model: Property,
+          as: "property",
+        },
+      ],
+    });
+
+    if (!room) {
+      return res.status(404).json({
+        message: "Room not found",
+      });
+    }
+
+    const inventories = await Inventory.findAll({
+      where: {
+        roomId,
+      },
+      include: [
+        {
+          model: Property,
+          as: "property",
+        },
+        {
+          model: Rooms,
+          as: "room",
+        },
+      ],
+      order: [["inventoryCode", "ASC"]],
+    });
+
+    const doc = createPdfDocument(
+      res,
+      `Room-${room.roomNumber}.pdf`
+    );
+
+    doc.fontSize(22)
+      .font("Helvetica-Bold")
+      .text(`Room ${room.roomNumber}`, {
+        align: "center",
+      });
+
+    doc.moveDown();
+
+    doc.fontSize(15)
+      .font("Helvetica")
+      .text(room.property.name, {
+        align: "center",
+      });
+
+    doc.moveDown(2);
+
+    for (let i = 0; i < inventories.length; i++) {
+      await addInventoryBlock(doc, inventories[i]);
+
+      if (i !== inventories.length - 1) {
+        if (doc.y > 620) {
+          doc.addPage();
+        }
+      }
+    }
+
+    doc.end();
+
+    await logApiCall(
+      req,
+      res,
+      200,
+      `Downloaded Room QR PDF (${room.roomNumber})`,
+      "room",
+      room.id
+    );
+  } catch (error) {
+    console.error(error);
+
+    await logApiCall(
+      req,
+      res,
+      500,
+      "Failed generating room QR PDF",
+      "room"
+    );
+
+    return res.status(500).json({
+      message: "Internal Server Error",
+    });
+  }
+};
+
+exports.generatePropertyQrPdf = async (req, res) => {
+  try {
+    const { propertyId } = req.params;
+
+    const property = await Property.findByPk(propertyId);
+
+    if (!property) {
+      return res.status(404).json({
+        message: "Property not found",
+      });
+    }
+
+    const inventories = await Inventory.findAll({
+      where: {
+        propertyId,
+      },
+      include: [
+        {
+          model: Property,
+          as: "property",
+        },
+        {
+          model: Rooms,
+          as: "room",
+        },
+      ],
+      order: [
+        [
+          {
+            model: Rooms,
+            as: "room",
+          },
+          "roomNumber",
+          "ASC",
+        ],
+        ["inventoryCode", "ASC"],
+      ],
+    });
+
+    const doc = createPdfDocument(
+      res,
+      propertyFilename(property.name)
+    );
+
+    doc.fontSize(24)
+      .font("Helvetica-Bold")
+      .text(property.name, {
+        align: "center",
+      });
+
+    doc.moveDown(2);
+
+    let currentRoom = null;
+
+    for (let i = 0; i < inventories.length; i++) {
+      const inventory = inventories[i];
+
+      if (currentRoom !== inventory.room?.roomNumber) {
+        currentRoom = inventory.room?.roomNumber;
+
+        doc.fontSize(18)
+          .font("Helvetica-Bold")
+          .text(
+            `Room ${currentRoom || "Common Area"}`
+          );
+
+        doc.moveDown();
+      }
+
+      await addInventoryBlock(doc, inventory);
+
+      if (i !== inventories.length - 1) {
+        if (doc.y > 620) {
+          doc.addPage();
+        }
+      }
+    }
+
+    doc.end();
+
+    await logApiCall(
+      req,
+      res,
+      200,
+      `Downloaded Property QR PDF (${property.name})`,
+      "property",
+      property.id
+    );
+  } catch (error) {
+    console.error(error);
+
+    await logApiCall(
+      req,
+      res,
+      500,
+      "Failed generating property QR PDF",
+      "property"
+    );
+
+    return res.status(500).json({
+      message: "Internal Server Error",
+    });
   }
 };
