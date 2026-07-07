@@ -327,17 +327,62 @@ exports.generateRoomQrPdf = async (req, res) => {
 
     doc.moveDown(2);
 
-    for (let i = 0; i < inventories.length; i++) {
-      await addInventoryBlock(doc, inventories[i]);
+    const columns = 3;
+    const stickerWidth = 185;
+    const stickerHeight = 185;
 
-      if (i !== inventories.length - 1) {
-        if (doc.y > 620) {
-          doc.addPage();
-        }
+    const startX = 15;
+    let startY = doc.y;
+
+    const pageBottom = doc.page.height - doc.page.margins.bottom;
+
+    let currentY = doc.y;
+    let col = 0;
+
+    for (const inventory of inventories) {
+
+      if (col === columns) {
+        col = 0;
+        currentY += stickerHeight;
       }
-    }
 
-    doc.end();
+      if (currentY + stickerHeight > pageBottom) {
+        doc.addPage();
+
+        doc.fontSize(22)
+            .font("Helvetica-Bold")
+            .text(`Room ${room.roomNumber}`, {
+                align: "center"
+            });
+
+        doc.fontSize(15)
+            .font("Helvetica")
+            .text(room.property.name, {
+                align: "center"
+            });
+
+        doc.moveDown();
+
+        currentY = doc.y;
+        col = 0;
+      }
+
+      const x = startX + col * stickerWidth;
+
+      await addInventoryBlock(
+        doc,
+        inventory,
+        x,
+        currentY
+      );
+
+      col++;
+    }
+    await new Promise((resolve, reject) => {
+      doc.on("end", resolve);
+      doc.on("error", reject);
+      doc.end();
+    });
 
     await logApiCall(
       req,
@@ -416,30 +461,72 @@ exports.generatePropertyQrPdf = async (req, res) => {
 
     doc.moveDown(2);
 
-    let currentRoom = null;
+    const columns = 3;
+    const stickerWidth = 180;
+    const stickerHeight = 185;
+    const roomHeaderHeight = 22;
 
-    for (let i = 0; i < inventories.length; i++) {
-      const inventory = inventories[i];
+    const startX = 15;
+    const pageBottom = doc.page.height - doc.page.margins.bottom;
 
-      if (currentRoom !== inventory.room?.roomNumber) {
-        currentRoom = inventory.room?.roomNumber;
+    const roomsMap = new Map();
 
-        doc.fontSize(18)
-          .font("Helvetica-Bold")
-          .text(
-            `Room ${currentRoom || "Common Area"}`
-          );
+    for (const inventory of inventories) {
+      const roomNumber = inventory.room?.roomNumber || "Common Area";
 
-        doc.moveDown();
+      if (!roomsMap.has(roomNumber)) {
+        roomsMap.set(roomNumber, []);
       }
 
-      await addInventoryBlock(doc, inventory);
+      roomsMap.get(roomNumber).push(inventory);
+    }
 
-      if (i !== inventories.length - 1) {
-        if (doc.y > 620) {
-          doc.addPage();
+    let currentY = doc.y;
+
+    for (const [roomNumber, roomInventories] of roomsMap.entries()) {
+
+      if (currentY + roomHeaderHeight + stickerHeight > pageBottom) {
+        doc.addPage();
+        currentY = 20;
+      }
+
+      doc
+        .fontSize(18)
+        .font("Helvetica-Bold")
+        .text(`Room ${roomNumber}`, startX, currentY);
+
+      currentY += roomHeaderHeight;
+
+      let col = 0;
+
+      for (const inventory of roomInventories) {
+        if (col === columns) {
+          col = 0;
+          currentY += stickerHeight;
         }
+
+        if (currentY + stickerHeight > pageBottom) {
+          doc.addPage();
+          currentY = 20;
+          col = 0;
+        }
+
+        const x = startX + col * stickerWidth;
+
+        await addInventoryBlock(
+          doc,
+          inventory,
+          x,
+          currentY
+        );
+
+        col++;
       }
+
+      if (col !== 0) {
+        currentY += stickerHeight;
+      }
+      currentY += 15;
     }
 
     doc.end();

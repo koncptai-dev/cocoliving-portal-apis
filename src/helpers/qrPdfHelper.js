@@ -19,7 +19,7 @@ const generateQrBuffer = async (text) => {
 
 const createPdfDocument = (res, filename) => {
     const doc = new PDFDocument({
-        margin: 40,
+        margin: 5,
         size: "A4"
     });
 
@@ -34,57 +34,39 @@ const createPdfDocument = (res, filename) => {
     return doc;
 };
 
-const addInventoryBlock = async (doc, inventory) => {
-
+const addInventoryBlock = async (doc, inventory, x, y) => {
     const qrBuffer = await generateQrBuffer(buildQrText(inventory));
 
-    const startY = doc.y;
-
-    // QR
-    doc.image(qrBuffer, 50, startY, {
+    doc.image(qrBuffer, x + 10, y + 5, {
         width: 150,
         height: 150
     });
 
-    // Details
-    const x = 230;
-    let y = startY;
+    const centerX = x + 85;
 
     doc.font("Helvetica-Bold")
-        .fontSize(18)
-        .text("Inventory Details", x, y);
+        .fontSize(10)
+        .text(
+            inventory.itemName,
+            x,
+            y + 155,
+            {
+                width: 170,
+                align: "center"
+            }
+        );
 
-    y += 35;
-
-    doc.font("Helvetica-Bold").fontSize(11);
-    doc.text("Inventory Code :", x, y, { continued: true });
-    doc.font("Helvetica").text(` ${inventory.inventoryCode}`);
-
-    y += 22;
-
-    doc.font("Helvetica-Bold");
-    doc.text("Item Name :", x, y, { continued: true });
-    doc.font("Helvetica").text(` ${inventory.itemName}`);
-
-    y += 22;
-
-    doc.font("Helvetica-Bold");
-    doc.text("Room Number :", x, y, { continued: true });
-    doc.font("Helvetica").text(` ${inventory.room?.roomNumber ?? "Common Area"}`);
-
-    y += 22;
-
-    doc.font("Helvetica-Bold");
-    doc.text("Property :", x, y, { continued: true });
-    doc.font("Helvetica").text(` ${inventory.property?.name ?? "N/A"}`);
-
-    doc.y = Math.max(startY + 170, doc.y) + 20;
-
-    doc.moveTo(40, doc.y)
-       .lineTo(555, doc.y)
-       .stroke();
-
-    doc.moveDown();
+    doc.font("Helvetica")
+        .fontSize(9)
+        .text(
+            `SET-${inventory.setNumber || "-"}`,
+            x,
+            y + 170,
+            {
+                width: 170,
+                align: "center"
+            }
+        );
 };
 
 const propertyFilename = (propertyName) => {
