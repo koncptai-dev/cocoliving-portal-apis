@@ -6,6 +6,7 @@ const { logApiCall } = require("../helpers/auditLog");
 const {
     buildQrText,
     createPdfDocument,
+    generateQrBuffer,
     addInventoryBlock,
     propertyFilename
 } = require("../helpers/qrPdfHelper");
@@ -233,15 +234,15 @@ exports.generateInventoryQr = async (req, res) => {
       });
     }
 
-    const doc = createPdfDocument(
-      res,
-      `${inventory.inventoryCode}.pdf`
+    const qrBuffer = await generateQrBuffer(
+      buildQrText(inventory)
     );
 
-    await addInventoryBlock(doc, inventory);
-
-    doc.end();
-
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${inventory.inventoryCode}.png"`
+    );
     await logApiCall(
       req,
       res,
@@ -250,6 +251,8 @@ exports.generateInventoryQr = async (req, res) => {
       "inventory",
       inventory.id
     );
+    return res.send(qrBuffer);
+
   } catch (error) {
     console.error(error);
 
