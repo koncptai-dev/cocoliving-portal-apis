@@ -222,7 +222,7 @@ exports.getAllRooms = async (req, res) => {
         ],
         distinct: true,
         limit,
-        offset, order: [['createdAt', 'DESC']]
+        offset, order: [['roomNumber', 'ASC']]
       }
     )
     const formattedRooms = rooms.map((room) => {
