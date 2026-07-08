@@ -313,19 +313,17 @@ exports.generateRoomQrPdf = async (req, res) => {
 
     doc.fontSize(22)
       .font("Helvetica-Bold")
-      .text(`Room ${room.roomNumber}`, {
+      .text(room.property.name, {
         align: "center",
       });
 
     doc.moveDown();
 
-    doc.fontSize(15)
-      .font("Helvetica")
-      .text(room.property.name, {
-        align: "center",
-      });
+    doc.fontSize(18)
+      .font("Helvetica-Bold")
+      .text(`Room ${room.roomNumber}`, 15);
 
-    doc.moveDown(2);
+    doc.moveDown(0.5);
 
     const columns = 3;
     const stickerWidth = 185;
@@ -348,21 +346,6 @@ exports.generateRoomQrPdf = async (req, res) => {
 
       if (currentY + stickerHeight > pageBottom) {
         doc.addPage();
-
-        doc.fontSize(22)
-            .font("Helvetica-Bold")
-            .text(`Room ${room.roomNumber}`, {
-                align: "center"
-            });
-
-        doc.fontSize(15)
-            .font("Helvetica")
-            .text(room.property.name, {
-                align: "center"
-            });
-
-        doc.moveDown();
-
         currentY = doc.y;
         col = 0;
       }
@@ -459,7 +442,7 @@ exports.generatePropertyQrPdf = async (req, res) => {
         align: "center",
       });
 
-    doc.moveDown(2);
+    doc.moveDown();
 
     const columns = 3;
     const stickerWidth = 180;
@@ -467,12 +450,12 @@ exports.generatePropertyQrPdf = async (req, res) => {
     const roomHeaderHeight = 22;
 
     const startX = 15;
-    const pageBottom = doc.page.height - doc.page.margins.bottom;
+    const pageBottom = doc.page.height - doc.page.margins.bottom - 10;
 
     const roomsMap = new Map();
 
     for (const inventory of inventories) {
-      const roomNumber = inventory.room?.roomNumber || "Common Area";
+      const roomNumber = inventory.room?.roomNumber || "Property Pool";
 
       if (!roomsMap.has(roomNumber)) {
         roomsMap.set(roomNumber, []);

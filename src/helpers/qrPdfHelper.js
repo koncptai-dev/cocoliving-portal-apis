@@ -5,7 +5,7 @@ const buildQrText = (inventory) => {
     return `Inventory Code : ${inventory.inventoryCode}
 Item Name      : ${inventory.itemName}
 Property       : ${inventory.property?.name || "N/A"}
-Room Number    : ${inventory.room?.roomNumber || "Common Area"}`;
+Room Number    : ${inventory.room?.roomNumber || "Property Pool"}`;
 };
 
 const generateQrBuffer = async (text) => {
