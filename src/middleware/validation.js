@@ -55,7 +55,6 @@ exports.editUserProfileValidator = [
     .withMessage("Invalid phone number"),
   check("dateOfBirth")
     .optional()
-    .withMessage("Date of Birth is required")
     .isDate({ format: "YYYY-MM-DD" })
     .withMessage("Invalid Date of Birth")
     .custom((value) => {
