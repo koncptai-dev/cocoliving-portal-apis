@@ -24,8 +24,8 @@ exports.validateSignup = [
       if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
         age--;
       }
-      if (age < 18) {
-        throw new Error("You must be at least 18 years old");
+      if (age < 17) {
+        throw new Error("You must be at least 17 years old");
       }
       return true;
     }),
@@ -53,6 +53,23 @@ exports.editUserProfileValidator = [
     .optional()
     .matches(/^\+?[0-9\s\-]{7,15}$/)
     .withMessage("Invalid phone number"),
+  check("dateOfBirth")
+    .optional()
+    .isDate({ format: "YYYY-MM-DD" })
+    .withMessage("Invalid Date of Birth")
+    .custom((value) => {
+      const dob = new Date(value);
+      const today = new Date();
+      let age = today.getFullYear() - dob.getFullYear();
+      const m = today.getMonth() - dob.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
+        age--;
+      }
+      if (age < 17) {
+        throw new Error("You must be at least 17 years old");
+      }
+      return true;
+    }),
   check("address")
     .optional()
     .trim()
