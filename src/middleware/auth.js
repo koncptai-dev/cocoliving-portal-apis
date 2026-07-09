@@ -13,7 +13,16 @@ const authenticateToken = (req, res, next) => {
 
     jwt.verify(token, process.env.JWT_SECRET, async (err, user) => {
         if (err) {
-            console.log("[ Unauthorized Access Error ] :",err);
+            console.log("Unauthorized Access", {
+                error: err.name,
+                message: err.message,
+                expiredAt: err.expiredAt,
+                url: req.originalUrl,
+                method: req.method,
+                ip: req.ip,
+                userAgent: req.get("User-Agent"),
+                authorization: req.headers.authorization?.slice(0, 30) + "...",
+            });
             return res.status(403).json({ message: 'Unauthorized Access' });
         }
 
