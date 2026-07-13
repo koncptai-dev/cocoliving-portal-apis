@@ -11,6 +11,8 @@ const User=require('../models/user');
 const PropertyRateCard = require("../models/propertyRateCard");
 const BookingExtension = require('../models/bookingExtension');
 const Inventory = require("../models/inventory");
+const Contract = require('../models/contract');
+const PaymentTransaction = require('../models/paymentTransaction');
 const { sendPushNotification } = require("../helpers/notificationHelper");
 const { removeUserFromRoom } = require('../utils/aliste/alisteApi');
 
@@ -997,5 +999,134 @@ exports.createBookingForOfflinePayments = async (req, res) => {
       message: "Internal server error",
       error: err.message,
     });
+  }
+};
+
+exports.updateOfflineBookingDuration = async (req, res) => {
+  const t = await sequelize.transaction();
+  let committed = false;
+
+  try {
+    const { bookingId } = req.params;
+    const duration = Number(req.body?.duration);
+
+    if (!Number.isInteger(duration) || duration <= 0) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "duration must be a positive whole number of months",
+      });
+    }
+
+    const booking = await Booking.findByPk(bookingId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!booking) {
+      await t.rollback();
+      return res.status(404).json({ success: false, message: "Booking not found" });
+    }
+
+    if (booking.bookingSource !== "OFFLINE") {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Only offline booking durations can be changed",
+      });
+    }
+
+    if (["cancelled", "rejected", "completed"].includes(booking.status)) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Duration cannot be changed for a closed booking",
+      });
+    }
+
+    const contract = await Contract.findOne({
+      where: { bookingId: booking.id },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    const contractHasBeenSigned =
+      booking.contractStatus === "SIGNED" ||
+      booking.adminContractStatus === "SIGNED" ||
+      Boolean(
+        contract?.signedAt ||
+        contract?.residentSignedAt ||
+        contract?.adminSignedAt
+      );
+
+    if (contractHasBeenSigned) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Booking duration cannot be changed after the contract is signed",
+      });
+    }
+
+    const successfulPayments = await PaymentTransaction.findAll({
+      where: {
+        bookingId: booking.id,
+        status: "SUCCESS",
+        type: { [Op.ne]: "REFUND" },
+      },
+      attributes: ["amount"],
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    const paidAmount = successfulPayments.reduce(
+      (total, payment) => total + Number(payment.amount || 0) / 100,
+      0
+    );
+    const totalAmount = Number(booking.monthlyRent) * duration + Number(booking.monthlyRent) * 2;
+    const remainingAmount = Math.max(totalAmount - paidAmount, 0);
+
+    booking.duration = duration;
+    booking.checkOutDate = moment(booking.checkInDate)
+      .add(duration, "months")
+      .subtract(1, "day")
+      .format("YYYY-MM-DD");
+    booking.totalAmount = totalAmount;
+    booking.remainingAmount = remainingAmount;
+    booking.paymentStatus = remainingAmount === 0
+      ? "COMPLETED"
+      : paidAmount > 0
+        ? "PARTIAL"
+        : "INITIATED";
+    await booking.save({ transaction: t });
+
+    await t.commit();
+    committed = true;
+
+    try {
+      await logActivity({
+        userId: req.user?.id,
+        name: req.user?.fullName,
+        role: req.user?.role,
+        action: "Offline Booking Duration Updated",
+        entityType: "Booking",
+        entityId: booking.id,
+        details: { duration, totalAmount, remainingAmount },
+      });
+      await logApiCall(req, res, 200, `Updated offline booking duration (ID: ${booking.id})`, "booking", booking.id);
+    } catch (auditError) {
+      console.error("Unable to audit offline booking duration update:", auditError);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Offline booking duration updated successfully",
+      booking,
+      payment: { paidAmount, totalAmount, remainingAmount },
+    });
+  } catch (err) {
+    if (!committed) await t.rollback();
+    console.error("Update offline booking duration error:", err);
+    await logApiCall(req, res, 500, "Error occurred while updating offline booking duration", "booking", parseInt(req.params.bookingId) || 0);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

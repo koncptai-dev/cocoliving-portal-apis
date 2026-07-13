@@ -20,4 +20,5 @@ router.get('/getExtension/:bookingId',authMiddleware, AdminBooking.getPendingBoo
 router.patch('/approveExtension/:extensionId', authMiddleware, authorizeRole(1,3),authorizePage("Bookings", "write"), AdminBooking.approveExtension);
 router.patch('/rejectExtension/:extensionId', authMiddleware, authorizeRole(1,3),authorizePage("Bookings", "write"), AdminBooking.rejectExtension);
 router.post('/createBooking', authMiddleware, authorizeRole(1,3), authorizePage("Property Management", "write"), AdminBooking.createBookingForOfflinePayments);
+router.patch('/:bookingId/duration', authMiddleware, authorizeRole(1,3), authorizePage("Bookings", "write"), AdminBooking.updateOfflineBookingDuration);
 module.exports=router
