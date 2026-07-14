@@ -4,8 +4,8 @@ const User = require('../models/user');
 const { getOrderStatus } = require('../utils/phonepe/phonepeApi');
 const { Op } = require('sequelize');
 const { logApiCall } = require("../helpers/auditLog");
-const { generateAndSendInvoice } = require('../utils/invoiceService');
-
+// const { generateAndSendInvoice } = require('../utils/invoiceService');
+const { generateAndSendAcknowledgementReceipt } = require('../utils/acknowledgementReceiptService');
 exports.checkOrderStatus = async (req, res) => {
   try {
     const { merchantOrderId } = req.params;
@@ -343,7 +343,8 @@ exports.createOfflinePayment = async (req, res) => {
       }
     });
 
-    await generateAndSendInvoice(transaction);
+    // await generateAndSendInvoice(transaction);
+    await generateAndSendAcknowledgementReceipt(transaction);
 
     booking.bookingSource = 'OFFLINE';
 
