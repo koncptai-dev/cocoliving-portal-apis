@@ -14,7 +14,8 @@ const phonepeConfig = require('../utils/phonepe/phonepeConfig');
 const { logActivity } = require('../helpers/activityLogger');
 const { refundCompletedEmail } = require('../utils/emailTemplates/emailTemplates');
 const { mailsender } = require('../utils/emailService');
-const { generateInvoice, generateAndSendInvoice } = require('../utils/invoiceService');
+// const { generateAndSendInvoice } = require('../utils/invoiceService');
+const { generateAndSendAcknowledgementReceipt } = require('../utils/acknowledgementReceiptService');
 
 function computeExpectedWebhookHex() {
   const u = (phonepeConfig.WEBHOOK_USERNAME || '').trim();
@@ -420,7 +421,8 @@ exports.phonePeWebhook = async (req, res) => {
 
     if (isOrderSuccess(ctx)) {
       await handleOrderSuccess(ctx, tx);
-      await generateAndSendInvoice(tx);
+      // await generateAndSendInvoice(tx);
+      await generateAndSendAcknowledgementReceipt(tx);
       return res.status(200).json({ message: 'Webhook processed (SUCCESS)' });
     }
 

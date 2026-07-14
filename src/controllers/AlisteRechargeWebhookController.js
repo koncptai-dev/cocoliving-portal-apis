@@ -4,7 +4,8 @@ const PaymentTransaction = require('../models/paymentTransaction');
 const Booking = require('../models/bookRoom');
 const Property = require('../models/property');
 const { notifyElectricityUnblocked } = require('../utils/notificationService');
-const { generateAndSendInvoice } = require('../utils/invoiceService');
+// const { generateAndSendInvoice } = require('../utils/invoiceService');
+const { generateAndSendAcknowledgementReceipt } = require('../utils/acknowledgementReceiptService');
 
 exports.webhook = async (req, res) => {
   try {
@@ -215,20 +216,22 @@ console.log({
   '✅ notifyElectricityUnblocked completed'
 );
       }
-      try {
-        await generateAndSendInvoice(
-          transaction
-        );
+      // try {
+      //   await generateAndSendInvoice(
+      //     transaction
+      //   );
 
-        console.log(
-          '✅ Invoice generated'
-        );
-      } catch (invoiceError) {
-        console.error(
-          '❌ Invoice generation failed:',
-          invoiceError
-        );
-      }
+      //   console.log(
+      //     '✅ Invoice generated'
+      //   );
+      // } catch (invoiceError) {
+      //   console.error(
+      //     '❌ Invoice generation failed:',
+      //     invoiceError
+      //   );
+      // }
+
+      await generateAndSendAcknowledgementReceipt( transaction );
     }
     console.log(
   '✅ notifyElectricityUnblocked completed'
