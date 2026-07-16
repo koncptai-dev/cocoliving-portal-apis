@@ -28,24 +28,6 @@ const Contract = sequelize.define("Contract", {
     allowNull: true
   },
 
-  esignReferenceDocId: {
-    type: DataTypes.STRING,
-    allowNull: true,
-  },
-  esignDocketId: {
-    type: DataTypes.STRING,
-    allowNull: true,
-  },
-  esignStatus: {
-    type: DataTypes.ENUM("NOT_INITIATED", "IN_PROGRESS", "COMPLETED", "FAILED"),
-    allowNull: false,
-    defaultValue: "NOT_INITIATED",
-  },
-  esignRawResponse: {
-    type: DataTypes.JSON,
-    allowNull: true,
-  },
-
   residentSignedAt: {
     type: DataTypes.DATE,
     allowNull: true
