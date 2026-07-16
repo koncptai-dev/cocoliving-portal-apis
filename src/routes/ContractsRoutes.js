@@ -6,21 +6,7 @@ const ContractController = require("../controllers/ContractController");
 
 router.get("/:bookingId", authenticateToken, ContractController.getContract);
 
-router.post(
-  "/:bookingId/sign",
-  authenticateToken,
-  upload.fields([
-  { name: "tenantSignature", maxCount: 1 },
-  { name: "guardianSignature", maxCount: 1 }
-]),
-  ContractController.signContract
-);
+router.post( "/:bookingId/initiate-esign", authenticateToken, ContractController.initiateEsign);
 
-router.post(
-  "/:bookingId/admin-sign",
-  authenticateToken,
-  upload.fields([{ name: "adminSignature", maxCount: 1 }]),
-  ContractController.adminSignContract
-);
-
+router.post( "/esign/callback", express.json({ limit: "15mb" }), ContractController.esignCallback );
 module.exports = router;
