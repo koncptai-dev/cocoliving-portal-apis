@@ -27,12 +27,15 @@ async function initiateEsign(payload) {
     const { data } = await idtoClient.post("/verify/esign", payload);
     return data;
   } catch (err) {
-    const details = err.response?.data?.detail;
+    const responseData = err.response?.data;
+    const details = responseData?.detail;
     const error = new Error("IDto eSign request failed");
     error.status = err.response?.status;
     error.providerDetails = Array.isArray(details)
       ? details.map(({ type, loc, msg }) => ({ type, loc, msg }))
-      : undefined;
+      : typeof details === "string"
+        ? details
+        : responseData?.message || responseData?.error || undefined;
     throw error;
   }
 }
