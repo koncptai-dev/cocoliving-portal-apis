@@ -367,7 +367,10 @@ exports.initiateEsign = async (req, res) => {
     if (pdfBuffer.length > MAX_ESIGN_PDF_BYTES) {
       return res.status(400).json({ message: "Generated contract PDF exceeds IDto's 10MB limit" });
     }
-    const pdfBase64 = pdfBuffer.toString("base64");
+    // Puppeteer returns a Uint8Array in current versions; converting it to a
+    // Buffer before encoding ensures IDTO receives PDF bytes, not a comma-
+    // separated Uint8Array string.
+    const pdfBase64 = Buffer.from(pdfBuffer).toString("base64");
     const referenceDocId = `booking-${bookingId}-${Date.now()}`;
     const signatureType = process.env.ESIGN_SIGNATURE_TYPE || "Electronic";
     const layout = isStudent ? "student" : "professional";
@@ -387,7 +390,7 @@ exports.initiateEsign = async (req, res) => {
       document_to_be_signed: referenceDocId,
       signer_position: { appearance: [residentBox.box] },
       page_number: residentBox.page_number,
-      sequence: sequence++
+      sequence: String(sequence++)
     });
 
     if (isStudent) {
@@ -403,7 +406,7 @@ exports.initiateEsign = async (req, res) => {
         document_to_be_signed: referenceDocId,
         signer_position: { appearance: [guardianBox.box] },
         page_number: guardianBox.page_number,
-        sequence: sequence++
+        sequence: String(sequence++)
       });
     }
 
@@ -419,7 +422,7 @@ exports.initiateEsign = async (req, res) => {
       document_to_be_signed: referenceDocId,
       signer_position: { appearance: [operatorBox.box] },
       page_number: operatorBox.page_number,
-      sequence: sequence++
+      sequence: String(sequence++)
     });
     const payload = {
       agreement_type: "rental_agreement",
@@ -463,7 +466,9 @@ exports.initiateEsign = async (req, res) => {
  
   } catch (err) {
     console.error("Error in initiateEsign:", err);
-    return res.status(err.status || 500).json({ message: err.message });
+    return res.status(err.status || 500).json({
+      message: "Unable to initiate eSign request. Please try again later."
+    });
   }
 };
 
