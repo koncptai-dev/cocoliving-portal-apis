@@ -17,6 +17,19 @@ const normalize = str =>
     .trim();
 
 const ESIGN_CALLBACK_TOKEN_MIN_LENGTH = 64;
+const MAX_ESIGN_PDF_BYTES = 10 * 1024 * 1024;
+
+const loadBookingForContract = bookingId =>
+  Booking.findByPk(bookingId, {
+    include: [
+      { model: User, as: "user" },
+      {
+        model: Rooms,
+        as: "room",
+        include: [{ model: Property, as: "property" }]
+      }
+    ]
+  });
 
 function getEsignCallbackUrl() {
   const token = process.env.ESIGN_CALLBACK_TOKEN;
