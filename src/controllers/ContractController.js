@@ -26,16 +26,16 @@ function getEsignCallbackUrl() {
     );
   }
 
-  if (!process.env.APP_BASE_URL) {
-    throw new Error("APP_BASE_URL must be set to build the eSign callback URL");
+  if (!process.env.API_BASE_URL) {
+    throw new Error("API_BASE_URL must be set to build the eSign callback URL");
   }
 
   const callbackUrl = new URL(
     "/api/contracts/esign/callback",
-    process.env.APP_BASE_URL
+    process.env.API_BASE_URL
   );
   if (callbackUrl.protocol !== "https:") {
-    throw new Error("APP_BASE_URL must use HTTPS for the eSign callback URL");
+    throw new Error("API_BASE_URL must use HTTPS for the eSign callback URL");
   }
 
   callbackUrl.searchParams.set("token", token);
