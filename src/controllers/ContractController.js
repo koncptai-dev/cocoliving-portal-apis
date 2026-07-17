@@ -566,7 +566,7 @@ exports.initiateEsign = async (req, res) => {
       agreement_type: "rental_agreement",
       docket_title: `Rental Agreement - Booking #${bookingId}`,
       docket_description: `CoCo Living rental agreement for ${booking.user.fullName}`,
-      final_copy_recipients: null,
+      final_copy_recipients: "",
       callback_file_content: true,
       documents: [
         {
