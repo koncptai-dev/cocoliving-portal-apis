@@ -8,5 +8,17 @@ router.get("/:bookingId", authenticateToken, ContractController.getContract);
 
 router.post( "/:bookingId/initiate-esign", authenticateToken, ContractController.initiateEsign);
 
+router.post(
+  "/:bookingId/admin-sign",
+  authenticateToken,
+  upload.fields([{ name: "adminSignature", maxCount: 1 }]),
+  ContractController.adminSignContract
+);
+
 router.post( "/esign/callback", express.json({ limit: "15mb" }), ContractController.esignCallback );
+router.post(
+  "/esign/calibration/callback",
+  express.json({ limit: "15mb" }),
+  ContractController.esignCalibrationCallback
+);
 module.exports = router;

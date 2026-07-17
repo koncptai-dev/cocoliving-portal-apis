@@ -2,12 +2,14 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const puppeteer = require("puppeteer");
+const { PDFDocument } = require("pdf-lib");
 const { Booking, User, Rooms, Property, Contract, Inventory } = require("../models");
 const { mailsender } = require("../utils/emailService");
 const { contractSignedEmail, securityDepositPaymentEmail } = require("../utils/emailTemplates/emailTemplates");
 const { notifySecurityDeposit } = require('../utils/notificationService');
 const { initiateEsign } = require("../utils/idtoEsignService");
 const { getSignatureBox } = require("../utils/esignSignatureCoordinates");
+const { overlayCalibrationGrid } = require("../utils/pdfCalibrationOverlay");
 const { numberToRupeesWords } = require("../utils/numberToWords");
 
 const normalize = str =>
@@ -67,6 +69,60 @@ function hasValidEsignCallbackToken(receivedToken) {
   return (
     expected.length === received.length &&
     crypto.timingSafeEqual(expected, received)
+  );
+}
+
+async function addAdminSignatureToPdf(pdfPath, signaturePath, layout) {
+  const pdf = await PDFDocument.load(fs.readFileSync(pdfPath));
+  const signatureBytes = fs.readFileSync(signaturePath);
+  const signature = /\.png$/i.test(signaturePath)
+    ? await pdf.embedPng(signatureBytes)
+    : await pdf.embedJpg(signatureBytes);
+  const { page_number, box } = getSignatureBox(layout, "operator");
+  const page = pdf.getPage(Number(page_number) - 1);
+
+  if (!page) {
+    throw new Error(`The returned eSign document does not contain page ${page_number}`);
+  }
+
+  const { height } = page.getSize();
+  page.drawImage(signature, {
+    x: box.x1,
+    y: height - box.y2,
+    width: box.x2 - box.x1,
+    height: box.y2 - box.y1
+  });
+
+  fs.writeFileSync(pdfPath, await pdf.save());
+}
+
+async function sendFinalContractEmails(booking, contract) {
+  const recipients = [booking.user.email];
+  if (booking.user.userType === "student" && booking.user.parentEmail) {
+    recipients.push(booking.user.parentEmail);
+  }
+
+  const contractEmail = contractSignedEmail({
+    userName: booking.user.fullName,
+    bookingId: booking.id
+  });
+  const attachments = [
+    ...contractEmail.attachments,
+    {
+      filename: `contract-${booking.id}.pdf`,
+      path: contract.signedPdfPath
+    }
+  ];
+
+  await Promise.all(
+    [...new Set(recipients.filter(Boolean))].map(recipient =>
+      mailsender(
+        recipient,
+        "Your Fully Signed Rental Agreement - CoCo Living",
+        contractEmail.html,
+        attachments
+      )
+    )
   );
 }
 
@@ -300,11 +356,28 @@ exports.getContract = async (req, res) => {
     if (!isOwner && !isAdmin)
       return res.status(403).json({ message: "Unauthorized" });
     const contract = await Contract.findOne({ where: { bookingId } });
-    if (contract?.esignStatus === "COMPLETED" && contract.signedPdfPath) {
+    if (
+      booking.contractStatus === "SIGNED" &&
+      booking.adminContractStatus === "SIGNED" &&
+      contract?.signedPdfPath
+    ) {
       return res.json({
         signed: true,
+        adminSigned: true,
         esignStatus: contract.esignStatus,
         fileUrl: `/uploads/contracts/${path.basename(contract.signedPdfPath)}`
+      });
+    }
+
+    if (contract?.esignStatus === "COMPLETED" && contract.signedPdfPath) {
+      return res.json({
+        signed: false,
+        adminSigned: false,
+        esignStatus: contract.esignStatus,
+        message: "Resident signing is complete. Waiting for an admin countersignature.",
+        ...(isAdmin && {
+          fileUrl: `/uploads/contracts/${path.basename(contract.signedPdfPath)}`
+        })
       });
     }
 
@@ -362,18 +435,97 @@ exports.initiateEsign = async (req, res) => {
         message: "Guardian email and mobile number are required before initiating eSign for a student booking"
       });
     }
-    const callbackUrl = getEsignCallbackUrl();
-    const pdfBuffer = await renderContractPdf(booking);
-    if (pdfBuffer.length > MAX_ESIGN_PDF_BYTES) {
-      return res.status(400).json({ message: "Generated contract PDF exceeds IDto's 10MB limit" });
+    // const callbackUrl = getEsignCallbackUrl();
+    // const pdfBuffer = await renderContractPdf(booking);
+    // if (pdfBuffer.length > MAX_ESIGN_PDF_BYTES) {
+    //   return res.status(400).json({ message: "Generated contract PDF exceeds IDto's 10MB limit" });
+    // }
+    // const pdfBase64 = Buffer.from(pdfBuffer).toString("base64");
+    const layout =
+      isStudent
+        ? "student"
+        : "professional";
+    let callbackUrl;
+
+    if (process.env.ESIGN_CALIBRATION === "true") {
+        callbackUrl = new URL(
+            "/api/contracts/esign/calibration/callback",
+            process.env.API_BASE_URL
+        );
+
+        callbackUrl.searchParams.set(
+            "token",
+            process.env.ESIGN_CALLBACK_TOKEN
+        );
+
+        callbackUrl.searchParams.set(
+            "layout",
+            layout
+        );
+
+        callbackUrl = callbackUrl.toString();
+    } else {
+        callbackUrl = getEsignCallbackUrl();
     }
-    // Puppeteer returns a Uint8Array in current versions; converting it to a
-    // Buffer before encoding ensures IDTO receives PDF bytes, not a comma-
-    // separated Uint8Array string.
-    const pdfBase64 = Buffer.from(pdfBuffer).toString("base64");
+    const pdfBuffer = await renderContractPdf(booking);
+
+    const calibrationDir = path.join(
+      __dirname,
+      "../uploads/contracts/esign-calibration"
+    );
+
+    fs.mkdirSync(calibrationDir, {
+      recursive: true
+    });
+
+    const originalPdf = path.join(
+      calibrationDir,
+      `${bookingId}-original.pdf`
+    );
+
+    const calibrationPdf = path.join(
+      calibrationDir,
+      `${bookingId}-grid.pdf`
+    );
+
+    fs.writeFileSync(originalPdf, pdfBuffer);
+
+    if (
+      process.env.ESIGN_CALIBRATION === "true"
+    ) {
+
+      await overlayCalibrationGrid(
+        originalPdf,
+        calibrationPdf,
+        layout
+      );
+
+    } else {
+
+      fs.copyFileSync(
+        originalPdf,
+        calibrationPdf
+      );
+
+    }
+
+    const finalPdfBytes =
+      fs.readFileSync(calibrationPdf);
+
+    if (
+      finalPdfBytes.length >
+      MAX_ESIGN_PDF_BYTES
+    ) {
+      return res.status(400).json({
+        message:
+          "Generated contract PDF exceeds IDTO's 10MB limit"
+      });
+    }
+
+    const pdfBase64 =
+      finalPdfBytes.toString("base64");
     const referenceDocId = `booking-${bookingId}-${Date.now()}`;
     const signatureType = process.env.ESIGN_SIGNATURE_TYPE || "Electronic";
-    const layout = isStudent ? "student" : "professional";
 
     const signers = [];
     let sequence = 1;
@@ -410,27 +562,11 @@ exports.initiateEsign = async (req, res) => {
       });
     }
 
-    const operatorBox = getSignatureBox(layout, "operator");
-    signers.push({
-      signer_ref_id: `operator-${booking.room.property.id}`,
-      signer_name: process.env.ESIGN_OPERATOR_NAME || "CoCo Living",
-      signer_email: process.env.ESIGN_OPERATOR_EMAIL,
-      signer_mobile: process.env.ESIGN_OPERATOR_MOBILE,
-      signature_type: signatureType,
-      trigger_esign_request: true,
-      authentication_mode: "email",
-      document_to_be_signed: referenceDocId,
-      signer_position: { appearance: [operatorBox.box] },
-      page_number: operatorBox.page_number,
-      sequence: String(sequence++)
-    });
     const payload = {
       agreement_type: "rental_agreement",
       docket_title: `Rental Agreement - Booking #${bookingId}`,
       docket_description: `CoCo Living rental agreement for ${booking.user.fullName}`,
-      final_copy_recipients: [booking.user.email, process.env.ESIGN_OPERATOR_EMAIL]
-        .filter(Boolean)
-        .join(","),
+      final_copy_recipients: null,
       callback_file_content: true,
       documents: [
         {
@@ -459,7 +595,7 @@ exports.initiateEsign = async (req, res) => {
     await booking.save();
  
     return res.json({
-      message: "eSign workflow initiated. Signers will receive invitations via email/SMS.",
+      message: "eSign workflow initiated. Resident signers will receive invitations via email/SMS.",
       referenceDocId,
       idtoResponse
     });
@@ -503,54 +639,27 @@ exports.esignCallback = async (req, res) => {
       contract.esignStatus = "COMPLETED";
       contract.signedAt = new Date();
  
-      if (file_content) {
-        const finalPath = path.join(
-          __dirname,
-          `../uploads/contracts/contract-${contract.bookingId}.pdf`
-        );
-        const dir = path.dirname(finalPath);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(finalPath, Buffer.from(file_content, "base64"));
-        contract.signedPdfPath = finalPath;
+      if (!file_content || typeof file_content !== "string") {
+        return res.status(422).json({
+          message: "eSign completion callback did not include the signed document"
+        });
       }
+
+      const finalPath = path.join(
+        __dirname,
+        `../uploads/contracts/contract-${contract.bookingId}.pdf`
+      );
+      const dir = path.dirname(finalPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(finalPath, Buffer.from(file_content, "base64"));
+      contract.signedPdfPath = finalPath;
  
       await contract.save();
  
       const booking = await loadBookingForContract(contract.bookingId);
       booking.contractStatus = "SIGNED";
-      booking.adminContractStatus = "SIGNED";
+      booking.adminContractStatus = "NOT_SIGNED";
       await booking.save();
- 
-      const contractEmail = contractSignedEmail({
-        userName: booking.user.fullName,
-        bookingId: booking.id
-      });
- 
-      await mailsender(
-        booking.user.email,
-        "Your Fully Signed Rental Agreement - CoCo Living",
-        contractEmail.html,
-        contract.signedPdfPath
-          ? [...contractEmail.attachments, { filename: `contract-${booking.id}.pdf`, path: contract.signedPdfPath }]
-          : contractEmail.attachments
-      );
- 
-      if (!booking.securityDepositPaid) {
-        await notifySecurityDeposit(booking);
- 
-        const email = securityDepositPaymentEmail({
-          userName: booking.user.fullName,
-          propertyName: booking.room.property.name,
-          bookingId: booking.id
-        });
- 
-        await mailsender(
-          booking.user.email,
-          "Security Deposit Payment Required - CoCo Living",
-          email.html,
-          email.attachments
-        );
-      }
     } else {
       contract.esignStatus = "FAILED";
       await contract.save();
@@ -561,5 +670,108 @@ exports.esignCallback = async (req, res) => {
   } catch (err) {
     console.error("Error in esignCallback:", err);
     return res.status(500).json({ message: err.message });
+  }
+};
+
+exports.esignCalibrationCallback = async (req, res) => {
+  try {
+    if (!hasValidEsignCallbackToken(req.query.token)) {
+      console.warn("esignCalibrationCallback: rejected callback with an invalid token");
+      return res.status(401).json({ message: "Unauthorized callback" });
+    }
+
+    const { layout } = req.query;
+    if (!["professional", "student"].includes(layout)) {
+      return res.status(400).json({ message: "A valid calibration layout is required" });
+    }
+
+    const { status, file_content } = req.body;
+    if (status !== "success") return res.json({ received: true });
+    if (!file_content || typeof file_content !== "string") {
+      return res.status(422).json({ message: "Calibration callback did not include a signed document" });
+    }
+
+    const outputDir = path.join(__dirname, "../uploads/contracts/esign-calibration");
+    fs.mkdirSync(outputDir, { recursive: true });
+    const outputPath = path.join(
+        outputDir,
+        `${layout}-idto-returned.pdf`
+    );
+    fs.writeFileSync(outputPath, Buffer.from(file_content, "base64"));
+
+    return res.json({ received: true });
+  } catch (err) {
+    console.error("Error in esignCalibrationCallback:", err);
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+exports.adminSignContract = async (req, res) => {
+  let adminSigPath;
+  try {
+    if (req.user.role !== 1) {
+      return res.status(403).json({ message: "Only admins can countersign contracts" });
+    }
+
+    const { bookingId } = req.params;
+    const booking = await loadBookingForContract(bookingId);
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    if (booking.contractStatus !== "SIGNED") {
+      return res.status(400).json({ message: "Resident signing has not completed yet" });
+    }
+    if (booking.adminContractStatus === "SIGNED") {
+      return res.status(400).json({ message: "Admin has already signed this contract" });
+    }
+    if (!req.files?.adminSignature?.[0]) {
+      return res.status(400).json({ message: "Admin signature is required" });
+    }
+    adminSigPath = req.files.adminSignature[0].path;
+    if (!/^image\/(png|jpeg)$/.test(req.files.adminSignature[0].mimetype)) {
+      return res.status(400).json({ message: "Admin signature must be a PNG or JPEG image" });
+    }
+
+    const contract = await Contract.findOne({ where: { bookingId } });
+    if (!contract?.signedPdfPath || !fs.existsSync(contract.signedPdfPath)) {
+      return res.status(400).json({ message: "The resident-signed document is not available yet" });
+    }
+
+    contract.adminSignature = fs.readFileSync(adminSigPath).toString("base64");
+    contract.adminSignedAt = new Date();
+
+    await addAdminSignatureToPdf(
+      contract.signedPdfPath,
+      adminSigPath,
+      booking.user.userType === "student" ? "student" : "professional"
+    );
+
+    booking.adminContractStatus = "SIGNED";
+    await Promise.all([contract.save(), booking.save()]);
+
+    await sendFinalContractEmails(booking, contract);
+
+    if (!booking.securityDepositPaid) {
+      await notifySecurityDeposit(booking);
+      const email = securityDepositPaymentEmail({
+        userName: booking.user.fullName,
+        propertyName: booking.room.property.name,
+        bookingId: booking.id
+      });
+      await mailsender(
+        booking.user.email,
+        "Security Deposit Payment Required - CoCo Living",
+        email.html,
+        email.attachments
+      );
+    }
+
+    return res.json({
+      message: "Admin signature added and final contract sent successfully",
+      fileUrl: `/uploads/contracts/${path.basename(contract.signedPdfPath)}`
+    });
+  } catch (err) {
+    console.error("Error in adminSignContract:", err);
+    return res.status(500).json({ message: err.message });
+  } finally {
+    if (adminSigPath && fs.existsSync(adminSigPath)) fs.unlinkSync(adminSigPath);
   }
 };
