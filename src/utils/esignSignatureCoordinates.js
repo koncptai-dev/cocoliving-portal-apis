@@ -3,9 +3,9 @@ const SIGNATURE_BOX_HEIGHT = 40;
 
 const ANCHOR_POINTS = {
   professional: {
-    page_number: "13",
-    resident: { top: 210, left: 150 },
-    operator: { top: 200, left: 390 }
+    page_number: "14",
+    resident: { top: 630, left: 400 },
+    operator: { top: 630, left: 150 }
   },
   student: {
     page_number: "15",
