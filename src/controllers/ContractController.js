@@ -566,7 +566,7 @@ exports.initiateEsign = async (req, res) => {
       agreement_type: "rental_agreement",
       docket_title: `Rental Agreement - Booking #${bookingId}`,
       docket_description: `CoCo Living rental agreement for ${booking.user.fullName}`,
-      final_copy_recipients: "",
+      final_copy_recipients: "deepanshu.choudhary@koncpt.ai",
       callback_file_content: true,
       documents: [
         {
@@ -675,6 +675,10 @@ exports.esignCallback = async (req, res) => {
 
 exports.esignCalibrationCallback = async (req, res) => {
   try {
+    console.log("Headers:", req.headers);
+    console.log("Content-Type:", req.headers["content-type"]);
+    console.log("Body:", req.body);
+    console.log("Query:", req.query);
     if (!hasValidEsignCallbackToken(req.query.token)) {
       console.warn("esignCalibrationCallback: rejected callback with an invalid token");
       return res.status(401).json({ message: "Unauthorized callback" });
@@ -685,7 +689,12 @@ exports.esignCalibrationCallback = async (req, res) => {
       return res.status(400).json({ message: "A valid calibration layout is required" });
     }
 
-    const { status, file_content } = req.body;
+    const body = req.body || {};
+
+    const {
+      status,
+      file_content
+    } = body;
     if (status !== "success") return res.json({ received: true });
     if (!file_content || typeof file_content !== "string") {
       return res.status(422).json({ message: "Calibration callback did not include a signed document" });
