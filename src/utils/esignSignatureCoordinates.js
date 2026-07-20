@@ -8,10 +8,10 @@ const ANCHOR_POINTS = {
     operator: { top: 630, left: 150 }
   },
   student: {
-    page_number: "15",
-    operator: { top: 275, left: 150 },
-    guardian: { top: 315, left: 380 },
-    resident: { top: 495, left: 230 }
+    page_number: "16",
+    operator: { top: 410, left: 150 },
+    guardian: { top: 350, left: 390 },
+    resident: { top: 175, left: 320 }
   }
 };
 
