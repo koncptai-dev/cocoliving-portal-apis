@@ -34,6 +34,7 @@ const Coupon = require("./coupon");
 const GuestVisit = require("./guestVisit");
 const Blog = require("./Blog");     // ← ADD THIS LINE
 const DepositDeduction = require("./depositDeduction");
+const RoomTransfer = require("./roomTransfer");
 
 User.hasOne(UserKYC, {
   foreignKey: "userId",
@@ -238,6 +239,14 @@ Contract.belongsTo(Booking, { foreignKey: "bookingId", as: "booking" });
 Booking.hasMany(DepositDeduction, { foreignKey: 'bookingId', as: 'depositDeductions', onDelete: 'CASCADE' });
 DepositDeduction.belongsTo(Booking, { foreignKey: 'bookingId', as: 'booking' });
 
+// Room transfer history
+Booking.hasMany(RoomTransfer, { foreignKey: 'bookingId', as: 'transfers' });
+RoomTransfer.belongsTo(Booking, { foreignKey: 'bookingId', as: 'booking' });
+Rooms.hasMany(RoomTransfer, { foreignKey: 'fromRoomId', as: 'transfersFrom' });
+Rooms.hasMany(RoomTransfer, { foreignKey: 'toRoomId', as: 'transfersTo' });
+RoomTransfer.belongsTo(Rooms, { foreignKey: 'fromRoomId', as: 'fromRoom' });
+RoomTransfer.belongsTo(Rooms, { foreignKey: 'toRoomId', as: 'toRoom' });
+
 // Property ↔ Floor Layout
 Property.hasMany(PropertyFloorLayout, { foreignKey: "propertyId", as: "floorLayout", onDelete: "CASCADE", });
 
@@ -294,5 +303,6 @@ module.exports = {
   Coupon,
   GuestVisit,
   Blog,
-  DepositDeduction
+  DepositDeduction,
+  RoomTransfer
 }

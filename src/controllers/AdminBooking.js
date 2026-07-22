@@ -17,6 +17,7 @@ const { sendPushNotification } = require("../helpers/notificationHelper");
 const { removeUserFromRoom, addUserToRoom } = require('../utils/aliste/alisteApi');
 const BookingOnboarding = require("../models/bookingOnboarding");
 const DepositDeduction = require('../models/depositDeduction');
+const RoomTransfer = require('../models/roomTransfer');
 
 const releaseInventoryForBooking = async (booking, transaction = null) => {
   if (!booking.assignedItems || booking.assignedItems.length === 0) return;
@@ -1232,10 +1233,8 @@ exports.transferRoom = async (req, res) => {
     }
 
     const transferMoment = transferDate ? moment(transferDate) : moment();
-    const originalOldCheckout = booking.checkOutDate;
-    const oldBookingCheckoutForOld = transferMoment.clone().subtract(1, 'day').format('YYYY-MM-DD');
 
-    // Create deposit deduction records
+    // Create deposit deduction records (if any)
     const createdDeductions = [];
     const createdFineTransactions = [];
     let totalFine = 0;
@@ -1273,43 +1272,15 @@ exports.transferRoom = async (req, res) => {
       }
     }
 
-    // Release old inventory and clear assigned items
+    // Release old inventory and clear assigned items (inventory typically tied to room)
     await releaseInventoryForBooking(booking, t);
 
-    // Update old booking checkout
-    booking.checkOutDate = oldBookingCheckoutForOld;
+    // Update booking in-place: change roomId to new room
+    const previousRoomId = booking.roomId;
+    booking.roomId = newRoom.id;
     booking.assignedItems = [];
+    // Do NOT modify onboarding data here (business rule)
     await booking.save({ transaction: t });
-
-    // Create new booking for remaining period
-    const originalCheckoutMoment = moment(originalOldCheckout);
-    let newDuration = originalCheckoutMoment.diff(transferMoment, 'months');
-    if (newDuration < 1) newDuration = 1;
-
-    const rateCard = await PropertyRateCard.findOne({ where: { propertyId: newRoom.propertyId, roomType: newRoom.roomType }, transaction: t });
-
-    const newMonthlyRent = newRoom.monthlyRent || booking.monthlyRent;
-
-    const newBooking = await Booking.create({
-      propertyId: newRoom.propertyId,
-      userId: booking.userId,
-      rateCardId: rateCard ? rateCard.id : booking.rateCardId,
-      roomType: newRoom.roomType,
-      roomId: newRoom.id,
-      assignedItems: [],
-      checkInDate: transferMoment.format('YYYY-MM-DD'),
-      checkOutDate: originalOldCheckout,
-      duration: newDuration,
-      monthlyRent: newMonthlyRent,
-      totalAmount: null,
-      remainingAmount: null,
-      bookingType: booking.bookingType,
-      paymentStatus: booking.paymentStatus,
-      status: booking.status,
-      onboardingStatus: 'NOT_INITIATED',
-      contractStatus: 'NOT_SIGNED',
-      adminContractStatus: 'NOT_SIGNED'
-    }, { transaction: t });
 
     // Update room statuses (recompute)
     if (oldRoom) {
@@ -1322,22 +1293,21 @@ exports.transferRoom = async (req, res) => {
     newRoom.status = newActive >= newRoom.capacity ? 'booked' : 'available';
     await newRoom.save({ transaction: t });
 
-    // Create onboarding record placeholder for new booking
-    await BookingOnboarding.create({ bookingId: newBooking.id, checklist: [], startedBy: req.user?.id || null }, { transaction: t });
-
     // Handle Aliste: remove from old room and add to new room
     try {
       const bookingUser = await User.findByPk(booking.userId, { transaction: t });
       if (oldRoom?.alisteRoomId && booking.alisteUserId && !booking.removedUserFromAliste) {
         await removeUserFromRoom({ roomId: oldRoom.alisteRoomId, phoneNumber: bookingUser?.phone });
+        // mark removed from old room
         booking.removedUserFromAliste = true;
         await booking.save({ transaction: t });
       }
 
       if (newRoom?.alisteRoomId) {
+        const payloadUserId = booking.alisteUserId || `USER_${booking.id}`;
         const payload = {
           roomId: newRoom.alisteRoomId,
-          userId: `USER_${newBooking.id}`,
+          userId: payloadUserId,
           phoneNumber: bookingUser?.phone,
           firstName: bookingUser?.fullName?.split(' ')[0] || 'User',
           lastName: bookingUser?.fullName?.split(' ').slice(1).join(' ') || '',
@@ -1345,8 +1315,9 @@ exports.transferRoom = async (req, res) => {
         };
         const resp = await addUserToRoom(payload);
         if (resp && resp.success) {
-          newBooking.alisteUserId = `USER_${newBooking.id}`;
-          await newBooking.save({ transaction: t });
+          booking.alisteUserId = payloadUserId;
+          booking.removedUserFromAliste = false;
+          await booking.save({ transaction: t });
         } else {
           console.warn('Aliste add user failed:', resp && resp.raw ? resp.raw : resp);
         }
@@ -1355,9 +1326,20 @@ exports.transferRoom = async (req, res) => {
       console.error('Aliste transfer error:', err.message || err);
     }
 
+    // Record room transfer history
+    const transferRecord = await RoomTransfer.create({
+      bookingId: booking.id,
+      fromRoomId: previousRoomId,
+      toRoomId: newRoom.id,
+      transferDate: transferMoment.format('YYYY-MM-DD'),
+      fines: createdDeductions.map(d => d.id),
+      totalFine,
+      createdBy: req.user?.id || null
+    }, { transaction: t });
+
     await t.commit();
 
-    const result = await Booking.findByPk(newBooking.id, {
+    const result = await Booking.findByPk(booking.id, {
       include: [
         { model: User, as: 'user', attributes: ['id', 'fullName', 'email', 'phone'] },
         { model: Rooms, as: 'room', attributes: ['id', 'roomNumber'], include: [{ model: Property, as: 'property' }] },
@@ -1365,7 +1347,7 @@ exports.transferRoom = async (req, res) => {
       ]
     });
 
-    return res.status(200).json({ message: 'Room transferred', booking: result, deductions: createdDeductions, fineTransactions: createdFineTransactions, totalFine });
+    return res.status(200).json({ message: 'Room transferred', booking: result, deductions: createdDeductions, fineTransactions: createdFineTransactions, totalFine, transferRecord });
   } catch (err) {
     await t.rollback();
     console.error('transferRoom error:', err);
