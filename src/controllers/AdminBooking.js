@@ -1159,7 +1159,7 @@ exports.getRoomTransferDetails = async (req, res) => {
         status: 'available',
         id: { [Op.ne]: booking.roomId }
       },
-      attributes: ['id', 'roomNumber', 'roomType', 'floor'],
+      attributes: ['id', 'roomNumber', 'roomType', 'floorNumber'],
       order: [['roomNumber', 'ASC']]
     });
 
