@@ -1185,6 +1185,29 @@ exports.getRoomTransferDetails = async (req, res) => {
   }
 };
 
+exports.getRoomTransferHistory = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+
+    const transfers = await RoomTransfer.findAll({
+      where: { bookingId },
+      include: [
+        { model: Rooms, as: 'fromRoom', attributes: ['id', 'roomNumber', 'roomType', 'floorNumber'] },
+        { model: Rooms, as: 'toRoom', attributes: ['id', 'roomNumber', 'roomType', 'floorNumber'] }
+      ],
+      order: [['transferDate', 'DESC']]
+    });
+
+    return res.status(200).json({
+      bookingId: Number(bookingId),
+      transfers
+    });
+  } catch (err) {
+    console.error('getRoomTransferHistory error:', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
 exports.transferRoom = async (req, res) => {
   const t = await sequelize.transaction();
   try {
