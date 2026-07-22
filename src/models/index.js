@@ -33,6 +33,7 @@ const PropertyFloorLayout = require("./floorLayout");
 const Coupon = require("./coupon");
 const GuestVisit = require("./guestVisit");
 const Blog = require("./Blog");     // ← ADD THIS LINE
+const DepositDeduction = require("./depositDeduction");
 
 User.hasOne(UserKYC, {
   foreignKey: "userId",
@@ -233,6 +234,10 @@ DailyCleaning.belongsTo(User, { foreignKey: "cleanerId", as: "cleaner" });
 Booking.hasOne(Contract, { foreignKey: "bookingId", as: "contract", onDelete: "CASCADE" });
 Contract.belongsTo(Booking, { foreignKey: "bookingId", as: "booking" });
 
+// Deposit deductions (fines taken from security deposit)
+Booking.hasMany(DepositDeduction, { foreignKey: 'bookingId', as: 'depositDeductions', onDelete: 'CASCADE' });
+DepositDeduction.belongsTo(Booking, { foreignKey: 'bookingId', as: 'booking' });
+
 // Property ↔ Floor Layout
 Property.hasMany(PropertyFloorLayout, { foreignKey: "propertyId", as: "floorLayout", onDelete: "CASCADE", });
 
@@ -288,5 +293,6 @@ module.exports = {
   PropertyFloorLayout,
   Coupon,
   GuestVisit,
-  Blog
+  Blog,
+  DepositDeduction
 }

@@ -15,6 +15,7 @@ const PropertyRateCard = require('../models/propertyRateCard');
 const BookingExtension = require('../models/bookingExtension');
 const UserKYC = require('../models/userKYC');
 const Coupon = require('../models/coupon');
+const DepositDeduction = require('../models/depositDeduction');
 
 const { initiateRecharge } = require('../utils/aliste/alisteApi');
 const { logApiCall } = require("../helpers/auditLog");
@@ -1413,7 +1414,18 @@ exports.initiateRefund = async (req, res) => {
     }
 
     const originalAmountPaise = Number(originalTx.amount || 0);
-    const refundablePaise = Math.max(originalAmountPaise - refundedPaiseSoFar, 0);
+    let refundablePaise = Math.max(originalAmountPaise - refundedPaiseSoFar, 0);
+
+    // If refunding a security deposit, subtract any deposit deductions (fines)
+    try {
+      if (String(originalTx.type || '').toUpperCase() === 'SECURITY_DEPOSIT' && originalTx.bookingId) {
+        const deductions = await DepositDeduction.findAll({ where: { bookingId: originalTx.bookingId } });
+        const deductionsPaise = deductions.reduce((s, d) => s + Math.round(Number(d.amount || 0) * 100), 0);
+        refundablePaise = Math.max(refundablePaise - deductionsPaise, 0);
+      }
+    } catch (dedErr) {
+      console.error('Error while computing deposit deductions for refund:', dedErr && dedErr.message ? dedErr.message : dedErr);
+    }
 
     const reqAmountPaise = Math.round(Number(amountRupees || 0) * 100);
 
@@ -1452,7 +1464,6 @@ exports.initiateRefund = async (req, res) => {
 
     draftRefund.merchantRefundId = finalMerchantRefundId;
     draftRefund.merchantOrderId = finalMerchantRefundId;
-    draftRefund.originalMerchantOrderId = origMerchantOrderId;
     draftRefund.rawResponse = Object.assign({}, draftRefund.rawResponse || {}, { originalMerchantOrderId: origMerchantOrderId, merchantRefundId: finalMerchantRefundId });
     await draftRefund.save();
 
@@ -1569,6 +1580,29 @@ exports.getBookingPaymentSummary = async (req, res) => {
       .filter(t => t.status === 'SUCCESS' && t.type === 'REFUND')
       .reduce((s, t) => s + Number(t.amount || 0), 0);
 
+    // Deposit deductions (fines) for this booking
+    const deductions = await DepositDeduction.findAll({ where: { bookingId: booking.id } });
+    const totalDeductionsPaise = deductions.reduce((s, d) => s + Math.round(Number(d.amount || 0) * 100), 0);
+
+    // Security deposit paid (successful transactions of type SECURITY_DEPOSIT)
+    const securityDepositPaidPaise = transactions
+      .filter(t => t.status === 'SUCCESS' && String(t.type || '').toUpperCase() === 'SECURITY_DEPOSIT')
+      .reduce((s, t) => s + Number(t.amount || 0), 0);
+
+    // Refunds issued against security deposit original merchantOrderIds
+    const securityDepositMerchantIds = transactions
+      .filter(t => t.status === 'SUCCESS' && String(t.type || '').toUpperCase() === 'SECURITY_DEPOSIT')
+      .map(t => t.merchantOrderId)
+      .filter(Boolean);
+    let refundedOnSecurityPaise = 0;
+    if (securityDepositMerchantIds.length > 0) {
+      refundedOnSecurityPaise = transactions
+        .filter(t => t.type === 'REFUND' && securityDepositMerchantIds.includes(t.originalMerchantOrderId))
+        .reduce((s, t) => s + Number(t.amount || 0), 0);
+    }
+
+    const securityRefundablePaise = Math.max(securityDepositPaidPaise - totalDeductionsPaise - refundedOnSecurityPaise, 0);
+
     const totalRefundedRupees = Math.round(totalRefundedPaise / 100);
 
     let totalAmountRupees = Number(booking.totalAmount || 0);
@@ -1605,7 +1639,12 @@ exports.getBookingPaymentSummary = async (req, res) => {
         totalAmountRupees,
         totalPaidRupees: Math.round(totalPaidPaise / 100),
         remainingRupees: Math.round(remainingPaise / 100),
-        totalRefundedRupees
+        totalRefundedRupees,
+        securityDeposit: {
+          paidRupees: Math.round(securityDepositPaidPaise / 100),
+          totalDeductionsRupees: Math.round(totalDeductionsPaise / 100),
+          refundableRupees: Math.round(securityRefundablePaise / 100)
+        }
       },
       transactions: mappedTransactions,
     });

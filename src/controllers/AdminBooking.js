@@ -14,7 +14,9 @@ const Inventory = require("../models/inventory");
 const Contract = require('../models/contract');
 const PaymentTransaction = require('../models/paymentTransaction');
 const { sendPushNotification } = require("../helpers/notificationHelper");
-const { removeUserFromRoom } = require('../utils/aliste/alisteApi');
+const { removeUserFromRoom, addUserToRoom } = require('../utils/aliste/alisteApi');
+const BookingOnboarding = require("../models/bookingOnboarding");
+const DepositDeduction = require('../models/depositDeduction');
 
 const releaseInventoryForBooking = async (booking, transaction = null) => {
   if (!booking.assignedItems || booking.assignedItems.length === 0) return;
@@ -1128,5 +1130,245 @@ exports.updateOfflineBookingDuration = async (req, res) => {
     console.error("Update offline booking duration error:", err);
     await logApiCall(req, res, 500, "Error occurred while updating offline booking duration", "booking", parseInt(req.params.bookingId) || 0);
     return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+exports.getRoomTransferDetails = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+
+    const booking = await Booking.findByPk(bookingId, {
+      include: [
+        { model: BookingOnboarding, as: 'onboarding' },
+        { model: Rooms, as: 'room' }
+      ]
+    });
+
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+    // Only allow transfer when onboarding for current room is completed
+    if (booking.onboardingStatus !== 'COMPLETED') {
+      return res.status(400).json({ message: 'Room transfer allowed only after onboarding is completed for current room' });
+    }
+
+    // Fetch available rooms in same property excluding current room
+    const availableRooms = await Rooms.findAll({
+      where: {
+        propertyId: booking.room?.propertyId || null,
+        status: 'available',
+        id: { [Op.ne]: booking.roomId }
+      },
+      attributes: ['id', 'roomNumber', 'roomType', 'floor'],
+      order: [['roomNumber', 'ASC']]
+    });
+
+    await logApiCall(
+      req,
+      res,
+      200,
+      `Viewed room transfer details for booking ${bookingId}`,
+      'booking',
+      parseInt(bookingId)
+    );
+
+    return res.status(200).json({
+      bookingId: booking.id,
+      room: booking.room || null,
+      onboarding: booking.onboarding || null,
+      assignedItems: booking.assignedItems || [],
+      availableRooms
+    });
+  } catch (err) {
+    console.error('getRoomTransferDetails error:', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+exports.transferRoom = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const { bookingId } = req.params;
+    const { newRoomId, transferDate, fines = [] } = req.body;
+
+    if (!newRoomId) {
+      await t.rollback();
+      return res.status(400).json({ message: 'newRoomId is required' });
+    }
+
+    const booking = await Booking.findByPk(bookingId, { transaction: t, lock: t.LOCK.UPDATE });
+    if (!booking) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    // Prevent transfer unless onboarding for current room is completed
+    if (booking.onboardingStatus !== 'COMPLETED') {
+      await t.rollback();
+      return res.status(400).json({ message: 'Room transfer allowed only after onboarding is completed for current room' });
+    }
+
+    if (!booking.roomId) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Booking has no assigned room' });
+    }
+
+    const oldRoom = await Rooms.findByPk(booking.roomId, { transaction: t, lock: t.LOCK.UPDATE });
+    const newRoom = await Rooms.findByPk(newRoomId, { transaction: t, lock: t.LOCK.UPDATE });
+
+    if (!newRoom) {
+      await t.rollback();
+      return res.status(404).json({ message: 'New room not found' });
+    }
+
+    // Check capacity
+    const activeCount = await Booking.count({
+      where: { roomId: newRoom.id, status: { [Op.in]: ['pending', 'approved', 'active'] } },
+      transaction: t
+    });
+
+    if (activeCount >= newRoom.capacity) {
+      await t.rollback();
+      return res.status(400).json({ message: 'New room is full' });
+    }
+
+    const transferMoment = transferDate ? moment(transferDate) : moment();
+    const originalOldCheckout = booking.checkOutDate;
+    const oldBookingCheckoutForOld = transferMoment.clone().subtract(1, 'day').format('YYYY-MM-DD');
+
+    // Create deposit deduction records
+    const createdDeductions = [];
+    const createdFineTransactions = [];
+    let totalFine = 0;
+    for (const f of fines) {
+      const amount = Number(f.amount) || 0;
+      if (amount <= 0) continue;
+      const dd = await DepositDeduction.create({
+        bookingId: booking.id,
+        amount,
+        itemKey: f.itemKey || null,
+        reason: f.reason || null,
+        createdBy: req.user?.id || null
+      }, { transaction: t });
+      createdDeductions.push(dd);
+      totalFine += amount;
+      // Also record the fine as a payment transaction (offline fine)
+      try {
+        const merchantOrderId = `FINE-${booking.id}-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+        const pt = await PaymentTransaction.create({
+          bookingId: booking.id,
+          userId: booking.userId,
+          merchantOrderId,
+          amount: Math.round(amount * 100), // store in paise
+          type: 'OFFLINE',
+          status: 'SUCCESS',
+          paymentMode: 'OFFLINE',
+          paymentDate: moment().format('YYYY-MM-DD'),
+          adminNote: f.reason || 'Fine for damages',
+          createdByAdminId: req.user?.id || null,
+          meta: { itemKey: f.itemKey || null }
+        }, { transaction: t });
+        createdFineTransactions.push(pt);
+      } catch (ptErr) {
+        console.error('Failed to create fine payment transaction:', ptErr && ptErr.message ? ptErr.message : ptErr);
+      }
+    }
+
+    // Release old inventory and clear assigned items
+    await releaseInventoryForBooking(booking, t);
+
+    // Update old booking checkout
+    booking.checkOutDate = oldBookingCheckoutForOld;
+    booking.assignedItems = [];
+    await booking.save({ transaction: t });
+
+    // Create new booking for remaining period
+    const originalCheckoutMoment = moment(originalOldCheckout);
+    let newDuration = originalCheckoutMoment.diff(transferMoment, 'months');
+    if (newDuration < 1) newDuration = 1;
+
+    const rateCard = await PropertyRateCard.findOne({ where: { propertyId: newRoom.propertyId, roomType: newRoom.roomType }, transaction: t });
+
+    const newMonthlyRent = newRoom.monthlyRent || booking.monthlyRent;
+
+    const newBooking = await Booking.create({
+      propertyId: newRoom.propertyId,
+      userId: booking.userId,
+      rateCardId: rateCard ? rateCard.id : booking.rateCardId,
+      roomType: newRoom.roomType,
+      roomId: newRoom.id,
+      assignedItems: [],
+      checkInDate: transferMoment.format('YYYY-MM-DD'),
+      checkOutDate: originalOldCheckout,
+      duration: newDuration,
+      monthlyRent: newMonthlyRent,
+      totalAmount: null,
+      remainingAmount: null,
+      bookingType: booking.bookingType,
+      paymentStatus: booking.paymentStatus,
+      status: booking.status,
+      onboardingStatus: 'NOT_INITIATED',
+      contractStatus: 'NOT_SIGNED',
+      adminContractStatus: 'NOT_SIGNED'
+    }, { transaction: t });
+
+    // Update room statuses (recompute)
+    if (oldRoom) {
+      const oldActive = await Booking.count({ where: { roomId: oldRoom.id, status: { [Op.in]: ['approved', 'active'] } }, transaction: t });
+      oldRoom.status = oldActive >= oldRoom.capacity ? 'booked' : 'available';
+      await oldRoom.save({ transaction: t });
+    }
+
+    const newActive = await Booking.count({ where: { roomId: newRoom.id, status: { [Op.in]: ['approved', 'active'] } }, transaction: t });
+    newRoom.status = newActive >= newRoom.capacity ? 'booked' : 'available';
+    await newRoom.save({ transaction: t });
+
+    // Create onboarding record placeholder for new booking
+    await BookingOnboarding.create({ bookingId: newBooking.id, checklist: [], startedBy: req.user?.id || null }, { transaction: t });
+
+    // Handle Aliste: remove from old room and add to new room
+    try {
+      const bookingUser = await User.findByPk(booking.userId, { transaction: t });
+      if (oldRoom?.alisteRoomId && booking.alisteUserId && !booking.removedUserFromAliste) {
+        await removeUserFromRoom({ roomId: oldRoom.alisteRoomId, phoneNumber: bookingUser?.phone });
+        booking.removedUserFromAliste = true;
+        await booking.save({ transaction: t });
+      }
+
+      if (newRoom?.alisteRoomId) {
+        const payload = {
+          roomId: newRoom.alisteRoomId,
+          userId: `USER_${newBooking.id}`,
+          phoneNumber: bookingUser?.phone,
+          firstName: bookingUser?.fullName?.split(' ')[0] || 'User',
+          lastName: bookingUser?.fullName?.split(' ').slice(1).join(' ') || '',
+          email: bookingUser?.email
+        };
+        const resp = await addUserToRoom(payload);
+        if (resp && resp.success) {
+          newBooking.alisteUserId = `USER_${newBooking.id}`;
+          await newBooking.save({ transaction: t });
+        } else {
+          console.warn('Aliste add user failed:', resp && resp.raw ? resp.raw : resp);
+        }
+      }
+    } catch (err) {
+      console.error('Aliste transfer error:', err.message || err);
+    }
+
+    await t.commit();
+
+    const result = await Booking.findByPk(newBooking.id, {
+      include: [
+        { model: User, as: 'user', attributes: ['id', 'fullName', 'email', 'phone'] },
+        { model: Rooms, as: 'room', attributes: ['id', 'roomNumber'], include: [{ model: Property, as: 'property' }] },
+        { model: PropertyRateCard, as: 'rateCard', include: [{ model: Property, as: 'property' }] }
+      ]
+    });
+
+    return res.status(200).json({ message: 'Room transferred', booking: result, deductions: createdDeductions, fineTransactions: createdFineTransactions, totalFine });
+  } catch (err) {
+    await t.rollback();
+    console.error('transferRoom error:', err);
+    return res.status(500).json({ message: 'Internal server error', error: err.message });
   }
 };
