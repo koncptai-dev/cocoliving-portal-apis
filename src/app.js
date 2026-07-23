@@ -92,17 +92,17 @@ app.use("/api/contracts/esign", (req, res, next) => {
   });
   next();
 });
-app.use("/api/contracts/esign", bodyParser.json({ limit: "15mb" }));
+app.use("/api/contracts/esign", bodyParser.json({ limit: "50mb" }));
 // IDTO sends callback fields as application/x-www-form-urlencoded.
 app.use(
   "/api/contracts/esign",
-  bodyParser.urlencoded({ extended: false, limit: "15mb" })
+  bodyParser.urlencoded({ extended: true, limit: "50mb" })
 );
 app.use("/api/contracts/esign", (err, req, res, next) => {
   if (!err) return next();
 
   // Do not log req.body: it can contain the complete, signed PDF.
-  console.error("eSign callback JSON parsing failed", {
+  console.error("eSign callback body parsing failed", {
     method: req.method,
     path: req.originalUrl?.split("?")[0],
     contentType: req.get("content-type"),
@@ -115,8 +115,8 @@ app.use("/api/contracts/esign", (err, req, res, next) => {
   return res.status(err.status === 413 ? 413 : 400).json({
     message:
       err.status === 413
-        ? "eSign callback body exceeds the 15MB limit"
-        : "Invalid JSON in eSign callback body"
+        ? "eSign callback body exceeds the 50MB limit"
+        : "Invalid eSign callback body"
   });
 });
 
