@@ -616,12 +616,12 @@ exports.esignCallback = async (req, res) => {
     }
 
     if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
-      console.warn("esignCallback: rejected callback without a JSON object body", {
+      console.warn("esignCallback: rejected callback without a parsed object body", {
         contentType: req.get("content-type"),
         contentLength: req.get("content-length")
       });
       return res.status(400).json({
-        message: "A JSON callback body is required"
+        message: "A JSON or form-encoded callback body is required"
       });
     }
 

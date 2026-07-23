@@ -93,6 +93,11 @@ app.use("/api/contracts/esign", (req, res, next) => {
   next();
 });
 app.use("/api/contracts/esign", bodyParser.json({ limit: "15mb" }));
+// IDTO sends callback fields as application/x-www-form-urlencoded.
+app.use(
+  "/api/contracts/esign",
+  bodyParser.urlencoded({ extended: false, limit: "15mb" })
+);
 app.use("/api/contracts/esign", (err, req, res, next) => {
   if (!err) return next();
 
