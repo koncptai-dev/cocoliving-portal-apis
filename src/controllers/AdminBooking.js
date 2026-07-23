@@ -1295,13 +1295,63 @@ exports.transferRoom = async (req, res) => {
       }
     }
 
+    const previousAssignedItems = Array.isArray(booking.assignedItems) ? booking.assignedItems : [];
+    let newAssignedItems = [];
+
+    if (previousAssignedItems.length > 0) {
+      const oldAssignedInventory = await Inventory.findAll({
+        where: { id: previousAssignedItems },
+        transaction: t,
+        lock: t.LOCK.UPDATE
+      });
+
+      const sourceSetNumber = oldAssignedInventory.find(item => item.setNumber != null)?.setNumber;
+
+      if (!sourceSetNumber) {
+        await t.rollback();
+        return res.status(400).json({ message: 'Unable to determine inventory set for transfer' });
+      }
+
+      const targetItems = await Inventory.findAll({
+        where: {
+          propertyId: newRoom.propertyId,
+          roomId: newRoom.id,
+          setNumber: sourceSetNumber,
+          isCommonAsset: false
+        },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+        order: [['id', 'ASC']]
+      });
+
+      if (targetItems.length === 0) {
+        await t.rollback();
+        return res.status(400).json({ message: 'No matching inventory available in the new room for transfer' });
+      }
+
+      const unavailableTargetItems = targetItems.filter(item => item.status !== 'Available');
+      if (unavailableTargetItems.length > 0) {
+        await t.rollback();
+        return res.status(400).json({ message: 'Matching inventory in the new room is not fully available' });
+      }
+
+      newAssignedItems = targetItems.map(item => item.id);
+    }
+
     // Release old inventory and clear assigned items (inventory typically tied to room)
     await releaseInventoryForBooking(booking, t);
+
+    if (newAssignedItems.length > 0) {
+      await Inventory.update(
+        { status: 'Allocated' },
+        { where: { id: newAssignedItems }, transaction: t }
+      );
+    }
 
     // Update booking in-place: change roomId to new room
     const previousRoomId = booking.roomId;
     booking.roomId = newRoom.id;
-    booking.assignedItems = [];
+    booking.assignedItems = newAssignedItems;
     // Do NOT modify onboarding data here (business rule)
     await booking.save({ transaction: t });
 
