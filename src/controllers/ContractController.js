@@ -615,8 +615,22 @@ exports.esignCallback = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized callback" });
     }
 
+    if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+      console.warn("esignCallback: rejected callback without a JSON object body", {
+        contentType: req.get("content-type"),
+        contentLength: req.get("content-length")
+      });
+      return res.status(400).json({
+        message: "A JSON callback body is required"
+      });
+    }
+
     const { status, document_id, file_content } = req.body;
     if (!document_id || typeof document_id !== "string") {
+      console.warn("esignCallback: rejected callback without document_id", {
+        status,
+        bodyKeys: Object.keys(req.body)
+      });
       return res.status(400).json({ message: "document_id is required" });
     }
     const contract =
