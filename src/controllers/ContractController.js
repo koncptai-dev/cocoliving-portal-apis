@@ -20,6 +20,7 @@ const normalize = str =>
 
 const ESIGN_CALLBACK_TOKEN_MIN_LENGTH = 64;
 const MAX_ESIGN_PDF_BYTES = 10 * 1024 * 1024;
+const ESIGN_CALLBACK_FULL_LOG_MAX_BYTES = 10 * 1024;
 
 const loadBookingForContract = bookingId =>
   Booking.findByPk(bookingId, {
@@ -70,6 +71,28 @@ function hasValidEsignCallbackToken(receivedToken) {
     expected.length === received.length &&
     crypto.timingSafeEqual(expected, received)
   );
+}
+
+function logEsignCallbackBody(req) {
+  const contentLength = Number(req.get("content-length"));
+  const bodySize = Number.isFinite(contentLength)
+    ? contentLength
+    : Buffer.byteLength(JSON.stringify(req.body));
+
+  if (bodySize <= ESIGN_CALLBACK_FULL_LOG_MAX_BYTES) {
+    console.info("esignCallback: received callback body", {
+      contentType: req.get("content-type"),
+      contentLength: bodySize,
+      body: req.body
+    });
+    return;
+  }
+
+  console.info("esignCallback: received large callback body", {
+    contentType: req.get("content-type"),
+    contentLength: bodySize,
+    bodyKeys: Object.keys(req.body)
+  });
 }
 
 async function addAdminSignatureToPdf(pdfPath, signaturePath, layout) {
@@ -580,6 +603,21 @@ exports.initiateEsign = async (req, res) => {
       signers_info: signers,
       user_id: String(booking.user.id)
     };
+
+    const safeCallbackUrl = new URL(callbackUrl);
+    safeCallbackUrl.searchParams.delete("token");
+    console.info("initiateEsign: sending IDTO request", {
+      bookingId,
+      callback_file_content: payload.callback_file_content,
+      documents: payload.documents.map(document => ({
+        reference_doc_id: document.reference_doc_id,
+        content_type: document.content_type,
+        signature_sequence: document.signature_sequence,
+        return_url: safeCallbackUrl.toString()
+      })),
+      signer_count: payload.signers_info.length
+    });
+
     const idtoResponse = await initiateEsign(payload);
     if (!contract) {
       contract = await Contract.create({ bookingId, signedPdfPath: "" });
@@ -625,6 +663,8 @@ exports.esignCallback = async (req, res) => {
       });
     }
 
+    logEsignCallbackBody(req);
+
     const { status, document_id, file_content } = req.body;
     if (!document_id || typeof document_id !== "string") {
       console.warn("esignCallback: rejected callback without document_id", {
@@ -652,10 +692,18 @@ exports.esignCallback = async (req, res) => {
     if (status === "success") {
       contract.esignStatus = "COMPLETED";
       contract.signedAt = new Date();
- 
+
       if (!file_content || typeof file_content !== "string") {
-        return res.status(422).json({
-          message: "eSign completion callback did not include the signed document"
+        console.warn("esignCallback: success callback is missing the signed document", {
+          documentId: document_id,
+          bodyKeys: Object.keys(req.body),
+          fileContentType: typeof file_content,
+          fileContentLength:
+            typeof file_content === "string" ? file_content.length : 0
+        });
+        return res.json({
+          received: true,
+          documentReceived: false
         });
       }
 
