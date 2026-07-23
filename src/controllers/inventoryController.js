@@ -127,10 +127,15 @@ exports.updateInventory = async (req, res) => {
       return res.status(404).json({ message: "Item not found" });
     }
 
+    // Never accept inventoryCode from the client directly
+    if (updates.inventoryCode) {
+      delete updates.inventoryCode;
+    }
 
-    if (updates.propertyId && updates.propertyId !== inventoryItem.propertyId) {
-
-      const newCode = await generateInventoryCode(updates.propertyId);
+    const parsedPropertyId = updates.propertyId !== undefined && updates.propertyId !== null ? Number(updates.propertyId) : null;
+    if (parsedPropertyId && parsedPropertyId !== inventoryItem.propertyId) {
+      updates.propertyId = parsedPropertyId;
+      const newCode = await generateInventoryCode(parsedPropertyId);
       updates.inventoryCode = newCode;
     }
 
