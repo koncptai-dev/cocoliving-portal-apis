@@ -5,11 +5,11 @@ const ANCHOR_POINTS = {
   professional: {
     page_number: "14",
     resident: { top: 630, left: 400 },
-    operator: { top: 630, left: 150 }
+    operator: { top: 590, left: 150 }
   },
   student: {
     page_number: "16",
-    operator: { top: 410, left: 150 },
+    operator: { top: 370, left: 150 },
     guardian: { top: 350, left: 390 },
     resident: { top: 175, left: 320 }
   }

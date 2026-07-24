@@ -111,16 +111,22 @@ async function addAdminSignatureToPdf(pdfPath, signaturePath, layout) {
   const { height } = page.getSize();
   page.drawImage(signature, {
     x: box.x1,
-    y: height - box.y2,
+    y: box.y2,
     width: box.x2 - box.x1,
     height: box.y2 - box.y1
   });
+  const today = new Date().toLocaleDateString("en-IN");
 
+  page.drawText(`${today}`, {
+    x: box.x1,
+    y: box.y1 + 25 ,
+    size: 12
+  });
   fs.writeFileSync(pdfPath, await pdf.save());
 }
 
 async function sendFinalContractEmails(booking, contract) {
-  const recipients = [booking.user.email];
+  const recipients = ["admin@cocoliving.in", booking.user.email];
   if (booking.user.userType === "student" && booking.user.parentEmail) {
     recipients.push(booking.user.parentEmail);
   }
@@ -822,12 +828,19 @@ exports.adminSignContract = async (req, res) => {
     const { bookingId } = req.params;
     const booking = await loadBookingForContract(bookingId);
     if (!booking) return res.status(404).json({ message: "Booking not found" });
-    if (booking.contractStatus !== "SIGNED") {
-      return res.status(400).json({ message: "Resident signing has not completed yet" });
+
+    // In test mode we deliberately skip the resident-signed / already-signed
+    // gates below, since we're stamping a fixed sample PDF instead of this
+    // booking's real contract and want to be able to re-run the test freely.
+    if (!ADMIN_SIGN_TEST_MODE) {
+      if (booking.contractStatus !== "SIGNED") {
+        return res.status(400).json({ message: "Resident signing has not completed yet" });
+      }
+      if (booking.adminContractStatus === "SIGNED") {
+        return res.status(400).json({ message: "Admin has already signed this contract" });
+      }
     }
-    if (booking.adminContractStatus === "SIGNED") {
-      return res.status(400).json({ message: "Admin has already signed this contract" });
-    }
+
     if (!req.files?.adminSignature?.[0]) {
       return res.status(400).json({ message: "Admin signature is required" });
     }
@@ -836,43 +849,77 @@ exports.adminSignContract = async (req, res) => {
       return res.status(400).json({ message: "Admin signature must be a PNG or JPEG image" });
     }
 
-    const contract = await Contract.findOne({ where: { bookingId } });
-    if (!contract?.signedPdfPath || !fs.existsSync(contract.signedPdfPath)) {
-      return res.status(400).json({ message: "The resident-signed document is not available yet" });
+    let contract = null;
+    let sourcePdfPath;
+    let outputPdfPath;
+
+    if (ADMIN_SIGN_TEST_MODE) {
+      if (!fs.existsSync(ADMIN_SIGN_TEST_SOURCE_PDF)) {
+        return res.status(500).json({
+          message: `Test contract file not found at ${ADMIN_SIGN_TEST_SOURCE_PDF}. Place a sample PDF there before testing.`
+        });
+      }
+      sourcePdfPath = ADMIN_SIGN_TEST_SOURCE_PDF;
+      // Never stamp the fixture itself - copy it fresh every time so the
+      // original stays clean and each test run starts from the same base.
+      fs.copyFileSync(sourcePdfPath, ADMIN_SIGN_TEST_OUTPUT_PDF);
+      outputPdfPath = ADMIN_SIGN_TEST_OUTPUT_PDF;
+    } else {
+      contract = await Contract.findOne({ where: { bookingId } });
+      if (!contract?.signedPdfPath || !fs.existsSync(contract.signedPdfPath)) {
+        return res.status(400).json({ message: "The resident-signed document is not available yet" });
+      }
+      sourcePdfPath = contract.signedPdfPath;
+      outputPdfPath = contract.signedPdfPath;
     }
 
-    contract.adminSignature = fs.readFileSync(adminSigPath).toString("base64");
-    contract.adminSignedAt = new Date();
-
     await addAdminSignatureToPdf(
-      contract.signedPdfPath,
+      outputPdfPath,
       adminSigPath,
       booking.user.userType === "student" ? "student" : "professional"
     );
 
-    booking.adminContractStatus = "SIGNED";
-    await Promise.all([contract.save(), booking.save()]);
-
-    await sendFinalContractEmails(booking, contract);
-
-    if (!booking.securityDepositPaid) {
-      await notifySecurityDeposit(booking);
-      const email = securityDepositPaymentEmail({
-        userName: booking.user.fullName,
-        propertyName: booking.room.property.name,
-        bookingId: booking.id
+    if (ADMIN_SIGN_TEST_MODE) {
+      console.info("adminSignContract: TEST MODE - stamped signature onto a copy of contract-179.pdf; no database changes, no emails", {
+        bookingId,
+        sourcePdfPath,
+        outputPdfPath
       });
-      await mailsender(
-        booking.user.email,
-        "Security Deposit Payment Required - CoCo Living",
-        email.html,
-        email.attachments
-      );
+    } else {
+      contract.adminSignature = fs.readFileSync(adminSigPath).toString("base64");
+      contract.adminSignedAt = new Date();
+      booking.adminContractStatus = "SIGNED";
+      await Promise.all([contract.save(), booking.save()]);
+
+      if (SEND_ADMIN_SIGN_EMAILS) {
+        await sendFinalContractEmails(booking, contract);
+
+        if (!booking.securityDepositPaid) {
+          await notifySecurityDeposit(booking);
+          const email = securityDepositPaymentEmail({
+            userName: booking.user.fullName,
+            propertyName: booking.room.property.name,
+            bookingId: booking.id
+          });
+          await mailsender(
+            booking.user.email,
+            "Security Deposit Payment Required - CoCo Living",
+            email.html,
+            email.attachments
+          );
+        }
+      } else {
+        console.info("adminSignContract: SEND_ADMIN_SIGN_EMAILS is off, skipping final-contract/security-deposit emails", { bookingId });
+      }
     }
 
     return res.json({
-      message: "Admin signature added and final contract sent successfully",
-      fileUrl: `/uploads/contracts/${path.basename(contract.signedPdfPath)}`
+      message: ADMIN_SIGN_TEST_MODE
+        ? "Test mode: admin signature stamped onto a fresh copy of contract-179.pdf. No records were updated and no emails were sent."
+        : SEND_ADMIN_SIGN_EMAILS
+          ? "Admin signature added and final contract sent successfully"
+          : "Admin signature added. Emails are currently disabled pending signature-position verification.",
+      fileUrl: `/uploads/contracts/${path.basename(outputPdfPath)}`
     });
   } catch (err) {
     console.error("Error in adminSignContract:", err);
