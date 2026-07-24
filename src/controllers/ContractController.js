@@ -741,6 +741,15 @@ exports.esignCallback = async (req, res) => {
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(finalPath, Buffer.from(signedPdfContent, "base64"));
       contract.signedPdfPath = finalPath;
+
+      console.info("esignCallback: signed PDF saved", {
+        contractId: contract.id,
+        bookingId: contract.bookingId,
+        docketId,
+        documentId: documentResponse?.document_id || document_id,
+        filePath: finalPath,
+        fileSizeBytes: fs.statSync(finalPath).size
+      });
  
       await contract.save();
  
