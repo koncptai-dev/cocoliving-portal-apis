@@ -108,14 +108,19 @@ async function addAdminSignatureToPdf(pdfPath, signaturePath, layout) {
     throw new Error(`The returned eSign document does not contain page ${page_number}`);
   }
 
-  const { height } = page.getSize();
   page.drawImage(signature, {
     x: box.x1,
-    y: height - box.y2,
+    y: box.y2,
     width: box.x2 - box.x1,
     height: box.y2 - box.y1
   });
+  const today = new Date().toLocaleDateString("en-IN");
 
+  page.drawText(`${today}`, {
+    x: box.x1,
+    y: box.y1 + 25 ,
+    size: 12
+  });
   fs.writeFileSync(pdfPath, await pdf.save());
 }
 
@@ -741,6 +746,15 @@ exports.esignCallback = async (req, res) => {
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(finalPath, Buffer.from(signedPdfContent, "base64"));
       contract.signedPdfPath = finalPath;
+
+      console.info("esignCallback: signed PDF saved", {
+        contractId: contract.id,
+        bookingId: contract.bookingId,
+        docketId,
+        documentId: documentResponse?.document_id || document_id,
+        filePath: finalPath,
+        fileSizeBytes: fs.statSync(finalPath).size
+      });
  
       await contract.save();
  
@@ -813,12 +827,19 @@ exports.adminSignContract = async (req, res) => {
     const { bookingId } = req.params;
     const booking = await loadBookingForContract(bookingId);
     if (!booking) return res.status(404).json({ message: "Booking not found" });
+
     if (booking.contractStatus !== "SIGNED") {
-      return res.status(400).json({ message: "Resident signing has not completed yet" });
+      return res.status(400).json({
+        message: "Resident signing has not completed yet"
+      });
     }
+
     if (booking.adminContractStatus === "SIGNED") {
-      return res.status(400).json({ message: "Admin has already signed this contract" });
+      return res.status(400).json({
+        message: "Admin has already signed this contract"
+      });
     }
+
     if (!req.files?.adminSignature?.[0]) {
       return res.status(400).json({ message: "Admin signature is required" });
     }
@@ -827,13 +848,15 @@ exports.adminSignContract = async (req, res) => {
       return res.status(400).json({ message: "Admin signature must be a PNG or JPEG image" });
     }
 
-    const contract = await Contract.findOne({ where: { bookingId } });
-    if (!contract?.signedPdfPath || !fs.existsSync(contract.signedPdfPath)) {
-      return res.status(400).json({ message: "The resident-signed document is not available yet" });
-    }
+    const contract = await Contract.findOne({
+      where: { bookingId }
+    });
 
-    contract.adminSignature = fs.readFileSync(adminSigPath).toString("base64");
-    contract.adminSignedAt = new Date();
+    if (!contract?.signedPdfPath || !fs.existsSync(contract.signedPdfPath)) {
+      return res.status(400).json({
+        message: "The resident-signed document is not available yet"
+      });
+    }
 
     await addAdminSignatureToPdf(
       contract.signedPdfPath,
@@ -841,18 +864,26 @@ exports.adminSignContract = async (req, res) => {
       booking.user.userType === "student" ? "student" : "professional"
     );
 
-    booking.adminContractStatus = "SIGNED";
-    await Promise.all([contract.save(), booking.save()]);
+    contract.adminSignature = fs.readFileSync(adminSigPath).toString("base64");
+    contract.adminSignedAt = new Date();
 
+    booking.adminContractStatus = "SIGNED";
+
+    await Promise.all([
+      contract.save(),
+      booking.save()
+    ]);
     await sendFinalContractEmails(booking, contract);
 
     if (!booking.securityDepositPaid) {
       await notifySecurityDeposit(booking);
+
       const email = securityDepositPaymentEmail({
         userName: booking.user.fullName,
         propertyName: booking.room.property.name,
         bookingId: booking.id
       });
+
       await mailsender(
         booking.user.email,
         "Security Deposit Payment Required - CoCo Living",
