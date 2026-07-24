@@ -7,7 +7,7 @@ const { Booking, User, Rooms, Property, Contract, Inventory } = require("../mode
 const { mailsender } = require("../utils/emailService");
 const { contractSignedEmail, securityDepositPaymentEmail } = require("../utils/emailTemplates/emailTemplates");
 const { notifySecurityDeposit } = require('../utils/notificationService');
-const { initiateEsign } = require("../utils/idtoEsignService");
+const { initiateEsign, fetchEsignDocument } = require("../utils/idtoEsignService");
 const { getSignatureBox } = require("../utils/esignSignatureCoordinates");
 const { overlayCalibrationGrid } = require("../utils/pdfCalibrationOverlay");
 const { numberToRupeesWords } = require("../utils/numberToWords");
@@ -20,6 +20,7 @@ const normalize = str =>
 
 const ESIGN_CALLBACK_TOKEN_MIN_LENGTH = 64;
 const MAX_ESIGN_PDF_BYTES = 10 * 1024 * 1024;
+const ESIGN_CALLBACK_FULL_LOG_MAX_BYTES = 10 * 1024;
 
 const loadBookingForContract = bookingId =>
   Booking.findByPk(bookingId, {
@@ -72,6 +73,28 @@ function hasValidEsignCallbackToken(receivedToken) {
   );
 }
 
+function logEsignCallbackBody(req) {
+  const contentLength = Number(req.get("content-length"));
+  const bodySize = Number.isFinite(contentLength)
+    ? contentLength
+    : Buffer.byteLength(JSON.stringify(req.body));
+
+  if (bodySize <= ESIGN_CALLBACK_FULL_LOG_MAX_BYTES) {
+    console.info("esignCallback: received callback body", {
+      contentType: req.get("content-type"),
+      contentLength: bodySize,
+      body: req.body
+    });
+    return;
+  }
+
+  console.info("esignCallback: received large callback body", {
+    contentType: req.get("content-type"),
+    contentLength: bodySize,
+    bodyKeys: Object.keys(req.body)
+  });
+}
+
 async function addAdminSignatureToPdf(pdfPath, signaturePath, layout) {
   const pdf = await PDFDocument.load(fs.readFileSync(pdfPath));
   const signatureBytes = fs.readFileSync(signaturePath);
@@ -85,14 +108,19 @@ async function addAdminSignatureToPdf(pdfPath, signaturePath, layout) {
     throw new Error(`The returned eSign document does not contain page ${page_number}`);
   }
 
-  const { height } = page.getSize();
   page.drawImage(signature, {
     x: box.x1,
-    y: height - box.y2,
+    y: box.y2,
     width: box.x2 - box.x1,
     height: box.y2 - box.y1
   });
+  const today = new Date().toLocaleDateString("en-IN");
 
+  page.drawText(`${today}`, {
+    x: box.x1,
+    y: box.y1 + 25 ,
+    size: 12
+  });
   fs.writeFileSync(pdfPath, await pdf.save());
 }
 
@@ -567,7 +595,7 @@ exports.initiateEsign = async (req, res) => {
       docket_title: `Rental Agreement - Booking #${bookingId}`,
       docket_description: `CoCo Living rental agreement for ${booking.user.fullName}`,
       final_copy_recipients: "deepanshu.choudhary@koncpt.ai",
-      callback_file_content: true,
+      callback_file_content: false,
       documents: [
         {
           reference_doc_id: referenceDocId,
@@ -580,12 +608,28 @@ exports.initiateEsign = async (req, res) => {
       signers_info: signers,
       user_id: String(booking.user.id)
     };
+
+    const safeCallbackUrl = new URL(callbackUrl);
+    safeCallbackUrl.searchParams.delete("token");
+    console.info("initiateEsign: sending IDTO request", {
+      bookingId,
+      callback_file_content: payload.callback_file_content,
+      documents: payload.documents.map(document => ({
+        reference_doc_id: document.reference_doc_id,
+        content_type: document.content_type,
+        signature_sequence: document.signature_sequence,
+        return_url: safeCallbackUrl.toString()
+      })),
+      signer_count: payload.signers_info.length
+    });
+
     const idtoResponse = await initiateEsign(payload);
     if (!contract) {
       contract = await Contract.create({ bookingId, signedPdfPath: "" });
     }
     contract.esignReferenceDocId = referenceDocId;
-    contract.esignDocketId = idtoResponse?.document_id || idtoResponse?.docket_id || null;
+    contract.esignDocketId = idtoResponse?.docket_id || null;
+    contract.esignDocumentId = idtoResponse?.document_id || null;
     contract.esignStatus = "IN_PROGRESS";
     contract.esignRawResponse = idtoResponse;
     await contract.save();
@@ -615,12 +659,29 @@ exports.esignCallback = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized callback" });
     }
 
-    const { status, document_id, file_content } = req.body;
+    if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+      console.warn("esignCallback: rejected callback without a parsed object body", {
+        contentType: req.get("content-type"),
+        contentLength: req.get("content-length")
+      });
+      return res.status(400).json({
+        message: "A JSON or form-encoded callback body is required"
+      });
+    }
+
+    logEsignCallbackBody(req);
+
+    const { status, document_id } = req.body;
     if (!document_id || typeof document_id !== "string") {
+      console.warn("esignCallback: rejected callback without document_id", {
+        status,
+        bodyKeys: Object.keys(req.body)
+      });
       return res.status(400).json({ message: "document_id is required" });
     }
     const contract =
       (await Contract.findOne({ where: { esignReferenceDocId: document_id } })) ||
+      (await Contract.findOne({ where: { esignDocumentId: document_id } })) ||
       (await Contract.findOne({ where: { esignDocketId: document_id } }));
  
     if (!contract) {
@@ -636,14 +697,46 @@ exports.esignCallback = async (req, res) => {
     contract.esignRawResponse = { ...(contract.esignRawResponse || {}), lastCallback: req.body };
  
     if (status === "success") {
+      const docketId = contract.esignRawResponse?.docket_id || contract.esignDocketId;
+      if (!docketId) {
+        console.error("esignCallback: cannot fetch signed document without a docket_id", {
+          contractId: contract.id,
+          documentId: document_id
+        });
+        return res.status(500).json({ message: "Missing eSign docket ID" });
+      }
+
+      const documentResponse = await fetchEsignDocument({
+        docket_id: docketId,
+        document_id
+      });
+      const signedPdfContent = documentResponse?.content;
+      contract.esignRawResponse = {
+        ...(contract.esignRawResponse || {}),
+        lastCallback: req.body,
+        lastDocumentFetch: {
+          status: documentResponse?.status,
+          signing_status: documentResponse?.signing_status,
+          document_id: documentResponse?.document_id,
+          content_type: documentResponse?.content_type,
+          content_length:
+            typeof signedPdfContent === "string" ? signedPdfContent.length : 0
+        }
+      };
+
+      if (documentResponse?.signing_status !== "signed" || typeof signedPdfContent !== "string") {
+        console.info("esignCallback: signed PDF is not ready yet", {
+          contractId: contract.id,
+          docketId,
+          signingStatus: documentResponse?.signing_status,
+          contentLength: typeof signedPdfContent === "string" ? signedPdfContent.length : 0
+        });
+        await contract.save();
+        return res.json({ received: true, signingStatus: documentResponse?.signing_status || "pending" });
+      }
+
       contract.esignStatus = "COMPLETED";
       contract.signedAt = new Date();
- 
-      if (!file_content || typeof file_content !== "string") {
-        return res.status(422).json({
-          message: "eSign completion callback did not include the signed document"
-        });
-      }
 
       const finalPath = path.join(
         __dirname,
@@ -651,8 +744,17 @@ exports.esignCallback = async (req, res) => {
       );
       const dir = path.dirname(finalPath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(finalPath, Buffer.from(file_content, "base64"));
+      fs.writeFileSync(finalPath, Buffer.from(signedPdfContent, "base64"));
       contract.signedPdfPath = finalPath;
+
+      console.info("esignCallback: signed PDF saved", {
+        contractId: contract.id,
+        bookingId: contract.bookingId,
+        docketId,
+        documentId: documentResponse?.document_id || document_id,
+        filePath: finalPath,
+        fileSizeBytes: fs.statSync(finalPath).size
+      });
  
       await contract.save();
  
@@ -725,12 +827,19 @@ exports.adminSignContract = async (req, res) => {
     const { bookingId } = req.params;
     const booking = await loadBookingForContract(bookingId);
     if (!booking) return res.status(404).json({ message: "Booking not found" });
+
     if (booking.contractStatus !== "SIGNED") {
-      return res.status(400).json({ message: "Resident signing has not completed yet" });
+      return res.status(400).json({
+        message: "Resident signing has not completed yet"
+      });
     }
+
     if (booking.adminContractStatus === "SIGNED") {
-      return res.status(400).json({ message: "Admin has already signed this contract" });
+      return res.status(400).json({
+        message: "Admin has already signed this contract"
+      });
     }
+
     if (!req.files?.adminSignature?.[0]) {
       return res.status(400).json({ message: "Admin signature is required" });
     }
@@ -739,13 +848,15 @@ exports.adminSignContract = async (req, res) => {
       return res.status(400).json({ message: "Admin signature must be a PNG or JPEG image" });
     }
 
-    const contract = await Contract.findOne({ where: { bookingId } });
-    if (!contract?.signedPdfPath || !fs.existsSync(contract.signedPdfPath)) {
-      return res.status(400).json({ message: "The resident-signed document is not available yet" });
-    }
+    const contract = await Contract.findOne({
+      where: { bookingId }
+    });
 
-    contract.adminSignature = fs.readFileSync(adminSigPath).toString("base64");
-    contract.adminSignedAt = new Date();
+    if (!contract?.signedPdfPath || !fs.existsSync(contract.signedPdfPath)) {
+      return res.status(400).json({
+        message: "The resident-signed document is not available yet"
+      });
+    }
 
     await addAdminSignatureToPdf(
       contract.signedPdfPath,
@@ -753,18 +864,26 @@ exports.adminSignContract = async (req, res) => {
       booking.user.userType === "student" ? "student" : "professional"
     );
 
-    booking.adminContractStatus = "SIGNED";
-    await Promise.all([contract.save(), booking.save()]);
+    contract.adminSignature = fs.readFileSync(adminSigPath).toString("base64");
+    contract.adminSignedAt = new Date();
 
+    booking.adminContractStatus = "SIGNED";
+
+    await Promise.all([
+      contract.save(),
+      booking.save()
+    ]);
     await sendFinalContractEmails(booking, contract);
 
     if (!booking.securityDepositPaid) {
       await notifySecurityDeposit(booking);
+
       const email = securityDepositPaymentEmail({
         userName: booking.user.fullName,
         propertyName: booking.room.property.name,
         bookingId: booking.id
       });
+
       await mailsender(
         booking.user.email,
         "Security Deposit Payment Required - CoCo Living",

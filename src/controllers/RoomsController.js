@@ -85,6 +85,7 @@ exports.AddRooms = async (req, res) => {
   } catch (err) {
     await t.rollback();
     await logApiCall(req, res, 500, "Error occurred while adding room", "room");
+    console.log("[ADD ROOM ERROR] : ",err);
     return res.status(500).json({ message: "Internal server error" });
   }
 }

@@ -14,7 +14,10 @@ const Inventory = require("../models/inventory");
 const Contract = require('../models/contract');
 const PaymentTransaction = require('../models/paymentTransaction');
 const { sendPushNotification } = require("../helpers/notificationHelper");
-const { removeUserFromRoom } = require('../utils/aliste/alisteApi');
+const { removeUserFromRoom, addUserToRoom } = require('../utils/aliste/alisteApi');
+const BookingOnboarding = require("../models/bookingOnboarding");
+const DepositDeduction = require('../models/depositDeduction');
+const RoomTransfer = require('../models/roomTransfer');
 
 const releaseInventoryForBooking = async (booking, transaction = null) => {
   if (!booking.assignedItems || booking.assignedItems.length === 0) return;
@@ -30,6 +33,61 @@ const releaseInventoryForBooking = async (booking, transaction = null) => {
     booking.assignedItems = [];
     await booking.save({ transaction });
   }
+};
+
+const assignInventorySetToBooking = async (booking, setNumber, transaction) => {
+  if (!setNumber) {
+    return { error: "setNumber is required", statusCode: 400 };
+  }
+
+  if (!booking.roomId) {
+    return {
+      error: "Room must be assigned before assigning inventory",
+      statusCode: 400
+    };
+  }
+
+  const room = await Rooms.findByPk(booking.roomId, {
+    transaction,
+    lock: transaction ? transaction.LOCK.UPDATE : undefined
+  });
+
+  if (!room) {
+    return { error: "Room not found", statusCode: 400 };
+  }
+
+  const items = await Inventory.findAll({
+    where: {
+      propertyId: room.propertyId,
+      roomId: room.id,
+      setNumber,
+      isCommonAsset: false
+    },
+    transaction,
+    lock: transaction ? transaction.LOCK.UPDATE : undefined,
+    order: [["id", "ASC"]]
+  });
+
+  if (items.length === 0) {
+    return { error: "Selected set has no inventory", statusCode: 400 };
+  }
+
+  if (items.some(item => item.status !== "Available")) {
+    return { error: "Selected set is not fully available", statusCode: 400 };
+  }
+
+  const assignedInventory = items.map(item => item.id);
+
+  await releaseInventoryForBooking(booking, transaction);
+  await Inventory.update(
+    { status: "Allocated" },
+    { where: { id: assignedInventory }, transaction }
+  );
+
+  booking.assignedItems = assignedInventory;
+  await booking.save({ transaction });
+
+  return { assignedInventory };
 };
 
 //for notification application side
@@ -570,74 +628,18 @@ exports.assignInventory = async (req, res) => {
       return res.status(404).json({ message: "Booking not found" });
     }
 
-    if (!booking.roomId) {
+    const assignment = await assignInventorySetToBooking(booking, setNumber, t);
+    if (assignment.error) {
       await t.rollback();
-      return res.status(400).json({
-        message: "Room must be assigned before assigning inventory"
-      });
+      return res.status(assignment.statusCode).json({ message: assignment.error });
     }
-
-    const room = await Rooms.findByPk(booking.roomId, {
-      transaction: t,
-      lock: t.LOCK.UPDATE
-    });
-
-    if (!room) {
-      await t.rollback();
-      return res.status(400).json({ message: "Room not found" });
-    }
-
-    // STEP 1: fetch ALL items of this set
-    const items = await Inventory.findAll({
-      where: {
-        propertyId: room.propertyId,
-        roomId: room.id,
-        setNumber,
-        isCommonAsset: false
-      },
-      transaction: t,
-      lock: t.LOCK.UPDATE,
-      order: [["id", "ASC"]]
-    });
-
-    if (items.length === 0) {
-      await t.rollback();
-      return res.status(400).json({
-        message: "Selected set has no inventory"
-      });
-    }
-
-    // STEP 2: check if entire set is available
-    const unavailable = items.filter(i => i.status !== "Available");
-
-    if (unavailable.length > 0) {
-      await t.rollback();
-      return res.status(400).json({
-        message: "Selected set is not fully available"
-      });
-    }
-
-    const ids = items.map(i => i.id);
-
-    // STEP 3: release old inventory (if reassigned)
-    await releaseInventoryForBooking(booking, t);
-
-    // STEP 4: allocate new set
-    await Inventory.update(
-      { status: "Allocated" },
-      { where: { id: ids }, transaction: t }
-    );
-
-    // STEP 5: save assignment
-    booking.assignedItems = ids;
-    await booking.save({ transaction: t });
 
     await t.commit();
 
     return res.status(200).json({
       message: "Inventory set assigned successfully",
       setNumber,
-      assignedInventory: ids
+      assignedInventory: assignment.assignedInventory
     });
 
   } catch (err) {
@@ -1128,5 +1130,259 @@ exports.updateOfflineBookingDuration = async (req, res) => {
     console.error("Update offline booking duration error:", err);
     await logApiCall(req, res, 500, "Error occurred while updating offline booking duration", "booking", parseInt(req.params.bookingId) || 0);
     return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+exports.getRoomTransferDetails = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+
+    const booking = await Booking.findByPk(bookingId, {
+      include: [
+        { model: BookingOnboarding, as: 'onboarding' },
+        { model: Rooms, as: 'room' }
+      ]
+    });
+
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+    // Only allow transfer when onboarding for current room is completed
+    if (booking.onboardingStatus !== 'COMPLETED') {
+      return res.status(400).json({ message: 'Room transfer allowed only after onboarding is completed for current room' });
+    }
+
+    // Fetch available rooms in same property excluding current room
+    const availableRooms = await Rooms.findAll({
+      where: {
+        propertyId: booking.room?.propertyId || null,
+        status: 'available',
+        id: { [Op.ne]: booking.roomId }
+      },
+      attributes: ['id', 'roomNumber', 'roomType', 'floorNumber'],
+      order: [['roomNumber', 'ASC']]
+    });
+
+    await logApiCall(
+      req,
+      res,
+      200,
+      `Viewed room transfer details for booking ${bookingId}`,
+      'booking',
+      parseInt(bookingId)
+    );
+
+    return res.status(200).json({
+      bookingId: booking.id,
+      room: booking.room || null,
+      onboarding: booking.onboarding || null,
+      assignedItems: booking.assignedItems || [],
+      availableRooms
+    });
+  } catch (err) {
+    console.error('getRoomTransferDetails error:', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+exports.getRoomTransferHistory = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+
+    const transfers = await RoomTransfer.findAll({
+      where: { bookingId },
+      include: [
+        { model: Rooms, as: 'fromRoom', attributes: ['id', 'roomNumber', 'roomType', 'floorNumber'] },
+        { model: Rooms, as: 'toRoom', attributes: ['id', 'roomNumber', 'roomType', 'floorNumber'] }
+      ],
+      order: [['transferDate', 'DESC']]
+    });
+
+    return res.status(200).json({
+      bookingId: Number(bookingId),
+      transfers
+    });
+  } catch (err) {
+    console.error('getRoomTransferHistory error:', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+exports.transferRoom = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const { bookingId } = req.params;
+    const { newRoomId, transferDate, fines = [], setNumber } = req.body;
+
+    if (!newRoomId) {
+      await t.rollback();
+      return res.status(400).json({ message: 'newRoomId is required' });
+    }
+
+    const booking = await Booking.findByPk(bookingId, { transaction: t, lock: t.LOCK.UPDATE });
+    if (!booking) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    // Prevent transfer unless onboarding for current room is completed
+    if (booking.onboardingStatus !== 'COMPLETED') {
+      await t.rollback();
+      return res.status(400).json({ message: 'Room transfer allowed only after onboarding is completed for current room' });
+    }
+
+    if (!booking.roomId) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Booking has no assigned room' });
+    }
+
+    const oldRoom = await Rooms.findByPk(booking.roomId, { transaction: t, lock: t.LOCK.UPDATE });
+    const newRoom = await Rooms.findByPk(newRoomId, { transaction: t, lock: t.LOCK.UPDATE });
+
+    if (!newRoom) {
+      await t.rollback();
+      return res.status(404).json({ message: 'New room not found' });
+    }
+
+    // Check capacity
+    const activeCount = await Booking.count({
+      where: { roomId: newRoom.id, status: { [Op.in]: ['pending', 'approved', 'active'] } },
+      transaction: t
+    });
+
+    if (activeCount >= newRoom.capacity) {
+      await t.rollback();
+      return res.status(400).json({ message: 'New room is full' });
+    }
+
+    const transferMoment = transferDate ? moment(transferDate) : moment();
+
+    // Create deposit deduction records (if any)
+    const createdDeductions = [];
+    const createdFineTransactions = [];
+    let totalFine = 0;
+    for (const f of fines) {
+      const amount = Number(f.amount) || 0;
+      if (amount <= 0) continue;
+      const dd = await DepositDeduction.create({
+        bookingId: booking.id,
+        amount,
+        itemKey: f.itemKey || null,
+        reason: f.reason || null,
+        createdBy: req.user?.id || null
+      }, { transaction: t });
+      createdDeductions.push(dd);
+      totalFine += amount;
+      // Also record the fine as a payment transaction (offline fine)
+      try {
+        const merchantOrderId = `FINE-${booking.id}-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+        const pt = await PaymentTransaction.create({
+          bookingId: booking.id,
+          userId: booking.userId,
+          merchantOrderId,
+          amount: Math.round(amount * 100), // store in paise
+          type: 'OFFLINE',
+          status: 'SUCCESS',
+          paymentMode: 'OFFLINE',
+          paymentDate: moment().format('YYYY-MM-DD'),
+          adminNote: f.reason || 'Fine for damages',
+          createdByAdminId: req.user?.id || null,
+          meta: { itemKey: f.itemKey || null }
+        }, { transaction: t });
+        createdFineTransactions.push(pt);
+      } catch (ptErr) {
+        console.error('Failed to create fine payment transaction:', ptErr && ptErr.message ? ptErr.message : ptErr);
+      }
+    }
+
+    // Release the old room's inventory before attaching a selected destination-room set.
+    await releaseInventoryForBooking(booking, t);
+
+    // Update booking in-place: change roomId to new room
+    const previousRoomId = booking.roomId;
+    booking.roomId = newRoom.id;
+    booking.assignedItems = [];
+    // Do NOT modify onboarding data here (business rule)
+    await booking.save({ transaction: t });
+
+    let assignedInventory = [];
+    if (setNumber !== undefined && setNumber !== null && setNumber !== '') {
+      const assignment = await assignInventorySetToBooking(booking, setNumber, t);
+      if (assignment.error) {
+        await t.rollback();
+        return res.status(assignment.statusCode).json({ message: assignment.error });
+      }
+      assignedInventory = assignment.assignedInventory;
+    }
+
+    // Update room statuses (recompute)
+    if (oldRoom) {
+      const oldActive = await Booking.count({ where: { roomId: oldRoom.id, status: { [Op.in]: ['approved', 'active'] } }, transaction: t });
+      oldRoom.status = oldActive >= oldRoom.capacity ? 'booked' : 'available';
+      await oldRoom.save({ transaction: t });
+    }
+
+    const newActive = await Booking.count({ where: { roomId: newRoom.id, status: { [Op.in]: ['approved', 'active'] } }, transaction: t });
+    newRoom.status = newActive >= newRoom.capacity ? 'booked' : 'available';
+    await newRoom.save({ transaction: t });
+
+    // Handle Aliste: remove from old room and add to new room
+    try {
+      const bookingUser = await User.findByPk(booking.userId, { transaction: t });
+      if (oldRoom?.alisteRoomId && booking.alisteUserId && !booking.removedUserFromAliste) {
+        await removeUserFromRoom({ roomId: oldRoom.alisteRoomId, phoneNumber: bookingUser?.phone });
+        // mark removed from old room
+        booking.removedUserFromAliste = true;
+        await booking.save({ transaction: t });
+      }
+
+      if (newRoom?.alisteRoomId) {
+        const payloadUserId = booking.alisteUserId || `USER_${booking.id}`;
+        const payload = {
+          roomId: newRoom.alisteRoomId,
+          userId: payloadUserId,
+          phoneNumber: bookingUser?.phone,
+          firstName: bookingUser?.fullName?.split(' ')[0] || 'User',
+          lastName: bookingUser?.fullName?.split(' ').slice(1).join(' ') || '',
+          email: bookingUser?.email
+        };
+        const resp = await addUserToRoom(payload);
+        if (resp && resp.success) {
+          booking.alisteUserId = payloadUserId;
+          booking.removedUserFromAliste = false;
+          await booking.save({ transaction: t });
+        } else {
+          console.warn('Aliste add user failed:', resp && resp.raw ? resp.raw : resp);
+        }
+      }
+    } catch (err) {
+      console.error('Aliste transfer error:', err.message || err);
+    }
+
+    // Record room transfer history
+    const transferRecord = await RoomTransfer.create({
+      bookingId: booking.id,
+      fromRoomId: previousRoomId,
+      toRoomId: newRoom.id,
+      transferDate: transferMoment.format('YYYY-MM-DD'),
+      fines: createdDeductions.map(d => d.id),
+      totalFine,
+      createdBy: req.user?.id || null
+    }, { transaction: t });
+
+    await t.commit();
+
+    const result = await Booking.findByPk(booking.id, {
+      include: [
+        { model: User, as: 'user', attributes: ['id', 'fullName', 'email', 'phone'] },
+        { model: Rooms, as: 'room', attributes: ['id', 'roomNumber'], include: [{ model: Property, as: 'property' }] },
+        { model: PropertyRateCard, as: 'rateCard', include: [{ model: Property, as: 'property' }] }
+      ]
+    });
+
+    return res.status(200).json({ message: 'Room transferred', booking: result, deductions: createdDeductions, fineTransactions: createdFineTransactions, totalFine, transferRecord, assignedInventory });
+  } catch (err) {
+    await t.rollback();
+    console.error('transferRoom error:', err);
+    return res.status(500).json({ message: 'Internal server error', error: err.message });
   }
 };

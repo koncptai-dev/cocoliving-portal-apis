@@ -15,10 +15,9 @@ router.post(
   ContractController.adminSignContract
 );
 
-router.post( "/esign/callback", express.json({ limit: "15mb" }), ContractController.esignCallback );
+router.post("/esign/callback", ContractController.esignCallback);
 router.post(
   "/esign/calibration/callback",
-  express.json({ limit: "15mb" }),
   ContractController.esignCalibrationCallback
 );
 module.exports = router;
