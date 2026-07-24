@@ -35,6 +35,61 @@ const releaseInventoryForBooking = async (booking, transaction = null) => {
   }
 };
 
+const assignInventorySetToBooking = async (booking, setNumber, transaction) => {
+  if (!setNumber) {
+    return { error: "setNumber is required", statusCode: 400 };
+  }
+
+  if (!booking.roomId) {
+    return {
+      error: "Room must be assigned before assigning inventory",
+      statusCode: 400
+    };
+  }
+
+  const room = await Rooms.findByPk(booking.roomId, {
+    transaction,
+    lock: transaction ? transaction.LOCK.UPDATE : undefined
+  });
+
+  if (!room) {
+    return { error: "Room not found", statusCode: 400 };
+  }
+
+  const items = await Inventory.findAll({
+    where: {
+      propertyId: room.propertyId,
+      roomId: room.id,
+      setNumber,
+      isCommonAsset: false
+    },
+    transaction,
+    lock: transaction ? transaction.LOCK.UPDATE : undefined,
+    order: [["id", "ASC"]]
+  });
+
+  if (items.length === 0) {
+    return { error: "Selected set has no inventory", statusCode: 400 };
+  }
+
+  if (items.some(item => item.status !== "Available")) {
+    return { error: "Selected set is not fully available", statusCode: 400 };
+  }
+
+  const assignedInventory = items.map(item => item.id);
+
+  await releaseInventoryForBooking(booking, transaction);
+  await Inventory.update(
+    { status: "Allocated" },
+    { where: { id: assignedInventory }, transaction }
+  );
+
+  booking.assignedItems = assignedInventory;
+  await booking.save({ transaction });
+
+  return { assignedInventory };
+};
+
 //for notification application side
 async function notifyBookingUser(booking) {
   if (!booking.userId) return;
@@ -573,74 +628,18 @@ exports.assignInventory = async (req, res) => {
       return res.status(404).json({ message: "Booking not found" });
     }
 
-    if (!booking.roomId) {
+    const assignment = await assignInventorySetToBooking(booking, setNumber, t);
+    if (assignment.error) {
       await t.rollback();
-      return res.status(400).json({
-        message: "Room must be assigned before assigning inventory"
-      });
+      return res.status(assignment.statusCode).json({ message: assignment.error });
     }
-
-    const room = await Rooms.findByPk(booking.roomId, {
-      transaction: t,
-      lock: t.LOCK.UPDATE
-    });
-
-    if (!room) {
-      await t.rollback();
-      return res.status(400).json({ message: "Room not found" });
-    }
-
-    // STEP 1: fetch ALL items of this set
-    const items = await Inventory.findAll({
-      where: {
-        propertyId: room.propertyId,
-        roomId: room.id,
-        setNumber,
-        isCommonAsset: false
-      },
-      transaction: t,
-      lock: t.LOCK.UPDATE,
-      order: [["id", "ASC"]]
-    });
-
-    if (items.length === 0) {
-      await t.rollback();
-      return res.status(400).json({
-        message: "Selected set has no inventory"
-      });
-    }
-
-    // STEP 2: check if entire set is available
-    const unavailable = items.filter(i => i.status !== "Available");
-
-    if (unavailable.length > 0) {
-      await t.rollback();
-      return res.status(400).json({
-        message: "Selected set is not fully available"
-      });
-    }
-
-    const ids = items.map(i => i.id);
-
-    // STEP 3: release old inventory (if reassigned)
-    await releaseInventoryForBooking(booking, t);
-
-    // STEP 4: allocate new set
-    await Inventory.update(
-      { status: "Allocated" },
-      { where: { id: ids }, transaction: t }
-    );
-
-    // STEP 5: save assignment
-    booking.assignedItems = ids;
-    await booking.save({ transaction: t });
 
     await t.commit();
 
     return res.status(200).json({
       message: "Inventory set assigned successfully",
       setNumber,
-      assignedInventory: ids
+      assignedInventory: assignment.assignedInventory
     });
 
   } catch (err) {
@@ -1212,7 +1211,7 @@ exports.transferRoom = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { bookingId } = req.params;
-    const { newRoomId, transferDate, fines = [] } = req.body;
+    const { newRoomId, transferDate, fines = [], setNumber } = req.body;
 
     if (!newRoomId) {
       await t.rollback();
@@ -1295,65 +1294,25 @@ exports.transferRoom = async (req, res) => {
       }
     }
 
-    const previousAssignedItems = Array.isArray(booking.assignedItems) ? booking.assignedItems : [];
-    let newAssignedItems = [];
-
-    if (previousAssignedItems.length > 0) {
-      const oldAssignedInventory = await Inventory.findAll({
-        where: { id: previousAssignedItems },
-        transaction: t,
-        lock: t.LOCK.UPDATE
-      });
-
-      const sourceSetNumber = oldAssignedInventory.find(item => item.setNumber != null)?.setNumber;
-
-      if (!sourceSetNumber) {
-        await t.rollback();
-        return res.status(400).json({ message: 'Unable to determine inventory set for transfer' });
-      }
-
-      const targetItems = await Inventory.findAll({
-        where: {
-          propertyId: newRoom.propertyId,
-          roomId: newRoom.id,
-          setNumber: sourceSetNumber,
-          isCommonAsset: false
-        },
-        transaction: t,
-        lock: t.LOCK.UPDATE,
-        order: [['id', 'ASC']]
-      });
-
-      if (targetItems.length === 0) {
-        await t.rollback();
-        return res.status(400).json({ message: 'No matching inventory available in the new room for transfer' });
-      }
-
-      const unavailableTargetItems = targetItems.filter(item => item.status !== 'Available');
-      if (unavailableTargetItems.length > 0) {
-        await t.rollback();
-        return res.status(400).json({ message: 'Matching inventory in the new room is not fully available' });
-      }
-
-      newAssignedItems = targetItems.map(item => item.id);
-    }
-
-    // Release old inventory and clear assigned items (inventory typically tied to room)
+    // Release the old room's inventory before attaching a selected destination-room set.
     await releaseInventoryForBooking(booking, t);
-
-    if (newAssignedItems.length > 0) {
-      await Inventory.update(
-        { status: 'Allocated' },
-        { where: { id: newAssignedItems }, transaction: t }
-      );
-    }
 
     // Update booking in-place: change roomId to new room
     const previousRoomId = booking.roomId;
     booking.roomId = newRoom.id;
-    booking.assignedItems = newAssignedItems;
+    booking.assignedItems = [];
     // Do NOT modify onboarding data here (business rule)
     await booking.save({ transaction: t });
+
+    let assignedInventory = [];
+    if (setNumber !== undefined && setNumber !== null && setNumber !== '') {
+      const assignment = await assignInventorySetToBooking(booking, setNumber, t);
+      if (assignment.error) {
+        await t.rollback();
+        return res.status(assignment.statusCode).json({ message: assignment.error });
+      }
+      assignedInventory = assignment.assignedInventory;
+    }
 
     // Update room statuses (recompute)
     if (oldRoom) {
@@ -1420,7 +1379,7 @@ exports.transferRoom = async (req, res) => {
       ]
     });
 
-    return res.status(200).json({ message: 'Room transferred', booking: result, deductions: createdDeductions, fineTransactions: createdFineTransactions, totalFine, transferRecord });
+    return res.status(200).json({ message: 'Room transferred', booking: result, deductions: createdDeductions, fineTransactions: createdFineTransactions, totalFine, transferRecord, assignedInventory });
   } catch (err) {
     await t.rollback();
     console.error('transferRoom error:', err);
