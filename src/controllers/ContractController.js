@@ -7,7 +7,7 @@ const { Booking, User, Rooms, Property, Contract, Inventory } = require("../mode
 const { mailsender } = require("../utils/emailService");
 const { contractSignedEmail, securityDepositPaymentEmail } = require("../utils/emailTemplates/emailTemplates");
 const { notifySecurityDeposit } = require('../utils/notificationService');
-const { initiateEsign } = require("../utils/idtoEsignService");
+const { initiateEsign, fetchEsignDocument } = require("../utils/idtoEsignService");
 const { getSignatureBox } = require("../utils/esignSignatureCoordinates");
 const { overlayCalibrationGrid } = require("../utils/pdfCalibrationOverlay");
 const { numberToRupeesWords } = require("../utils/numberToWords");
@@ -590,7 +590,7 @@ exports.initiateEsign = async (req, res) => {
       docket_title: `Rental Agreement - Booking #${bookingId}`,
       docket_description: `CoCo Living rental agreement for ${booking.user.fullName}`,
       final_copy_recipients: "deepanshu.choudhary@koncpt.ai",
-      callback_file_content: true,
+      callback_file_content: false,
       documents: [
         {
           reference_doc_id: referenceDocId,
@@ -623,7 +623,8 @@ exports.initiateEsign = async (req, res) => {
       contract = await Contract.create({ bookingId, signedPdfPath: "" });
     }
     contract.esignReferenceDocId = referenceDocId;
-    contract.esignDocketId = idtoResponse?.document_id || idtoResponse?.docket_id || null;
+    contract.esignDocketId = idtoResponse?.docket_id || null;
+    contract.esignDocumentId = idtoResponse?.document_id || null;
     contract.esignStatus = "IN_PROGRESS";
     contract.esignRawResponse = idtoResponse;
     await contract.save();
@@ -665,7 +666,7 @@ exports.esignCallback = async (req, res) => {
 
     logEsignCallbackBody(req);
 
-    const { status, document_id, file_content } = req.body;
+    const { status, document_id } = req.body;
     if (!document_id || typeof document_id !== "string") {
       console.warn("esignCallback: rejected callback without document_id", {
         status,
@@ -675,6 +676,7 @@ exports.esignCallback = async (req, res) => {
     }
     const contract =
       (await Contract.findOne({ where: { esignReferenceDocId: document_id } })) ||
+      (await Contract.findOne({ where: { esignDocumentId: document_id } })) ||
       (await Contract.findOne({ where: { esignDocketId: document_id } }));
  
     if (!contract) {
@@ -690,22 +692,46 @@ exports.esignCallback = async (req, res) => {
     contract.esignRawResponse = { ...(contract.esignRawResponse || {}), lastCallback: req.body };
  
     if (status === "success") {
+      const docketId = contract.esignRawResponse?.docket_id || contract.esignDocketId;
+      if (!docketId) {
+        console.error("esignCallback: cannot fetch signed document without a docket_id", {
+          contractId: contract.id,
+          documentId: document_id
+        });
+        return res.status(500).json({ message: "Missing eSign docket ID" });
+      }
+
+      const documentResponse = await fetchEsignDocument({
+        docket_id: docketId,
+        document_id
+      });
+      const signedPdfContent = documentResponse?.content;
+      contract.esignRawResponse = {
+        ...(contract.esignRawResponse || {}),
+        lastCallback: req.body,
+        lastDocumentFetch: {
+          status: documentResponse?.status,
+          signing_status: documentResponse?.signing_status,
+          document_id: documentResponse?.document_id,
+          content_type: documentResponse?.content_type,
+          content_length:
+            typeof signedPdfContent === "string" ? signedPdfContent.length : 0
+        }
+      };
+
+      if (documentResponse?.signing_status !== "signed" || typeof signedPdfContent !== "string") {
+        console.info("esignCallback: signed PDF is not ready yet", {
+          contractId: contract.id,
+          docketId,
+          signingStatus: documentResponse?.signing_status,
+          contentLength: typeof signedPdfContent === "string" ? signedPdfContent.length : 0
+        });
+        await contract.save();
+        return res.json({ received: true, signingStatus: documentResponse?.signing_status || "pending" });
+      }
+
       contract.esignStatus = "COMPLETED";
       contract.signedAt = new Date();
-
-      if (!file_content || typeof file_content !== "string") {
-        console.warn("esignCallback: success callback is missing the signed document", {
-          documentId: document_id,
-          bodyKeys: Object.keys(req.body),
-          fileContentType: typeof file_content,
-          fileContentLength:
-            typeof file_content === "string" ? file_content.length : 0
-        });
-        return res.json({
-          received: true,
-          documentReceived: false
-        });
-      }
 
       const finalPath = path.join(
         __dirname,
@@ -713,7 +739,7 @@ exports.esignCallback = async (req, res) => {
       );
       const dir = path.dirname(finalPath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(finalPath, Buffer.from(file_content, "base64"));
+      fs.writeFileSync(finalPath, Buffer.from(signedPdfContent, "base64"));
       contract.signedPdfPath = finalPath;
  
       await contract.save();

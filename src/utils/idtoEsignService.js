@@ -85,4 +85,21 @@ async function initiateEsign(payload) {
   }
 }
 
-module.exports = { initiateEsign };
+async function fetchEsignDocument(payload) {
+  try {
+    const { data } = await idtoClient.post("/verify/esign/document", payload);
+    return data;
+  } catch (err) {
+    const responseData = err.response?.data;
+    console.error(
+      "[idtoEsignService] IDTO document fetch error (PDF content removed):",
+      redactProviderResponse(responseData)
+    );
+    const error = new Error("IDTO eSign document fetch failed");
+    error.status = err.response?.status;
+    error.providerDetails = getSafeProviderDetails(responseData);
+    throw error;
+  }
+}
+
+module.exports = { initiateEsign, fetchEsignDocument };

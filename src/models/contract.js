@@ -36,6 +36,10 @@ const Contract = sequelize.define("Contract", {
     type: DataTypes.STRING,
     allowNull: true,
   },
+  esignDocumentId: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
   esignStatus: {
     type: DataTypes.ENUM("NOT_INITIATED", "IN_PROGRESS", "COMPLETED", "FAILED"),
     allowNull: false,
