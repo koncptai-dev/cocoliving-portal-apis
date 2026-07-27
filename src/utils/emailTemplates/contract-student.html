@@ -413,7 +413,7 @@
   <div class="signature-column">
     <div class="signature-column-title">Student Resident or Parent / Legal Guardian</div>
     <p>(Executing on behalf of the Student Resident and as Surety/Guarantor)</p>
-    <div class="signature-field"><span class="label">Name:</span> {{resident_name}}</div>
+    <div class="signature-field"><span class="label">Name:</span> {{guardian_name}}</div>
     <div class="signature-field">
       <span class="label">Signature:</span>
       <img src="{{resident_signature}}" class="signature-img" />
@@ -426,7 +426,7 @@
 <div class="acknowledgement-block no-break">
 <div class="section-heading">Student Resident Acknowledgement (where applicable)</div>
 <p>I, the Student Resident, acknowledge that I have understood and shall comply with the terms of this Agreement and the house rules of the Licensor.</p>
-<table>
+<table class="acknowledgement-signature-table">
 <tr>
 <th>Name</th>
 <th>Signature</th>
@@ -434,7 +434,7 @@
 <tr>
 <td>{{resident_name}}</td>
 <td>
-  <img src="{{resident_signature}}" class="signature-img">
+  <img src="{{resident_signature}}" class="signature-img acknowledgement-signature-img">
 </td>
 </tr>
 </table>

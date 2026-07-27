@@ -11,6 +11,7 @@ const User=require('../models/user');
 const PropertyRateCard = require("../models/propertyRateCard");
 const BookingExtension = require('../models/bookingExtension');
 const Inventory = require("../models/inventory");
+const UserKYC = require("../models/userKYC");
 const Contract = require('../models/contract');
 const PaymentTransaction = require('../models/paymentTransaction');
 const { sendPushNotification } = require("../helpers/notificationHelper");
@@ -110,21 +111,37 @@ async function notifyBookingUser(booking) {
 
 exports.getAllBookings=async(req,res)=>{
   try{
-    const booking=await Booking.findAll({
-      include:[{
-        model:User,as:'user',attributes:["id","fullName","email","phone","gender"]
-      },{model:Rooms,as: "room",attributes:["id","roomNumber"], include: [{ model: Property, as: 'property' }]},
-    {
-      model: PropertyRateCard,
-      as: "rateCard",     
-      include: [{ model: Property, as: "property" }] 
-    }
-    ],
-    order: [["createdAt", "DESC"]],
-    })
+    const rawBookings = await Booking.findAll({
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ["id", "fullName", "email", "phone", "gender"],
+          include: [
+            {
+              model: UserKYC,
+              as: 'kyc',
+              attributes: ['panStatus', 'ekycStatus']
+            }
+          ]
+        },
+       {
+         model: Rooms,
+          as: "room",
+          attributes: ["id", "roomNumber"],
+          include: [{ model: Property, as: 'property' }]
+        },
+        {
+          model: PropertyRateCard,
+          as: "rateCard",
+          include: [{ model: Property, as: "property" }]
+        }
+      ],
+      order: [["createdAt", "DESC"]]
+    });
 
     await logApiCall(req, res, 200, "Viewed all bookings list", "booking");
-    res.status(200).json({ booking });
+    res.status(200).json({ booking: rawBookings });
   }catch(err){
     console.log("error",err);
     await logApiCall(req, res, 500, "Error occurred while fetching all bookings", "booking");
@@ -645,6 +662,179 @@ exports.assignInventory = async (req, res) => {
   } catch (err) {
     await t.rollback();
     console.error("Assign Set Error:", err);
+    return res.status(500).json({
+      message: "Internal server error",
+      error: err.message
+    });
+  }
+};
+
+exports.assignInventorySetsForRoom = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const roomId = Number(req.body?.roomId);
+
+    if (!Number.isInteger(roomId) || roomId <= 0) {
+      await t.rollback();
+      return res.status(400).json({ message: "Valid roomId is required" });
+    }
+
+    const room = await Rooms.findByPk(roomId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE
+    });
+
+    if (!room) {
+      await t.rollback();
+      return res.status(404).json({ message: "Room not found" });
+    }
+
+    const today = new Date().toISOString().split("T")[0];
+
+    const approvedBookings = await Booking.findAll({
+      where: {
+        roomId,
+        status: "approved",
+        checkInDate: {
+          [Op.lte]: today 
+        },
+        checkOutDate: {
+          [Op.gte]: today  
+        }
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+      order: [["checkInDate", "ASC"], ["createdAt", "ASC"]]
+    });
+
+    const bookingsNeedingSet = approvedBookings.filter(booking => {
+      return !Array.isArray(booking.assignedItems) || booking.assignedItems.length === 0;
+    });
+
+    if (bookingsNeedingSet.length === 0) {
+      await t.commit();
+      return res.status(200).json({
+        message: "No approved bookings pending inventory assignment",
+        roomId,
+        totalApprovedBookings: approvedBookings.length,
+        pendingAssignmentBookings: 0,
+        assignedCount: 0,
+        unassignedCount: 0,
+        assignments: []
+      });
+    }
+
+    const roomItems = await Inventory.findAll({
+      where: {
+        propertyId: room.propertyId,
+        roomId,
+        isCommonAsset: false
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+      order: [["setNumber", "ASC"], ["id", "ASC"]]
+    });
+
+    const setMap = {};
+    let availableInventoryItemsCount = 0;
+
+    for (const item of roomItems) {
+      if (!item.setNumber) continue;
+      if (!setMap[item.setNumber]) {
+        setMap[item.setNumber] = {
+          allItemIds: [],
+          availableItemIds: [],
+          allAvailable: true
+        };
+      }
+
+      setMap[item.setNumber].allItemIds.push(item.id);
+
+      if (item.status === "Available") {
+        availableInventoryItemsCount += 1;
+        setMap[item.setNumber].availableItemIds.push(item.id);
+      } else {
+        setMap[item.setNumber].allAvailable = false;
+      }
+    }
+
+    const availableSetNumbers = Object.keys(setMap)
+      .map(Number)
+      .sort((a, b) => a - b)
+      .filter(setNumber => {
+        const setData = setMap[setNumber];
+        return (
+          setData &&
+          setData.allItemIds.length > 0 &&
+          setData.allAvailable
+        );
+      });
+
+    const assignments = [];
+    const assignableCount = Math.min(
+      bookingsNeedingSet.length,
+      availableSetNumbers.length
+    );
+
+    const inventoryIdsToAllocate = [];
+
+    for (let index = 0; index < assignableCount; index++) {
+      const booking = bookingsNeedingSet[index];
+      const setNumber = availableSetNumbers[index];
+      const setData = setMap[setNumber];
+      const assignedInventory = setData.allItemIds;
+
+      booking.assignedItems = assignedInventory;
+      await booking.save({ transaction: t });
+
+      inventoryIdsToAllocate.push(...assignedInventory);
+
+      assignments.push({
+        bookingId: booking.id,
+        setNumber,
+        assignedInventory
+      });
+    }
+
+    if (inventoryIdsToAllocate.length > 0) {
+      await Inventory.update(
+        { status: "Allocated" },
+        {
+          where: { id: inventoryIdsToAllocate },
+          transaction: t
+        }
+      );
+    }
+
+    const assignedCount = assignments.length;
+    const unassignedCount = bookingsNeedingSet.length - assignedCount;
+
+    await t.commit();
+
+    await logApiCall(
+      req,
+      res,
+      200,
+      `Bulk assigned inventory sets for room ${roomId}`,
+      "booking",
+      roomId
+    );
+
+    return res.status(200).json({
+      message: "Inventory sets assigned successfully",
+      roomId,
+      totalApprovedBookings: approvedBookings.length,
+      pendingAssignmentBookings: bookingsNeedingSet.length,
+      availableInventoryItemsCount,
+      availableSetCount: availableSetNumbers.length,
+      assignedCount,
+      unassignedCount,
+      inventoryStatusUpdatedTo: "Allocated",
+      assignments
+    });
+  } catch (err) {
+    await t.rollback();
+    console.error("assignInventorySetsForRoom error:", err);
     return res.status(500).json({
       message: "Internal server error",
       error: err.message
@@ -1194,7 +1384,7 @@ exports.getRoomTransferHistory = async (req, res) => {
         { model: Rooms, as: 'fromRoom', attributes: ['id', 'roomNumber', 'roomType', 'floorNumber'] },
         { model: Rooms, as: 'toRoom', attributes: ['id', 'roomNumber', 'roomType', 'floorNumber'] }
       ],
-      order: [['transferDate', 'DESC']]
+      order: [['createdAt', 'DESC']]
     });
 
     return res.status(200).json({
@@ -1211,7 +1401,7 @@ exports.transferRoom = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { bookingId } = req.params;
-    const { newRoomId, transferDate, fines = [], setNumber } = req.body;
+    const { newRoomId, fines = [], setNumber } = req.body;
 
     if (!newRoomId) {
       await t.rollback();
@@ -1253,8 +1443,6 @@ exports.transferRoom = async (req, res) => {
       await t.rollback();
       return res.status(400).json({ message: 'New room is full' });
     }
-
-    const transferMoment = transferDate ? moment(transferDate) : moment();
 
     // Create deposit deduction records (if any)
     const createdDeductions = [];
@@ -1363,7 +1551,6 @@ exports.transferRoom = async (req, res) => {
       bookingId: booking.id,
       fromRoomId: previousRoomId,
       toRoomId: newRoom.id,
-      transferDate: transferMoment.format('YYYY-MM-DD'),
       fines: createdDeductions.map(d => d.id),
       totalFine,
       createdBy: req.user?.id || null

@@ -213,6 +213,33 @@ table tr {
   margin: 0 0 3mm 0;
   text-align: justify;
 }
+.acknowledgement-signature-table {
+  table-layout: fixed;
+}
+
+.acknowledgement-signature-table th:first-child,
+.acknowledgement-signature-table td:first-child {
+  width: 65%;
+}
+
+.acknowledgement-signature-table th:last-child,
+.acknowledgement-signature-table td:last-child {
+  width: 35%;
+}
+
+.acknowledgement-signature-table td {
+  height: 18mm;
+  vertical-align: middle;
+}
+
+.acknowledgement-signature-img {
+  display: block;
+  width: 100%;
+  max-width: 46mm;
+  max-height: 14mm;
+  height: auto;
+  object-fit: contain;
+}
 
 /* ------------------------------------------------------------
    Annexures
