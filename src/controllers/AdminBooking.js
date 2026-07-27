@@ -110,18 +110,34 @@ async function notifyBookingUser(booking) {
 
 exports.getAllBookings=async(req,res)=>{
   try{
-    const booking=await Booking.findAll({
-      include:[{
-        model:User,as:'user',attributes:["id","fullName","email","phone","gender"]
-      },{model:Rooms,as: "room",attributes:["id","roomNumber"], include: [{ model: Property, as: 'property' }]},
-    {
-      model: PropertyRateCard,
-      as: "rateCard",     
-      include: [{ model: Property, as: "property" }] 
-    }
-    ],
-    order: [["createdAt", "DESC"]],
-    })
+    const rawBookings = await Booking.findAll({
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ["id", "fullName", "email", "phone", "gender"],
+          include: [
+            {
+              model: UserKYC,
+              as: 'userkyc',
+              attributes: ['panStatus', 'ekycStatus']
+            }
+          ]
+        },
+       {
+         model: Rooms,
+          as: "room",
+          attributes: ["id", "roomNumber"],
+          include: [{ model: Property, as: 'property' }]
+        },
+        {
+          model: PropertyRateCard,
+          as: "rateCard",
+          include: [{ model: Property, as: "property" }]
+        }
+      ],
+      order: [["createdAt", "DESC"]]
+    });
 
     await logApiCall(req, res, 200, "Viewed all bookings list", "booking");
     res.status(200).json({ booking });
