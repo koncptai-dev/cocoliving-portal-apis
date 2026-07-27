@@ -18,6 +18,7 @@ const { removeUserFromRoom, addUserToRoom } = require('../utils/aliste/alisteApi
 const BookingOnboarding = require("../models/bookingOnboarding");
 const DepositDeduction = require('../models/depositDeduction');
 const RoomTransfer = require('../models/roomTransfer');
+const UserKYC = require('../models/userKYC');
 
 const releaseInventoryForBooking = async (booking, transaction = null) => {
   if (!booking.assignedItems || booking.assignedItems.length === 0) return;
