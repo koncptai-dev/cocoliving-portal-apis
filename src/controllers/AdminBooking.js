@@ -11,6 +11,7 @@ const User=require('../models/user');
 const PropertyRateCard = require("../models/propertyRateCard");
 const BookingExtension = require('../models/bookingExtension');
 const Inventory = require("../models/inventory");
+const UserKYC = require("../models/userKYC");
 const Contract = require('../models/contract');
 const PaymentTransaction = require('../models/paymentTransaction');
 const { sendPushNotification } = require("../helpers/notificationHelper");
