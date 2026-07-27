@@ -120,7 +120,7 @@ exports.getAllBookings=async(req,res)=>{
           include: [
             {
               model: UserKYC,
-              as: 'userkyc',
+              as: 'kyc',
               attributes: ['panStatus', 'ekycStatus']
             }
           ]
@@ -141,7 +141,7 @@ exports.getAllBookings=async(req,res)=>{
     });
 
     await logApiCall(req, res, 200, "Viewed all bookings list", "booking");
-    res.status(200).json({ booking });
+    res.status(200).json({ booking: rawBookings });
   }catch(err){
     console.log("error",err);
     await logApiCall(req, res, 500, "Error occurred while fetching all bookings", "booking");
