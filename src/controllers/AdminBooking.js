@@ -672,10 +672,18 @@ exports.assignInventorySetsForRoom = async (req, res) => {
       return res.status(404).json({ message: "Room not found" });
     }
 
+    const today = new Date().toISOString().split("T")[0];
+
     const approvedBookings = await Booking.findAll({
       where: {
         roomId,
-        status: "approved"
+        status: "approved",
+        checkInDate: {
+          [Op.lte]: today 
+        },
+        checkOutDate: {
+          [Op.gte]: today  
+        }
       },
       transaction: t,
       lock: t.LOCK.UPDATE,
