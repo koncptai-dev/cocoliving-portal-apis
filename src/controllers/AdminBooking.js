@@ -1194,7 +1194,7 @@ exports.getRoomTransferHistory = async (req, res) => {
         { model: Rooms, as: 'fromRoom', attributes: ['id', 'roomNumber', 'roomType', 'floorNumber'] },
         { model: Rooms, as: 'toRoom', attributes: ['id', 'roomNumber', 'roomType', 'floorNumber'] }
       ],
-      order: [['transferDate', 'DESC']]
+      order: [['createdAt', 'DESC']]
     });
 
     return res.status(200).json({
@@ -1211,7 +1211,7 @@ exports.transferRoom = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { bookingId } = req.params;
-    const { newRoomId, transferDate, fines = [], setNumber } = req.body;
+    const { newRoomId, fines = [], setNumber } = req.body;
 
     if (!newRoomId) {
       await t.rollback();
@@ -1253,8 +1253,6 @@ exports.transferRoom = async (req, res) => {
       await t.rollback();
       return res.status(400).json({ message: 'New room is full' });
     }
-
-    const transferMoment = transferDate ? moment(transferDate) : moment();
 
     // Create deposit deduction records (if any)
     const createdDeductions = [];
@@ -1363,7 +1361,6 @@ exports.transferRoom = async (req, res) => {
       bookingId: booking.id,
       fromRoomId: previousRoomId,
       toRoomId: newRoom.id,
-      transferDate: transferMoment.format('YYYY-MM-DD'),
       fines: createdDeductions.map(d => d.id),
       totalFine,
       createdBy: req.user?.id || null
