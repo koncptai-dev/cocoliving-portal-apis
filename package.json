@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
+    "add:room-appliances": "node scripts/add-room-appliances.js",
     "test": "jest --runInBand"
   },
   "keywords": [],
