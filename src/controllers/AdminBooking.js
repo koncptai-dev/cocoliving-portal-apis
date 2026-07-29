@@ -11,6 +11,7 @@ const User=require('../models/user');
 const PropertyRateCard = require("../models/propertyRateCard");
 const BookingExtension = require('../models/bookingExtension');
 const Inventory = require("../models/inventory");
+const UserKYC = require("../models/userKYC");
 const Contract = require('../models/contract');
 const PaymentTransaction = require('../models/paymentTransaction');
 const { sendPushNotification } = require("../helpers/notificationHelper");
@@ -18,7 +19,6 @@ const { removeUserFromRoom, addUserToRoom } = require('../utils/aliste/alisteApi
 const BookingOnboarding = require("../models/bookingOnboarding");
 const DepositDeduction = require('../models/depositDeduction');
 const RoomTransfer = require('../models/roomTransfer');
-const UserKYC = require('../models/userKYC');
 
 const releaseInventoryForBooking = async (booking, transaction = null) => {
   if (!booking.assignedItems || booking.assignedItems.length === 0) return;
