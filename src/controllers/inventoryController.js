@@ -266,22 +266,51 @@ exports.generateInventoryQr = async (req, res) => {
 };
 
 const safeFilename = (value) => String(value || "inventory")
-  .replace(/[^a-zA-Z0-9_-]/g, "_");
+  .replace(/[<>:"/\\|?*\x00-\x1F]/g, "_")
+  .replace(/[. ]+$/, "") || "inventory";
+
+const inventoryQrFilename = (inventory) => {
+  const roomNumber = inventory.room?.roomNumber || "Property Pool";
+  const hasSetNumber = inventory.setNumber !== null &&
+    inventory.setNumber !== undefined &&
+    String(inventory.setNumber).trim() !== "";
+  const setPart = hasSetNumber ? ` SET-${inventory.setNumber}` : "";
+
+  return safeFilename(`${roomNumber}${setPart} ${inventory.itemName}.png`);
+};
 
 const streamInventoryLabelsZip = async (res, inventories, filename) => {
+  const files = [];
+  for (const inventory of inventories) {
+    files.push({
+      name: inventoryQrFilename(inventory),
+      buffer: await createInventoryLabel(inventory),
+    });
+  }
+
   res.setHeader("Content-Type", "application/zip");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
 
   const archive = archiver("zip", { zlib: { level: 9 } });
-  archive.on("error", (error) => res.destroy(error));
-  archive.pipe(res);
+  await new Promise((resolve, reject) => {
+    const fail = (error) => {
+      if (!res.destroyed) res.destroy(error);
+      reject(error);
+    };
 
-  for (const inventory of inventories) {
-    const label = await createInventoryLabel(inventory);
-    archive.append(label, { name: `${safeFilename(inventory.inventoryCode)}.png` });
-  }
+    archive.on("error", fail);
+    res.on("error", fail);
+    res.on("finish", resolve);
+    res.on("close", () => {
+      if (!res.writableEnded) fail(new Error("ZIP response closed before completion."));
+    });
 
-  await archive.finalize();
+    archive.pipe(res);
+    for (const file of files) {
+      archive.append(file.buffer, { name: file.name });
+    }
+    Promise.resolve(archive.finalize()).catch(fail);
+  });
 };
 
 exports.generateRoomQrZip = async (req, res) => {
@@ -323,7 +352,7 @@ exports.generateRoomQrZip = async (req, res) => {
     await streamInventoryLabelsZip(
       res,
       inventories,
-      `Room-${safeFilename(room.roomNumber)}-QR-Codes.zip`
+      `${safeFilename(room.property?.name)} room ${safeFilename(room.roomNumber)} inventory qr codes.zip`
     );
 
     await logApiCall(
@@ -344,6 +373,10 @@ exports.generateRoomQrZip = async (req, res) => {
       "Failed generating room QR ZIP",
       "room"
     );
+
+    if (res.headersSent) {
+      return res.destroy(error);
+    }
 
     return res.status(500).json({
       message: "Internal Server Error",
@@ -393,7 +426,7 @@ exports.generatePropertyQrZip = async (req, res) => {
     await streamInventoryLabelsZip(
       res,
       inventories,
-      `${safeFilename(property.name)}-QR-Codes.zip`
+      `${safeFilename(property.name)} inventory qr codes.zip`
     );
 
     await logApiCall(
@@ -414,6 +447,10 @@ exports.generatePropertyQrZip = async (req, res) => {
       "Failed generating property QR ZIP",
       "property"
     );
+
+    if (res.headersSent) {
+      return res.destroy(error);
+    }
 
     return res.status(500).json({
       message: "Internal Server Error",
