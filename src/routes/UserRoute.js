@@ -22,6 +22,6 @@ router.post('/profile/verify/send-otp', authenticateToken, UserController.sendPr
 // Verify OTP from phone
 router.post('/profile/verify/verify-otp', authenticateToken, UserController.verifyProfileOTP);
 
-router.delete('/delete-account/:id', authenticateToken, UserController.deleteAccount);
+router.delete('/delete-account/:id', authenticateToken, authorizeRole(1), UserController.deleteAccount);
 
 module.exports = router;
