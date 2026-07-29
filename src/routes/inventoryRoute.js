@@ -20,8 +20,8 @@ router.get("/", authenticateToken, authorizeRole(1,3), authorizePage("Inventory 
 router.get("/:id", authenticateToken, authorizePage("Inventory Management","read"), controller.getInventoryById);
 router.post("/by-ids",authenticateToken, authorizePage("Inventory Management","read"), controller.getInventoryByIds);
 router.get("/qr/inventory/:inventoryId", authenticateToken, authorizeRole(1,3), authorizePage("Inventory Management","read"), controller.generateInventoryQr );
-router.get("/qr/room/:roomId", authenticateToken, authorizeRole(1,3), authorizePage("Inventory Management","read"), controller.generateRoomQrPdf);
-router.get("/qr/property/:propertyId", authenticateToken, authorizeRole(1,3), authorizePage("Inventory Management","read"), controller.generatePropertyQrPdf);
+router.get("/qr/room/:roomId", authenticateToken, authorizeRole(1,3), authorizePage("Inventory Management","read"), controller.generateRoomQrZip);
+router.get("/qr/property/:propertyId", authenticateToken, authorizeRole(1,3), authorizePage("Inventory Management","read"), controller.generatePropertyQrZip);
 router.put("/:id", authenticateToken, authorizePage("Inventory Management","write"), controller.updateInventory);
 router.delete("/:id", authenticateToken, authorizePage("Inventory Management","write"), controller.deleteInventory);
 router.get('/available/:roomId',authenticateToken, controller.getAvailableByRoom);
