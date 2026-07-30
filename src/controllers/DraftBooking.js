@@ -1,11 +1,31 @@
 const moment = require("moment");
 const sequelize = require("../config/database");
 const { Op } = require("sequelize");
-const { Property, Rooms, PropertyRateCard, User, Booking } = require("../models");
-const PaymentTransaction = require("../models/paymentTransaction");
+const {
+    Property,
+    Rooms,
+    PropertyRateCard,
+    User,
+    Booking: RealBooking,
+    DraftBooking: DraftBookingModel,
+    DraftPaymentTransaction,
+    Inventory
+} = require("../models");
 const UserKYC = require("../models/userKYC");
 const { logApiCall } = require("../helpers/auditLog");
-const { generateAndSendAcknowledgementReceipt } = require("../utils/acknowledgementReceiptService");
+
+let draftTablesReady;
+
+function ensureDraftTables() {
+    if (!draftTablesReady) {
+        draftTablesReady = Promise.all([
+            DraftBookingModel.sync({ alter: true }),
+            DraftPaymentTransaction.sync({ alter: true })
+        ]);
+    }
+
+    return draftTablesReady;
+}
 
 function toRupees(value) {
     if (value === undefined || value === null || value === "") return 0;
@@ -30,6 +50,121 @@ function getSecurityDepositAmount(type, monthlyRent, enteredAmount) {
     if (type === "1+1") return Math.round(Number(monthlyRent || 0));
     if (type === "1+2") return Math.round(Number(monthlyRent || 0) * 2);
     return Math.round(Number(enteredAmount || 0));
+}
+
+function normalizeBoolean(value) {
+    if (typeof value === "boolean") return value;
+    if (["true", "yes", "1"].includes(String(value).toLowerCase())) return true;
+    if (["false", "no", "0"].includes(String(value).toLowerCase())) return false;
+    return null;
+}
+
+function normalizeMealPlan(value) {
+    const normalized = String(value || "").trim().toUpperCase().replace(/[\s-]+/g, "_");
+
+    if (["NONE", "NO", "NO_MEAL", "WITHOUT_MEAL", "0"].includes(normalized)) return "NONE";
+    if (["2", "2_TIME", "2_TIMES", "TWO_TIME", "TWO_TIMES"].includes(normalized)) return "2_TIMES";
+    if (["4", "4_TIME", "4_TIMES", "FOUR_TIME", "FOUR_TIMES"].includes(normalized)) return "4_TIMES";
+
+    return null;
+}
+
+function getMealAmount(mealPlan) {
+    if (mealPlan === "2_TIMES") return 4000;
+    if (mealPlan === "4_TIMES") return 6000;
+    return 0;
+}
+
+async function getRoomReservedCount(roomId, transaction = null) {
+    const [liveCount, draftCount] = await Promise.all([
+        RealBooking.count({
+            where: {
+                roomId,
+                status: {
+                    [Op.in]: ["pending", "approved", "active"]
+                }
+            },
+            transaction
+        }),
+        DraftBookingModel.count({
+            where: {
+                roomId,
+                status: {
+                    [Op.in]: ["draft", "payment_reviewed", "payment_confirmed"]
+                }
+            },
+            transaction
+        })
+    ]);
+
+    return liveCount + draftCount;
+}
+
+async function releaseInventoryForDraftBooking(draftBooking, transaction = null) {
+    if (!draftBooking.assignedItems || draftBooking.assignedItems.length === 0) return;
+
+    await Inventory.update(
+        { status: "Available" },
+        {
+            where: { id: draftBooking.assignedItems },
+            transaction
+        }
+    );
+
+    draftBooking.assignedItems = [];
+    await draftBooking.save({ transaction });
+}
+
+async function assignInventorySetToDraftBooking(draftBooking, setNumber, transaction) {
+    if (!setNumber) {
+        return { error: "setNumber is required", statusCode: 400 };
+    }
+
+    if (!draftBooking.roomId) {
+        return { error: "Room must be selected before assigning inventory", statusCode: 400 };
+    }
+
+    const room = await Rooms.findByPk(draftBooking.roomId, {
+        transaction,
+        lock: transaction ? transaction.LOCK.UPDATE : undefined
+    });
+
+    if (!room) {
+        return { error: "Room not found", statusCode: 400 };
+    }
+
+    const items = await Inventory.findAll({
+        where: {
+            propertyId: room.propertyId,
+            roomId: room.id,
+            setNumber,
+            isCommonAsset: false
+        },
+        transaction,
+        lock: transaction ? transaction.LOCK.UPDATE : undefined,
+        order: [["id", "ASC"]]
+    });
+
+    if (items.length === 0) {
+        return { error: "Selected set has no inventory", statusCode: 400 };
+    }
+
+    if (items.some(item => item.status !== "Available")) {
+        return { error: "Selected set is not fully available", statusCode: 400 };
+    }
+
+    const assignedInventory = items.map(item => item.id);
+
+    await releaseInventoryForDraftBooking(draftBooking, transaction);
+    await Inventory.update(
+        { status: "Allocated" },
+        { where: { id: assignedInventory }, transaction }
+    );
+
+    draftBooking.assignedItems = assignedInventory;
+    await draftBooking.save({ transaction });
+
+    return { assignedInventory };
 }
 
 function formatBookingOption(booking) {
@@ -178,91 +313,27 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
     };
 }
 
-exports.getFormData=async(req,res)=>{
-    try {
-        const properties = await Property.findAll({
-            attributes: ["id", "name", "address"],
-            include: [
-                {
-                    model: Rooms,
-                    as: "rooms",
-                    attributes: [
-                        "id",
-                        "roomNumber",
-                        "roomType",
-                        "capacity",
-                        "floorNumber",
-                        "monthlyRent",
-                        "depositAmount",
-                        "status"
-                    ],
-                    where: {
-                        status: "available"
-                    },
-                    required: false
-                },
-                {
-                    model: PropertyRateCard,
-                    as: "rateCard",
-                    attributes: [
-                        "id",
-                        "roomType",
-                        "rent"
-                    ],
-                    required: false
-                }
-            ]
-        });
-
-        const users = await User.findAll({
-            attributes: ["id", "fullName", "email", "phone"],
-            order: [["fullName", "ASC"]]
-        });
-
-        const formattedProperties = properties.map(property => ({
-            id: property.id,
-            name: property.name,
-            address: property.address,
-            rooms: (property.rooms || []).map(room => {
-
-                const rateCard = (property.rateCard || []).find(
-                    rate => rate.roomType === room.roomType
-                );
-
-                return {
-                    id: room.id,
-                    roomNumber: room.roomNumber,
-                    roomType: room.roomType,
-                    capacity: room.capacity,
-                    floorNumber: room.floorNumber,
-                    depositAmount: room.depositAmount,
-                    status: room.status,
-
-                    monthlyRent: rateCard
-                        ? rateCard.rent
-                        : room.monthlyRent
-                };
-            })
-        }));
-
-        await logApiCall(req, res, 200, "Fetched draft booking form data", "Draft Booking");
-
-        return res.status(200).json({properties: formattedProperties, users});
-
-    } catch (err) {
-        console.error(err);
-        await logApiCall(req, res, 500, "Error occurred while fetching draft booking form data", "Draft Booking");
-        return res.status(500).json({message: "Internal server error"});
-    }
-}
-
 exports.draftBooking=async(req,res)=>{
+    await ensureDraftTables();
     const transaction = await sequelize.transaction();
 
     try {
-        const {propertyId, roomId, userId, checkInDate, duration, bookingType, bookingSource = "OFFLINE", monthlyRent} = req.body;
+        const {
+            propertyId,
+            roomId,
+            userId,
+            checkInDate,
+            duration,
+            bookingType,
+            bookingSource = "OFFLINE",
+            monthlyRent,
+            isRentIncludingMeals,
+            mealPlan,
+            totalMonthlyAmount,
+            setNumber
+        } = req.body;
 
-        if (!propertyId || !roomId || !userId || !checkInDate || !duration || !bookingType) {
+        if (!propertyId || !roomId || !userId || !checkInDate || !duration || !bookingType || isRentIncludingMeals === undefined) {
             await transaction.rollback();
             return res.status(400).json({message: "Missing required fields."});
         }
@@ -280,14 +351,23 @@ exports.draftBooking=async(req,res)=>{
         }
 
         const normalizedDuration = Number(duration);
-        if (!Number.isInteger(normalizedDuration) || normalizedDuration <= 0) {
+        if (!Number.isInteger(normalizedDuration) || normalizedDuration < 6 || normalizedDuration > 12) {
             await transaction.rollback();
-            return res.status(400).json({message: "duration must be a positive integer."});
+            return res.status(400).json({message: "duration must be between 6 and 12 months."});
         }
 
         if (!moment(checkInDate, "YYYY-MM-DD", true).isValid()) {
             await transaction.rollback();
             return res.status(400).json({message: "checkInDate must be in YYYY-MM-DD format."});
+        }
+
+        const normalizedCheckInDate = moment(checkInDate, "YYYY-MM-DD", true);
+        const today = moment().startOf("day");
+        const maxCheckInDate = moment(today).add(3, "months").endOf("day");
+
+        if (normalizedCheckInDate.isBefore(today) || normalizedCheckInDate.isAfter(maxCheckInDate)) {
+            await transaction.rollback();
+            return res.status(400).json({message: "checkInDate must be between today and 3 months from today."});
         }
 
         if (
@@ -297,6 +377,23 @@ exports.draftBooking=async(req,res)=>{
         ) {
             await transaction.rollback();
             return res.status(400).json({message: "monthlyRent must be a positive number."});
+        }
+
+        const rentIncludesMeals = normalizeBoolean(isRentIncludingMeals);
+        if (rentIncludesMeals === null) {
+            await transaction.rollback();
+            return res.status(400).json({message: "isRentIncludingMeals must be true or false."});
+        }
+
+        const normalizedMealPlan = normalizeMealPlan(mealPlan || "NONE");
+        if (!normalizedMealPlan) {
+            await transaction.rollback();
+            return res.status(400).json({message: "mealPlan must be NONE, 2_TIMES or 4_TIMES."});
+        }
+
+        if (rentIncludesMeals && normalizedMealPlan === "NONE") {
+            await transaction.rollback();
+            return res.status(400).json({message: "mealPlan must be 2_TIMES or 4_TIMES when rent includes meals."});
         }
 
         const property = await Property.findByPk(propertyId, {
@@ -346,15 +443,7 @@ exports.draftBooking=async(req,res)=>{
             return res.status(404).json({message: "Rate card not found."});
         }
 
-        const activeCount = await Booking.count({
-            where: {
-                roomId,
-                status: {
-                    [Op.in]: ["pending", "approved", "active"]
-                }
-            },
-            transaction
-        });
+        const activeCount = await getRoomReservedCount(roomId, transaction);
 
         if (activeCount >= room.capacity) {
             await transaction.rollback();
@@ -366,7 +455,7 @@ exports.draftBooking=async(req,res)=>{
             .subtract(1, "day")
             .format("YYYY-MM-DD");
 
-        const overlappingBooking = await Booking.findOne({
+        const overlappingBooking = await RealBooking.findOne({
             where: {
                 userId,
                 status: {
@@ -400,14 +489,63 @@ exports.draftBooking=async(req,res)=>{
             return res.status(400).json({message: "User already has an active booking for this period."});
         }
 
+        const overlappingDraftBooking = await DraftBookingModel.findOne({
+            where: {
+                userId,
+                status: {
+                    [Op.in]: ["draft", "payment_reviewed", "payment_confirmed"]
+                },
+                [Op.or]: [
+                    {
+                        checkOutDate: {
+                            [Op.is]: null
+                        },
+                        checkInDate: {
+                            [Op.lte]: checkOutDate
+                        }
+                    },
+                    {
+                        checkOutDate: {
+                            [Op.gte]: checkInDate
+                        },
+                        checkInDate: {
+                            [Op.lte]: checkOutDate
+                        }
+                    }
+                ]
+            },
+            transaction,
+            lock: transaction.LOCK.UPDATE
+        });
+
+        if (overlappingDraftBooking) {
+            await transaction.rollback();
+            return res.status(400).json({message: "User already has an active draft booking for this period."});
+        }
+
         const finalMonthlyRent =
             monthlyRent !== undefined && monthlyRent !== null
                 ? Number(monthlyRent)
                 : Number(rateCard.rent ?? room.monthlyRent);
-        const securityDeposit = Number(room.depositAmount ?? finalMonthlyRent * 2);
-        const totalAmount = Math.round(finalMonthlyRent * normalizedDuration + securityDeposit);
 
-        const booking = await Booking.create(
+        const mealAmount = rentIncludesMeals ? 0 : getMealAmount(normalizedMealPlan);
+        const finalTotalMonthlyAmount = Math.round(finalMonthlyRent + mealAmount);
+
+        if (
+            totalMonthlyAmount !== undefined &&
+            totalMonthlyAmount !== null &&
+            Number(totalMonthlyAmount) !== finalTotalMonthlyAmount
+        ) {
+            await transaction.rollback();
+            return res.status(400).json({
+                message: "totalMonthlyAmount must equal monthlyRent plus meal amount."
+            });
+        }
+
+        const securityDeposit = Number(room.depositAmount ?? finalTotalMonthlyAmount * 2);
+        const totalAmount = Math.round(finalTotalMonthlyAmount * normalizedDuration + securityDeposit);
+
+        const booking = await DraftBookingModel.create(
             {
                 propertyId,
                 userId,
@@ -422,7 +560,7 @@ exports.draftBooking=async(req,res)=>{
                 checkOutDate,
                 duration: normalizedDuration,
 
-                monthlyRent: finalMonthlyRent,
+                monthlyRent: finalTotalMonthlyAmount,
 
                 totalAmount,
                 remainingAmount: totalAmount,
@@ -435,35 +573,51 @@ exports.draftBooking=async(req,res)=>{
                 adminContractStatus: "NOT_SIGNED",
                 assignedItems: [],
 
-                meta: {}
+                meta: {
+                    baseMonthlyRent: finalMonthlyRent,
+                    isRentIncludingMeals: rentIncludesMeals,
+                    mealPlan: normalizedMealPlan,
+                    mealAmount,
+                    totalMonthlyAmount: finalTotalMonthlyAmount
+                }
             },
             {
                 transaction
             }
         );
 
+        if (setNumber !== undefined && setNumber !== null && setNumber !== "") {
+            const assignment = await assignInventorySetToDraftBooking(booking, setNumber, transaction);
+
+            if (assignment.error) {
+                await transaction.rollback();
+                return res.status(assignment.statusCode).json({ message: assignment.error });
+            }
+        }
+
         room.status = activeCount + 1 >= room.capacity ? "booked" : "available";
         await room.save({ transaction });
 
         await transaction.commit();
-        await logApiCall(req, res, 201, "Draft booking created successfully", "Booking", booking.id);
-        return res.status(201).json({message: "Booking created successfully.", booking});
+        await logApiCall(req, res, 201, "Draft booking created successfully", "Draft Booking", booking.id);
+        return res.status(201).json({message: "Draft booking created successfully.", booking});
     } catch (err) {
         await transaction.rollback();
         console.error(err);
-        await logApiCall(req, res, 500, "Error while creating booking", "Booking");
+        await logApiCall(req, res, 500, "Error while creating draft booking", "Draft Booking");
         return res.status(500).json({ message: "Internal server error." });
     }
 }
 
 exports.getBookingPaymentFormData = async (req, res) => {
     try {
+        await ensureDraftTables();
         const { bookingId } = req.query;
 
-        const bookings = await Booking.findAll({
+        const bookings = await DraftBookingModel.findAll({
             where: {
                 status: {
-                    [Op.in]: ["pending", "approved", "active"]
+                    [Op.in]: ["draft", "payment_reviewed", "payment_confirmed"]
                 }
             },
             include: [
@@ -483,7 +637,7 @@ exports.getBookingPaymentFormData = async (req, res) => {
         if (bookingId) {
             const selectedBooking = bookings.find(
                 booking => String(booking.id) === String(bookingId)
-            ) || await Booking.findByPk(bookingId, {
+            ) || await DraftBookingModel.findByPk(bookingId, {
                 include: [
                     { model: User, as: "user", attributes: ["id", "fullName", "email", "phone"] },
                     { model: Rooms, as: "room", attributes: ["id", "roomNumber", "roomType", "monthlyRent", "depositAmount"] },
@@ -496,13 +650,10 @@ exports.getBookingPaymentFormData = async (req, res) => {
                 return res.status(404).json({ success: false, message: "Booking not found" });
             }
 
-            const transactions = await PaymentTransaction.findAll({
+            const transactions = await DraftPaymentTransaction.findAll({
                 where: {
-                    bookingId: selectedBooking.id,
-                    status: "SUCCESS",
-                    type: {
-                        [Op.ne]: "REFUND"
-                    }
+                    draftBookingId: selectedBooking.id,
+                    status: "SUCCESS"
                 }
             });
 
@@ -526,6 +677,11 @@ exports.getBookingPaymentFormData = async (req, res) => {
                 checkOutDate: selectedBooking.checkOutDate,
                 duration: selectedBooking.duration,
                 monthlyRent,
+                baseMonthlyRent: Number(selectedBooking.meta?.baseMonthlyRent || monthlyRent),
+                isRentIncludingMeals: selectedBooking.meta?.isRentIncludingMeals ?? null,
+                mealPlan: selectedBooking.meta?.mealPlan || null,
+                mealAmount: Number(selectedBooking.meta?.mealAmount || 0),
+                totalMonthlyAmount: Number(selectedBooking.meta?.totalMonthlyAmount || monthlyRent),
                 totalPaidAmount: Math.round(paidRupees),
                 depositAmount: Number(selectedBooking.room?.depositAmount || 0),
                 pan: {
@@ -547,13 +703,14 @@ exports.getBookingPaymentFormData = async (req, res) => {
 
 exports.reviewBookingPayment = async (req, res) => {
     try {
+        await ensureDraftTables();
         const { bookingId } = req.body;
 
         if (!bookingId) {
             return res.status(400).json({ success: false, message: "bookingId is required" });
         }
 
-        const booking = await Booking.findByPk(bookingId, {
+        const booking = await DraftBookingModel.findByPk(bookingId, {
             include: [
                 { model: User, as: "user", attributes: ["id", "fullName", "email", "phone"] },
                 { model: Rooms, as: "room", attributes: ["id", "roomNumber", "roomType", "monthlyRent", "depositAmount"] },
@@ -579,6 +736,15 @@ exports.reviewBookingPayment = async (req, res) => {
         }
 
         await logApiCall(req, res, 200, `Reviewed draft booking payment (Booking ID: ${booking.id})`, "Draft Booking", req.user?.id || 0);
+        booking.status = "payment_reviewed";
+        booking.meta = {
+            ...(booking.meta || {}),
+            draftBookingPaymentReview: review,
+            reviewedAt: new Date().toISOString(),
+            reviewedByAdminId: req.user?.id || null
+        };
+        await booking.save();
+
         return res.json({
             success: true,
             message: "Booking payment review validated successfully",
@@ -592,6 +758,7 @@ exports.reviewBookingPayment = async (req, res) => {
 };
 
 exports.confirmBookingPayment = async (req, res) => {
+    await ensureDraftTables();
     const transaction = await sequelize.transaction();
 
     try {
@@ -614,7 +781,7 @@ exports.confirmBookingPayment = async (req, res) => {
             return res.status(400).json({ success: false, message: "paymentDate must be in DD/MM/YYYY format" });
         }
 
-        const lockedBooking = await Booking.findByPk(bookingId, {
+        const lockedBooking = await DraftBookingModel.findByPk(bookingId, {
             transaction,
             lock: transaction.LOCK.UPDATE
         });
@@ -632,7 +799,7 @@ exports.confirmBookingPayment = async (req, res) => {
 
         const confirmedTransactionId = lockedBooking.meta?.draftBookingPaymentTransactionId;
         if (confirmedTransactionId) {
-            const existingTransaction = await PaymentTransaction.findByPk(confirmedTransactionId, {
+            const existingTransaction = await DraftPaymentTransaction.findByPk(confirmedTransactionId, {
                 transaction
             });
 
@@ -645,9 +812,9 @@ exports.confirmBookingPayment = async (req, res) => {
             });
         }
 
-        const existingDraftPayment = await PaymentTransaction.findOne({
+        const existingDraftPayment = await DraftPaymentTransaction.findOne({
             where: {
-                bookingId: lockedBooking.id,
+                draftBookingId: lockedBooking.id,
                 status: "SUCCESS",
                 type: "OFFLINE",
                 merchantOrderId: {
@@ -673,7 +840,7 @@ exports.confirmBookingPayment = async (req, res) => {
             });
         }
 
-        const booking = await Booking.findByPk(bookingId, {
+        const booking = await DraftBookingModel.findByPk(bookingId, {
             include: [
                 { model: User, as: "user", attributes: ["id", "fullName", "email", "phone"] },
                 { model: Rooms, as: "room", attributes: ["id", "roomNumber", "roomType", "monthlyRent", "depositAmount"] },
@@ -697,8 +864,8 @@ exports.confirmBookingPayment = async (req, res) => {
         const amountReceived = review.calculated.totalAmountReceived;
         const amountPaise = Math.round(amountReceived * 100);
 
-        const paymentTransaction = await PaymentTransaction.create({
-            bookingId: lockedBooking.id,
+        const paymentTransaction = await DraftPaymentTransaction.create({
+            draftBookingId: lockedBooking.id,
             userId: lockedBooking.userId,
             merchantOrderId: `DRAFT-OFFLINE-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
             amount: amountPaise,
@@ -725,6 +892,7 @@ exports.confirmBookingPayment = async (req, res) => {
 
         const currentRemaining = Number(lockedBooking.remainingAmount || lockedBooking.totalAmount || 0);
         lockedBooking.bookingSource = "OFFLINE";
+        lockedBooking.status = "payment_confirmed";
         lockedBooking.remainingAmount = Math.max(Math.round(currentRemaining - amountReceived), 0);
         lockedBooking.paymentStatus = lockedBooking.remainingAmount === 0 ? "COMPLETED" : "PARTIAL";
 
@@ -745,7 +913,7 @@ exports.confirmBookingPayment = async (req, res) => {
         await lockedBooking.save({ transaction });
         await transaction.commit();
 
-        const acknowledgementSent = await generateAndSendAcknowledgementReceipt(paymentTransaction);
+        const acknowledgementSent = false;
 
         await logApiCall(req, res, 201, `Confirmed draft booking payment (Booking ID: ${lockedBooking.id}, Transaction ID: ${paymentTransaction.id})`, "Draft Booking", lockedBooking.id);
         return res.status(201).json({
