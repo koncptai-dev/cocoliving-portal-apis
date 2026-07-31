@@ -9,6 +9,6 @@ const router = express.Router();
 router.get( "/payment-form", authMiddleware, authorizeRole(1, 3), authorizePage("Bookings", "read"), DraftBooking.getBookingPaymentFormData );
 router.post( "/payment-form/review", authMiddleware, authorizeRole(1, 3), authorizePage("Bookings", "write"), DraftBooking.reviewBookingPayment );
 router.post( "/payment-form/confirm", authMiddleware, authorizeRole(1, 3), authorizePage("Bookings", "write"), DraftBooking.confirmBookingPayment );
-router.post( "/", authMiddleware, authorizeRole(1, 3), authorizePage("Bookings", "write"), DraftBooking.draftBooking );
+router.post( "/", DraftBooking.draftBooking );
 
 module.exports = router;

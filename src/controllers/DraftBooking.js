@@ -572,14 +572,11 @@ exports.draftBooking=async(req,res)=>{
                 contractStatus: "NOT_SIGNED",
                 adminContractStatus: "NOT_SIGNED",
                 assignedItems: [],
-
-                meta: {
-                    baseMonthlyRent: finalMonthlyRent,
-                    isRentIncludingMeals: rentIncludesMeals,
-                    mealPlan: normalizedMealPlan,
-                    mealAmount,
-                    totalMonthlyAmount: finalTotalMonthlyAmount
-                }
+                baseMonthlyRent: finalMonthlyRent,
+                isRentIncludingMeals: rentIncludesMeals,
+                mealPlan: normalizedMealPlan,
+                mealAmount,
+                totalMonthlyAmount: finalTotalMonthlyAmount
             },
             {
                 transaction
