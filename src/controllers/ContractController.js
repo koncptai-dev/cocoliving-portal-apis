@@ -553,7 +553,7 @@ exports.initiateEsign = async (req, res) => {
     const pdfBase64 =
       finalPdfBytes.toString("base64");
     const referenceDocId = `booking-${bookingId}-${Date.now()}`;
-    const signatureType = process.env.ESIGN_SIGNATURE_TYPE || "aadhaar";
+    const signatureType = "aadhaar";
 
     const signers = [];
     let sequence = 1;
