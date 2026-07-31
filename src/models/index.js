@@ -35,6 +35,8 @@ const GuestVisit = require("./guestVisit");
 const Blog = require("./Blog");     // ← ADD THIS LINE
 const DepositDeduction = require("./depositDeduction");
 const RoomTransfer = require("./roomTransfer");
+const DraftBooking = require("./draftBooking");
+const DraftPaymentTransaction = require("./draftPaymentTransaction");
 
 User.hasOne(UserKYC, {
   foreignKey: "userId",
@@ -75,10 +77,16 @@ AuditLog.belongsTo(User, {
 Rooms.hasMany(Booking, { foreignKey: "roomId", as: "bookings" });
 Booking.belongsTo(Rooms, { foreignKey: "roomId", as: "room" });
 
+Rooms.hasMany(DraftBooking, { foreignKey: "roomId", as: "draftBookings" });
+DraftBooking.belongsTo(Rooms, { foreignKey: "roomId", as: "room" });
+
 Booking.belongsTo(Property, { foreignKey: 'propertyId', as: 'property'});
+DraftBooking.belongsTo(Property, { foreignKey: 'propertyId', as: 'property'});
 
 User.hasMany(Booking, { foreignKey: "userId", as: "bookings", onDelete: "CASCADE" });
 Booking.belongsTo(User, { foreignKey: "userId", as: "user" });
+User.hasMany(DraftBooking, { foreignKey: "userId", as: "draftBookings", onDelete: "CASCADE" });
+DraftBooking.belongsTo(User, { foreignKey: "userId", as: "user" });
 
 Event.hasMany(EventParticipation, { foreignKey: "eventId" });
 EventParticipation.belongsTo(Event, { foreignKey: "eventId" });
@@ -116,6 +124,11 @@ FoodMenu.belongsTo(Property, { foreignKey: "propertyId", as: "property" });
 
 PropertyRateCard.hasMany(Booking, { foreignKey: "rateCardId", as: "bookings" });
 Booking.belongsTo(PropertyRateCard, { foreignKey: "rateCardId", as: "rateCard", });
+PropertyRateCard.hasMany(DraftBooking, { foreignKey: "rateCardId", as: "draftBookings" });
+DraftBooking.belongsTo(PropertyRateCard, { foreignKey: "rateCardId", as: "rateCard", });
+
+DraftBooking.hasMany(DraftPaymentTransaction, { foreignKey: "draftBookingId", as: "draftPaymentTransactions" });
+DraftPaymentTransaction.belongsTo(DraftBooking, { foreignKey: "draftBookingId", as: "draftBooking" });
 
 // Inventory and Service History
 Inventory.belongsTo(Property, { foreignKey: "propertyId", as: "property" });
@@ -304,5 +317,7 @@ module.exports = {
   GuestVisit,
   Blog,
   DepositDeduction,
-  RoomTransfer
+  RoomTransfer,
+  DraftBooking,
+  DraftPaymentTransaction
 }
