@@ -553,7 +553,7 @@ exports.initiateEsign = async (req, res) => {
     const pdfBase64 =
       finalPdfBytes.toString("base64");
     const referenceDocId = `booking-${bookingId}-${Date.now()}`;
-    const signatureType = process.env.ESIGN_SIGNATURE_TYPE || "Electronic";
+    const signatureType = process.env.ESIGN_SIGNATURE_TYPE || "aadhaar";
 
     const signers = [];
     let sequence = 1;
@@ -566,7 +566,7 @@ exports.initiateEsign = async (req, res) => {
       signer_mobile: booking.user.phone,
       signature_type: signatureType,
       trigger_esign_request: true,
-      authentication_mode: "email",
+      authentication_mode: "mobile",
       document_to_be_signed: referenceDocId,
       signer_position: { appearance: [residentBox.box] },
       page_number: residentBox.page_number,
@@ -582,7 +582,7 @@ exports.initiateEsign = async (req, res) => {
         signer_mobile: booking.user.parentMobile,
         signature_type: signatureType,
         trigger_esign_request: true,
-        authentication_mode: "email",
+        authentication_mode: "mobile",
         document_to_be_signed: referenceDocId,
         signer_position: { appearance: [guardianBox.box] },
         page_number: guardianBox.page_number,
