@@ -165,6 +165,10 @@ const DraftBooking = sequelize.define(
       type: DataTypes.JSON,
       allowNull: true,
     },
+    confirmed: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    }
   },
   {
     tableName: "draft_bookings",

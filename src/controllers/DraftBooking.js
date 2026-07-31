@@ -614,7 +614,7 @@ exports.getBookingPaymentFormData = async (req, res) => {
         const bookings = await DraftBookingModel.findAll({
             where: {
                 status: {
-                    [Op.in]: ["draft", "payment_reviewed", "payment_confirmed"]
+                    [Op.in]: ["pending", "payment_reviewed", "payment_confirmed"]
                 }
             },
             include: [
@@ -870,7 +870,6 @@ exports.confirmBookingPayment = async (req, res) => {
             status: "SUCCESS",
             paymentMode: "OFFLINE",
             offlinePaymentType: normalizedPaymentType,
-            adminNote: adminNote || null,
             createdByAdminId: adminId,
             paymentDate: paymentDate || null,
             rawResponse: {
