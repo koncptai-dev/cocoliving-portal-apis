@@ -50,10 +50,6 @@ const DraftPaymentTransaction = sequelize.define(
       type: DataTypes.ENUM("CASH", "CHEQUE", "UPI"),
       allowNull: true,
     },
-    adminNote: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-    },
     paymentImage: {
       type: DataTypes.TEXT,
       allowNull: true,
@@ -74,6 +70,10 @@ const DraftPaymentTransaction = sequelize.define(
       type: DataTypes.JSON,
       allowNull: true,
     },
+    confirmed: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    }
   },
   {
     tableName: "draft_payment_transactions",
