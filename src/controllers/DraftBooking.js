@@ -15,8 +15,6 @@ const UserPermission = require("../models/userPermissoin");
 const UserKYC = require("../models/userKYC");
 const { logApiCall } = require("../helpers/auditLog");
 
-let draftTablesReady;
-
 async function getAccessiblePropertyIds(user) {
     if (!user) return [];
     if (user.role === 1) return null;
@@ -79,17 +77,6 @@ async function getDraftBookingAccessFilter(user, baseWhere = {}) {
     }
 
     return { accessDenied: false, whereClause, accessContext };
-}
-
-function ensureDraftTables() {
-    if (!draftTablesReady) {
-        draftTablesReady = Promise.all([
-            DraftBookingModel.sync({ alter: true }),
-            DraftPaymentTransaction.sync({ alter: true })
-        ]);
-    }
-
-    return draftTablesReady;
 }
 
 function toRupees(value) {
@@ -440,7 +427,6 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
 }
 
 exports.draftBooking=async(req,res)=>{
-    await ensureDraftTables();
     const transaction = await sequelize.transaction();
 
     try {
@@ -726,7 +712,6 @@ exports.draftBooking=async(req,res)=>{
 
 exports.getBookingPaymentFormData = async (req, res) => {
     try {
-        await ensureDraftTables();
         const { bookingId } = req.query;
 
         if (bookingId !== undefined && bookingId !== null && bookingId !== "" && !isPositiveInteger(bookingId)) {
@@ -836,7 +821,6 @@ exports.getBookingPaymentFormData = async (req, res) => {
 
 exports.getDraftBookingDetails = async (req, res) => {
     try {
-        await ensureDraftTables();
         const bookingId = req.params.bookingId || req.query.bookingId;
 
         if (!bookingId) {
@@ -982,7 +966,6 @@ exports.reviewBookingPayment = async (req, res) => {
     const transaction = await sequelize.transaction();
 
     try {
-        await ensureDraftTables();
         const { bookingId, paymentType = "CASH", paymentDate } = req.body;
         const adminId = req.user?.id || null;
 
@@ -1141,7 +1124,6 @@ exports.reviewBookingPayment = async (req, res) => {
 };
 
 exports.confirmBookingPayment = async (req, res) => {
-    await ensureDraftTables();
     const transaction = await sequelize.transaction();
 
     try {
