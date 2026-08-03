@@ -17,6 +17,14 @@ const DraftBooking = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: false,
     },
+    createdByRole: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    createdByAdminId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
     rateCardId: {
       type: DataTypes.INTEGER,
       allowNull: false,
@@ -79,9 +87,16 @@ const DraftBooking = sequelize.define(
       allowNull: false,
     },
     status: {
-      type: DataTypes.STRING,
+      type: DataTypes.ENUM(
+        "draft_booking",
+        "draft_payment",
+        "draft_submitted",
+        "draft_confirmed",
+        "draft_rejected",
+        "draft_cancelled"
+      ),
       allowNull: false,
-      defaultValue: "draft",
+      defaultValue: "draft_booking",
     },
     totalAmount: {
       type: DataTypes.INTEGER,
