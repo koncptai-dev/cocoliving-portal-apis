@@ -87,14 +87,7 @@ const DraftBooking = sequelize.define(
       allowNull: false,
     },
     status: {
-      type: DataTypes.ENUM(
-        "draft_booking",
-        "draft_payment",
-        "draft_submitted",
-        "draft_confirmed",
-        "draft_rejected",
-        "draft_cancelled"
-      ),
+      type: DataTypes.ENUM("draft_booking", "draft_payment", "draft_submitted", "draft_confirmed", "draft_rejected", "draft_cancelled"),
       allowNull: false,
       defaultValue: "draft_booking",
     },

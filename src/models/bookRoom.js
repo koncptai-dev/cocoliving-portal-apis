@@ -69,6 +69,16 @@ const Booking = sequelize.define(
       type: DataTypes.FLOAT,
       allowNull: false,
     },
+    isRentIncludingMeals: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    mealPlan: {
+      type: DataTypes.ENUM('NONE', '2_TIMES', '4_TIMES'),
+      allowNull: false,
+      defaultValue: 'NONE',
+    },
 
     status: {
       type: DataTypes.STRING,

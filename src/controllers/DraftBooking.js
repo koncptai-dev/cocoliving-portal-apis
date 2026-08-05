@@ -7,6 +7,7 @@ const {
     PropertyRateCard,
     User,
     Booking: RealBooking,
+    PaymentTransaction,
     DraftBooking: DraftBookingModel,
     DraftPaymentTransaction,
     Inventory
@@ -105,7 +106,13 @@ function sendKnownError(res, err) {
 
     if (knownDbErrors.has(err.name)) {
         const message = err.errors?.[0]?.message || err.message || "Validation failed";
-        res.status(400).json({ success: false, message });
+        res.status(400).json({
+            success: false,
+            message,
+            error: err.name || "ValidationError",
+            details: err.errors || null,
+            stack: err.stack || null
+        });
         return true;
     }
 
@@ -114,6 +121,16 @@ function sendKnownError(res, err) {
 
 function isValidRupeeAmount(value) {
     return Number.isFinite(value) && value >= 0;
+}
+
+function buildErrorPayload(err, fallbackMessage = "Server error") {
+    return {
+        success: false,
+        message: err?.message || fallbackMessage,
+        error: err?.name || "Error",
+        details: err?.errors || null,
+        stack: err?.stack || null
+    };
 }
 
 function normalizeSecurityDepositType(type) {
@@ -202,6 +219,7 @@ async function getRoomReservedCount(roomId, transaction = null) {
         DraftBookingModel.count({
             where: {
                 roomId,
+                confirmed: false,
                 status: {
                     [Op.in]: ["draft_booking", "draft_payment", "draft_submitted", "draft_confirmed"]
                 }
@@ -280,6 +298,117 @@ async function assignInventorySetToDraftBooking(draftBooking, setNumber, transac
     return { assignedInventory };
 }
 
+async function markDraftBookingAsConfirmed(draftBooking, transaction) {
+    draftBooking.confirmed = true;
+
+    const paymentTransaction = await DraftPaymentTransaction.findOne({
+        where: {
+            draftBookingId: draftBooking.id
+        },
+        order: [["createdAt", "DESC"]],
+        transaction,
+        lock: transaction ? transaction.LOCK.UPDATE : undefined
+    });
+
+    if (paymentTransaction) {
+        paymentTransaction.confirmed = true;
+        await paymentTransaction.save({ transaction });
+    }
+
+    await convertDraftBookingToRealRecords(draftBooking, paymentTransaction, transaction);
+}
+
+async function getLatestDraftPaymentTransaction(draftBookingId, transaction = null) {
+    return DraftPaymentTransaction.findOne({
+        where: {
+            draftBookingId
+        },
+        order: [["createdAt", "DESC"]],
+        transaction,
+        lock: transaction ? transaction.LOCK.UPDATE : undefined
+    });
+}
+
+async function convertDraftBookingToRealRecords(draftBooking, draftPaymentTransaction, transaction) {
+    const paymentTransaction = draftPaymentTransaction || await getLatestDraftPaymentTransaction(draftBooking.id, transaction);
+
+    if (!paymentTransaction) {
+        throw new Error("Draft payment transaction not found for confirmed booking");
+    }
+
+    const realBooking = await RealBooking.create({
+        propertyId: draftBooking.propertyId,
+        userId: draftBooking.userId,
+        rateCardId: draftBooking.rateCardId,
+        bookingSource: draftBooking.bookingSource,
+        roomType: draftBooking.roomType,
+        roomId: draftBooking.roomId,
+        assignedItems: draftBooking.assignedItems || [],
+        checkInDate: draftBooking.checkInDate,
+        checkOutDate: draftBooking.checkOutDate,
+        duration: draftBooking.duration,
+        monthlyRent: draftBooking.monthlyRent,
+        isRentIncludingMeals: Boolean(draftBooking.isRentIncludingMeals),
+        mealPlan: draftBooking.mealPlan || "NONE",
+        status: "approved",
+        totalAmount: draftBooking.totalAmount,
+        remainingAmount: 0,
+        bookingType: draftBooking.bookingType,
+        paymentStatus: "COMPLETED",
+        onboardingStatus: draftBooking.onboardingStatus,
+        contractStatus: draftBooking.contractStatus,
+        adminContractStatus: draftBooking.adminContractStatus,
+        cancelRequestStatus: draftBooking.cancelRequestStatus,
+        userCancelReason: draftBooking.userCancelReason,
+        adminCancelReason: draftBooking.adminCancelReason,
+        cancelEffectiveCheckOutDate: draftBooking.cancelEffectiveCheckOutDate,
+        securityDepositPaid: draftBooking.securityDepositPaid,
+        monthlyPlanSelected: draftBooking.monthlyPlanSelected,
+        monthlyInstallment: draftBooking.monthlyInstallment,
+        installmentsPaid: draftBooking.installmentsPaid,
+        firstElectricityRechargeDone: draftBooking.firstElectricityRechargeDone,
+        alisteUserId: draftBooking.alisteUserId,
+        removedUserFromAliste: draftBooking.removedUserFromAliste,
+        meta: {
+            ...(draftBooking.meta || {}),
+            source: "draft-booking",
+            draftBookingId: draftBooking.id
+        }
+    }, { transaction });
+
+    await PaymentTransaction.create({
+        bookingId: realBooking.id,
+        userId: paymentTransaction.userId,
+        merchantOrderId: `INITIAL-${realBooking.id}-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+        amount: paymentTransaction.amount,
+        type: "INITIAL",
+        status: "SUCCESS",
+        paymentMode: "OFFLINE",
+        paymentDate: paymentTransaction.paymentDate || null,
+        offlinePaymentType: paymentTransaction.offlinePaymentType || null,
+        paymentImage: paymentTransaction.paymentImage || null,
+        totalAmountReceived: paymentTransaction.totalAmountReceived,
+        waiveCurrentMonthRent: paymentTransaction.waiveCurrentMonthRent,
+        securityDepositType: paymentTransaction.securityDepositType,
+        securityDepositAmount: paymentTransaction.securityDepositAmount,
+        advanceRentAmount: paymentTransaction.advanceRentAmount,
+        advanceRentDurationMonths: paymentTransaction.advanceRentDurationMonths,
+        mealAmount: draftBooking.mealAmount,
+        mealSubscriptionAmount: paymentTransaction.mealSubscriptionAmount,
+        mealSubscriptionDurationMonths: paymentTransaction.mealSubscriptionDurationMonths,
+        amcChargesAmount: paymentTransaction.amcChargesAmount,
+        panCardNumber: paymentTransaction.panCardNumber,
+        createdByAdminId: paymentTransaction.createdByAdminId,
+        rawResponse: paymentTransaction.rawResponse,
+        meta: {
+            ...(paymentTransaction.meta || {}),
+            source: "draft-booking",
+            draftBookingId: draftBooking.id,
+            draftPaymentTransactionId: paymentTransaction.id
+        }
+    }, { transaction });
+}
+
 function formatBookingOption(booking) {
     const userName = booking.user?.fullName || `User ${booking.userId}`;
     const propertyName = booking.property?.name || "Property";
@@ -307,15 +436,23 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
     const {
         totalAmountReceived,
         totalAmountReceivedRent,
+        waiveOff,
         rentAmount,
         currentMonthRent,
         waiveCurrentMonthRent = false,
-        waiveCurrentMonthRentApproval = false,
         securityDepositType,
         securityDepositAmount,
         securityDeposit,
         advanceRent,
         advanceRentAmount,
+        advanceRentDurationMonths,
+        advanceRentDuration,
+        durationOfAdvanceRentMonths,
+        mealSubscription,
+        mealSubscriptionAmount,
+        mealAmount,
+        mealSubscriptionDurationMonths,
+        durationOfMealSubscriptionMonths,
         amcCharges,
         amcChargeAmount,
         panCardNumber,
@@ -324,18 +461,58 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
 
     const depositType = normalizeSecurityDepositType(securityDepositType);
     const errors = [];
+    const waiveOffRequested = normalizeBoolean(waiveOff ?? waiveCurrentMonthRent);
+
+    if (waiveOffRequested === null) {
+        errors.push("waiveOff must be true or false");
+    }
+
+    const baseMonthlyRent = Math.round(Number(
+        booking.baseMonthlyRent ??
+        booking.monthlyRent ??
+        booking.totalMonthlyAmount ??
+        0
+    ));
+    const waiveOffDetails = calculateWaiveOffForRemainingDays(
+        booking.checkInDate,
+        baseMonthlyRent,
+        Boolean(waiveOffRequested)
+    );
 
     if (!depositType) {
         errors.push("securityDepositType must be 1+1, 1+2 or DYNAMIC");
     }
 
     const received = toRupees(totalAmountReceived ?? totalAmountReceivedRent);
-    const rent = toRupees(rentAmount ?? currentMonthRent);
+    const manualRent = toRupees(rentAmount ?? currentMonthRent ?? baseMonthlyRent);
+    const rent = Boolean(waiveOffRequested)
+        ? Math.max(0, Math.round(baseMonthlyRent - waiveOffDetails.amount))
+        : manualRent;
     const securityInput = securityDepositAmount ?? securityDeposit;
+    const normalizedSecurityInput =
+        securityInput === undefined || securityInput === null || securityInput === ""
+            ? null
+            : Math.round(Number(securityInput));
+    const expectedFixedSecurity = depositType && depositType !== "DYNAMIC"
+        ? getSecurityDepositAmount(depositType, booking.monthlyRent, securityInput)
+        : null;
     const security = depositType
         ? getSecurityDepositAmount(depositType, booking.monthlyRent, securityInput)
         : toRupees(securityInput);
     const advance = toRupees(advanceRent ?? advanceRentAmount);
+    const meal = toRupees(mealSubscriptionAmount ?? mealSubscription ?? mealAmount);
+    const parsedAdvanceRentDurationMonths =
+        advanceRentDurationMonths ?? advanceRentDuration ?? durationOfAdvanceRentMonths;
+    const parsedMealSubscriptionDurationMonths =
+        mealSubscriptionDurationMonths ?? durationOfMealSubscriptionMonths;
+    const advanceMonths =
+        parsedAdvanceRentDurationMonths === undefined || parsedAdvanceRentDurationMonths === null || parsedAdvanceRentDurationMonths === ""
+            ? null
+            : Number(parsedAdvanceRentDurationMonths);
+    const mealMonths =
+        parsedMealSubscriptionDurationMonths === undefined || parsedMealSubscriptionDurationMonths === null || parsedMealSubscriptionDurationMonths === ""
+            ? null
+            : Number(parsedMealSubscriptionDurationMonths);
     const amc = toRupees(amcCharges ?? amcChargeAmount);
 
     if (!isValidRupeeAmount(received) || received <= 0) {
@@ -350,6 +527,14 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
         errors.push("securityDepositAmount must be a valid amount");
     }
 
+    if (
+        expectedFixedSecurity !== null &&
+        normalizedSecurityInput !== null &&
+        normalizedSecurityInput !== expectedFixedSecurity
+    ) {
+        errors.push(`securityDepositAmount must be ${expectedFixedSecurity} for ${depositType} security deposit`);
+    }
+
     if (depositType === "DYNAMIC" && security <= 0) {
         errors.push("securityDepositAmount is required for Dynamic security deposit");
     }
@@ -358,22 +543,26 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
         errors.push("advanceRent must be a valid amount");
     }
 
+    if (!isValidRupeeAmount(meal)) {
+        errors.push("mealSubscriptionAmount must be a valid amount");
+    }
+
+    if (advanceMonths !== null && (!Number.isInteger(advanceMonths) || advanceMonths < 0)) {
+        errors.push("advanceRentDurationMonths must be a valid non-negative integer");
+    }
+
+    if (mealMonths !== null && (!Number.isInteger(mealMonths) || mealMonths < 0)) {
+        errors.push("mealSubscriptionDurationMonths must be a valid non-negative integer");
+    }
+
     if (!isValidRupeeAmount(amc)) {
         errors.push("amcCharges must be a valid amount");
     }
 
-    if (waiveCurrentMonthRent && !waiveCurrentMonthRentApproval) {
-        errors.push("Waive current month rent needs admin approval");
-    }
-
-    if (waiveCurrentMonthRent && rent !== 0) {
-        errors.push("rentAmount must be 0 when current month rent is waived");
-    }
-
-    const computedTotal = Math.round(rent + security + advance + amc);
+    const computedTotal = Math.round(security + advance + meal + amc);
 
     if (Math.round(received) !== computedTotal) {
-        errors.push("Total Amount Received must equal Rent + Security Deposit + Advance Rent + AMC Charges");
+        errors.push("Total Amount Received must equal Security Deposit + Advance Rent + Meal Subscription + AMC Charges");
     }
 
     const kyc = await UserKYC.findOne({
@@ -402,11 +591,13 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
             inputs: {
                 totalAmountReceived: Math.round(received),
                 rentAmount: Math.round(rent),
-                waiveCurrentMonthRent: Boolean(waiveCurrentMonthRent),
-                waiveCurrentMonthRentApproval: Boolean(waiveCurrentMonthRentApproval),
+                waiveCurrentMonthRent: Boolean(waiveOffRequested),
                 securityDepositType: depositType,
                 securityDepositAmount: Math.round(security),
                 advanceRent: Math.round(advance),
+                advanceRentDurationMonths: advanceMonths,
+                mealSubscriptionAmount: Math.round(meal),
+                mealSubscriptionDurationMonths: mealMonths,
                 amcCharges: Math.round(amc),
                 panCardNumber: finalPanNumber || null
             },
@@ -414,7 +605,11 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
                 rentAmount: Math.round(rent),
                 securityDepositAmount: Math.round(security),
                 advanceRent: Math.round(advance),
+                advanceRentDurationMonths: advanceMonths,
+                mealSubscriptionAmount: Math.round(meal),
+                mealSubscriptionDurationMonths: mealMonths,
                 amcCharges: Math.round(amc),
+                waiveOff: waiveOffDetails,
                 totalAmountReceived: Math.round(received),
                 expectedTotal: computedTotal,
                 difference: Math.round(received) - computedTotal,
@@ -590,6 +785,7 @@ exports.draftBooking=async(req,res)=>{
         const overlappingDraftBooking = await DraftBookingModel.findOne({
             where: {
                 userId,
+                confirmed: false,
                 status: {
                     [Op.in]: ["draft_booking", "draft_payment", "draft_submitted", "draft_confirmed"]
                 },
@@ -706,7 +902,7 @@ exports.draftBooking=async(req,res)=>{
             return;
         }
         await logApiCall(req, res, 500, "Error while creating draft booking", "Draft Booking");
-        return res.status(500).json({ message: "Internal server error." });
+        return res.status(500).json(buildErrorPayload(err, "Internal server error."));
     }
 }
 
@@ -815,7 +1011,7 @@ exports.getBookingPaymentFormData = async (req, res) => {
             return;
         }
         await logApiCall(req, res, 500, "Error while fetching draft booking payment form data", "Draft Booking", req.user?.id || 0);
-        return res.status(500).json({ success: false, message: err.message || "Server error" });
+        return res.status(500).json(buildErrorPayload(err));
     }
 };
 
@@ -856,12 +1052,6 @@ exports.getDraftBookingDetails = async (req, res) => {
 
         const reviewData = booking.meta?.draftBookingPaymentReview || null;
         const reviewInputs = reviewData?.inputs || {};
-        const paymentMeta = booking.meta?.draftBookingPayment || null;
-        const paymentInputs = paymentMeta?.inputs || {};
-
-        const waiveCurrentMonthRent = Boolean(
-            paymentInputs.waiveCurrentMonthRent ?? reviewInputs.waiveCurrentMonthRent ?? false
-        );
 
         const baseMonthlyRent = Number(
             booking.baseMonthlyRent ??
@@ -869,12 +1059,6 @@ exports.getDraftBookingDetails = async (req, res) => {
             booking.monthlyRent ??
             booking.totalMonthlyAmount ??
             0
-        );
-
-        const waiveOff = calculateWaiveOffForRemainingDays(
-            booking.checkInDate,
-            baseMonthlyRent,
-            waiveCurrentMonthRent
         );
 
         const transactions = await DraftPaymentTransaction.findAll({
@@ -892,6 +1076,59 @@ exports.getDraftBookingDetails = async (req, res) => {
             .reduce((sum, transaction) => sum + Number(transaction.amount || 0) / 100, 0);
 
         const latestTransaction = transactions[0] || null;
+
+        const paymentFieldSource = {
+            totalAmountReceived:
+                latestTransaction?.totalAmountReceived ??
+                reviewInputs.totalAmountReceived ??
+                0,
+            rentAmount:
+                latestTransaction?.rentAmount ??
+                reviewInputs.rentAmount ??
+                0,
+            waiveCurrentMonthRent:
+                latestTransaction?.waiveCurrentMonthRent ??
+                reviewInputs.waiveCurrentMonthRent ??
+                false,
+            securityDepositType:
+                latestTransaction?.securityDepositType ??
+                reviewInputs.securityDepositType ??
+                null,
+            securityDepositAmount:
+                latestTransaction?.securityDepositAmount ??
+                reviewInputs.securityDepositAmount ??
+                0,
+            advanceRentAmount:
+                latestTransaction?.advanceRentAmount ??
+                reviewInputs.advanceRent ??
+                0,
+            advanceRentDurationMonths:
+                latestTransaction?.advanceRentDurationMonths ??
+                reviewInputs.advanceRentDurationMonths ??
+                null,
+            mealSubscriptionAmount:
+                latestTransaction?.mealSubscriptionAmount ??
+                reviewInputs.mealSubscriptionAmount ??
+                0,
+            mealSubscriptionDurationMonths:
+                latestTransaction?.mealSubscriptionDurationMonths ??
+                reviewInputs.mealSubscriptionDurationMonths ??
+                null,
+            amcChargesAmount:
+                latestTransaction?.amcChargesAmount ??
+                reviewInputs.amcCharges ??
+                0,
+            panCardNumber:
+                latestTransaction?.panCardNumber ??
+                reviewInputs.panCardNumber ??
+                null
+        };
+
+        const waiveOff = calculateWaiveOffForRemainingDays(
+            booking.checkInDate,
+            baseMonthlyRent,
+            Boolean(paymentFieldSource.waiveCurrentMonthRent)
+        );
 
         const payload = {
             success: true,
@@ -927,14 +1164,17 @@ exports.getDraftBookingDetails = async (req, res) => {
             },
             payment: {
                 bookingReference: `BKG-${String(booking.id).padStart(4, "0")}`,
-                rentReceived: Number(paymentInputs.rentAmount ?? reviewInputs.rentAmount ?? 0),
+                rentReceived: Number(paymentFieldSource.rentAmount || 0),
                 waiveOff,
-                securityDepositType: paymentInputs.securityDepositType ?? reviewInputs.securityDepositType ?? null,
-                securityDepositAmount: Number(paymentInputs.securityDepositAmount ?? reviewInputs.securityDepositAmount ?? 0),
-                advanceRent: Number(paymentInputs.advanceRent ?? reviewInputs.advanceRent ?? 0),
-                amcCharges: Number(paymentInputs.amcCharges ?? reviewInputs.amcCharges ?? 0),
-                panCardNumber: paymentInputs.panCardNumber ?? reviewInputs.panCardNumber ?? null,
-                totalAmountReceived: Number(paymentInputs.totalAmountReceived ?? reviewInputs.totalAmountReceived ?? 0),
+                securityDepositType: paymentFieldSource.securityDepositType,
+                securityDepositAmount: Number(paymentFieldSource.securityDepositAmount || 0),
+                advanceRent: Number(paymentFieldSource.advanceRentAmount || 0),
+                advanceRentDurationMonths: paymentFieldSource.advanceRentDurationMonths,
+                mealSubscriptionAmount: Number(paymentFieldSource.mealSubscriptionAmount || 0),
+                mealSubscriptionDurationMonths: paymentFieldSource.mealSubscriptionDurationMonths,
+                amcCharges: Number(paymentFieldSource.amcChargesAmount || 0),
+                panCardNumber: paymentFieldSource.panCardNumber,
+                totalAmountReceived: Number(paymentFieldSource.totalAmountReceived || 0),
                 totalCollected: Math.round(totalCollected),
                 latestTransaction: latestTransaction
                     ? {
@@ -958,7 +1198,7 @@ exports.getDraftBookingDetails = async (req, res) => {
             return;
         }
         await logApiCall(req, res, 500, "Error while fetching draft booking details", "Draft Booking", req.user?.id || 0);
-        return res.status(500).json({ success: false, message: err.message || "Server error" });
+        return res.status(500).json(buildErrorPayload(err));
     }
 };
 
@@ -1002,11 +1242,6 @@ exports.reviewBookingPayment = async (req, res) => {
                 id: bookingId,
                 ...access.whereClause
             },
-            include: [
-                { model: User, as: "user", attributes: ["id", "fullName", "email", "phone"] },
-                { model: Rooms, as: "room", attributes: ["id", "roomNumber", "roomType", "monthlyRent", "depositAmount"] },
-                { model: Property, as: "property", attributes: ["id", "name", "address"] }
-            ],
             transaction,
             lock: transaction.LOCK.UPDATE
         });
@@ -1017,7 +1252,15 @@ exports.reviewBookingPayment = async (req, res) => {
             return res.status(404).json({ success: false, message: "Booking not found" });
         }
 
-        const booking = bookingLookup;
+        const booking = await DraftBookingModel.findOne({
+            where: { id: bookingLookup.id },
+            include: [
+                { model: User, as: "user", attributes: ["id", "fullName", "email", "phone"] },
+                { model: Rooms, as: "room", attributes: ["id", "roomNumber", "roomType", "monthlyRent", "depositAmount"] },
+                { model: Property, as: "property", attributes: ["id", "name", "address"] }
+            ],
+            transaction
+        });
 
         const { errors, review } = await buildBookingPaymentReview(req.body, booking, transaction);
 
@@ -1051,11 +1294,22 @@ exports.reviewBookingPayment = async (req, res) => {
                 merchantOrderId: `DRAFT-OFFLINE-PENDING-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
                 amount: amountPaise,
                 type: "OFFLINE",
-                status: "PENDING",
+                status: "SUCCESS",
                 paymentMode: "OFFLINE",
                 offlinePaymentType: normalizedPaymentType,
                 createdByAdminId: adminId,
                 paymentDate: paymentDate || null,
+                totalAmountReceived: review.inputs.totalAmountReceived,
+                rentAmount: review.inputs.rentAmount,
+                waiveCurrentMonthRent: review.inputs.waiveCurrentMonthRent,
+                securityDepositType: review.inputs.securityDepositType,
+                securityDepositAmount: review.inputs.securityDepositAmount,
+                advanceRentAmount: review.inputs.advanceRent,
+                advanceRentDurationMonths: review.inputs.advanceRentDurationMonths,
+                mealSubscriptionAmount: review.inputs.mealSubscriptionAmount,
+                mealSubscriptionDurationMonths: review.inputs.mealSubscriptionDurationMonths,
+                amcChargesAmount: review.inputs.amcCharges,
+                panCardNumber: review.inputs.panCardNumber,
                 rawResponse: {
                     manuallyCreated: true,
                     createdFrom: "draft-booking-review",
@@ -1063,27 +1317,39 @@ exports.reviewBookingPayment = async (req, res) => {
                 },
                 meta: {
                     source: "draft-booking",
-                    bookingPaymentReview: review,
                     acknowledgementRequired: true,
                     invoiceStatus: "PENDING_ACCOUNTANT_APPROVAL",
                     invoiceNote: "Invoice is generated only after accountant approval"
-                }
+                },
+                confirmed: true
             }, { transaction });
         } else {
             paymentTransaction.amount = amountPaise;
             paymentTransaction.offlinePaymentType = normalizedPaymentType;
             paymentTransaction.paymentDate = paymentDate || null;
             paymentTransaction.createdByAdminId = adminId;
+            paymentTransaction.totalAmountReceived = review.inputs.totalAmountReceived;
+            paymentTransaction.rentAmount = review.inputs.rentAmount;
+            paymentTransaction.waiveCurrentMonthRent = review.inputs.waiveCurrentMonthRent;
+            paymentTransaction.securityDepositType = review.inputs.securityDepositType;
+            paymentTransaction.securityDepositAmount = review.inputs.securityDepositAmount;
+            paymentTransaction.advanceRentAmount = review.inputs.advanceRent;
+            paymentTransaction.advanceRentDurationMonths = review.inputs.advanceRentDurationMonths;
+            paymentTransaction.mealSubscriptionAmount = review.inputs.mealSubscriptionAmount;
+            paymentTransaction.mealSubscriptionDurationMonths = review.inputs.mealSubscriptionDurationMonths;
+            paymentTransaction.amcChargesAmount = review.inputs.amcCharges;
+            paymentTransaction.panCardNumber = review.inputs.panCardNumber;
             paymentTransaction.rawResponse = {
                 ...(paymentTransaction.rawResponse || {}),
                 manuallyCreated: true,
                 updatedFrom: "draft-booking-review",
                 updatedAt: new Date().toISOString()
             };
+            paymentTransaction.status = "SUCCESS";
+            paymentTransaction.confirmed = true;
             paymentTransaction.meta = {
                 ...(paymentTransaction.meta || {}),
                 source: "draft-booking",
-                bookingPaymentReview: review,
                 acknowledgementRequired: true,
                 invoiceStatus: "PENDING_ACCOUNTANT_APPROVAL",
                 invoiceNote: "Invoice is generated only after accountant approval"
@@ -1092,13 +1358,6 @@ exports.reviewBookingPayment = async (req, res) => {
         }
 
         booking.status = "draft_payment";
-        booking.meta = {
-            ...(booking.meta || {}),
-            draftBookingPaymentReview: review,
-            reviewedAt: new Date().toISOString(),
-            reviewedByAdminId: adminId,
-            draftBookingPaymentTransactionId: paymentTransaction.id
-        };
         await booking.save({ transaction });
 
         await transaction.commit();
@@ -1119,7 +1378,7 @@ exports.reviewBookingPayment = async (req, res) => {
             return;
         }
         await logApiCall(req, res, 500, "Error while reviewing draft booking payment", "Draft Booking", req.user?.id || 0);
-        return res.status(500).json({ success: false, message: err.message || "Server error" });
+        return res.status(500).json(buildErrorPayload(err));
     }
 };
 
@@ -1127,83 +1386,23 @@ exports.confirmBookingPayment = async (req, res) => {
     const transaction = await sequelize.transaction();
 
     try {
-        const { bookingId, paymentType = "CASH", paymentDate, adminNote } = req.body;
-        const adminId = req.user?.id || null;
+        const bookingId = req.body?.bookingId;
 
         if (!bookingId) {
             await transaction.rollback();
             return res.status(400).json({ success: false, message: "bookingId is required" });
         }
 
-        const normalizedPaymentType = String(paymentType).toUpperCase();
-        if (!["CASH", "CHEQUE", "UPI"].includes(normalizedPaymentType)) {
+        if (!isPositiveInteger(bookingId)) {
             await transaction.rollback();
-            return res.status(400).json({ success: false, message: "paymentType must be CASH, CHEQUE or UPI" });
-        }
-
-        if (paymentDate && !/^\d{2}\/\d{2}\/\d{4}$/.test(paymentDate)) {
-            await transaction.rollback();
-            return res.status(400).json({ success: false, message: "paymentDate must be in DD/MM/YYYY format" });
+            return res.status(400).json({ success: false, message: "bookingId must be a positive integer" });
         }
 
         const access = await getDraftBookingAccessFilter(req.user);
         if (access.accessDenied) {
             await transaction.rollback();
-            await logApiCall(req, res, 403, `Confirmed draft booking payment - property access denied (ID: ${bookingId})`, "Draft Booking", adminId || 0);
+            await logApiCall(req, res, 403, `Confirmed draft booking payment - property access denied (ID: ${bookingId})`, "Draft Booking", req.user?.id || 0);
             return res.status(403).json({ success: false, message: "No property access assigned" });
-        }
-
-        const lockedBooking = await DraftBookingModel.findOne({
-            where: {
-                id: bookingId,
-                ...access.whereClause
-            },
-            transaction,
-            lock: transaction.LOCK.UPDATE
-        });
-
-        if (!lockedBooking) {
-            await transaction.rollback();
-            await logApiCall(req, res, 404, `Confirmed draft booking payment - booking not found (ID: ${bookingId})`, "Draft Booking", adminId || 0);
-            return res.status(404).json({ success: false, message: "Booking not found" });
-        }
-
-        if (["cancelled", "rejected", "completed"].includes(String(lockedBooking.status || "").toLowerCase())) {
-            await transaction.rollback();
-            return res.status(400).json({ success: false, message: "Cannot confirm payment for a closed booking" });
-        }
-
-        const pendingTransaction = await DraftPaymentTransaction.findOne({
-            where: {
-                draftBookingId: lockedBooking.id,
-                status: "PENDING"
-            },
-            transaction,
-            lock: transaction.LOCK.UPDATE
-        });
-
-        if (pendingTransaction) {
-            lockedBooking.meta = {
-                ...(lockedBooking.meta || {}),
-                draftBookingPaymentTransactionId: pendingTransaction.id
-            };
-        }
-
-        const confirmedTransactionId = lockedBooking.meta?.draftBookingPaymentTransactionId;
-        if (confirmedTransactionId) {
-            const existingTransaction = await DraftPaymentTransaction.findByPk(confirmedTransactionId, {
-                transaction
-            });
-
-            if (existingTransaction?.status === "SUCCESS") {
-                await transaction.rollback();
-                return res.status(409).json({
-                    success: false,
-                    message: "Booking payment is already confirmed",
-                    transaction: existingTransaction || null,
-                    booking: lockedBooking
-                });
-            }
         }
 
         const booking = await DraftBookingModel.findOne({
@@ -1211,116 +1410,224 @@ exports.confirmBookingPayment = async (req, res) => {
                 id: bookingId,
                 ...access.whereClause
             },
-            include: [
-                { model: User, as: "user", attributes: ["id", "fullName", "email", "phone"] },
-                { model: Rooms, as: "room", attributes: ["id", "roomNumber", "roomType", "monthlyRent", "depositAmount"] },
-                { model: Property, as: "property", attributes: ["id", "name", "address"] }
-            ],
-            transaction
+            transaction,
+            lock: transaction.LOCK.UPDATE
         });
 
-        const { errors, review } = await buildBookingPaymentReview(req.body, booking, transaction);
-        if (errors.length > 0) {
+        if (!booking) {
             await transaction.rollback();
-            await logApiCall(req, res, 400, `Confirmed draft booking payment - validation failed (Booking ID: ${booking.id})`, "Draft Booking", adminId || 0);
+            await logApiCall(req, res, 404, `Confirmed draft booking payment - booking not found (ID: ${bookingId})`, "Draft Booking", req.user?.id || 0);
+            return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        const latestTransaction = await getLatestDraftPaymentTransaction(booking.id, transaction);
+
+        if (!["draft_payment", "draft_submitted"].includes(booking.status)) {
+            await transaction.rollback();
             return res.status(400).json({
                 success: false,
-                message: "Booking payment confirm validation failed",
-                errors,
-                review
+                message: "Only draft_payment or draft_submitted booking can be confirmed"
             });
         }
 
-        const amountReceived = review.calculated.totalAmountReceived;
-        const amountPaise = Math.round(amountReceived * 100);
+        const isCreatedByPropertyAdmin = Number(booking.createdByRole) === 3;
+        const isCreatedBySuperAdmin = Number(booking.createdByRole) === 1;
+        const waiveOffEnabled = Boolean(latestTransaction?.waiveCurrentMonthRent);
 
-        let paymentTransaction = pendingTransaction;
-        if (!paymentTransaction) {
-            paymentTransaction = await DraftPaymentTransaction.create({
-                draftBookingId: lockedBooking.id,
-                userId: lockedBooking.userId,
-                merchantOrderId: `DRAFT-OFFLINE-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
-                amount: amountPaise,
-                type: "OFFLINE",
-                status: "SUCCESS",
-                paymentMode: "OFFLINE",
-                offlinePaymentType: normalizedPaymentType,
-                createdByAdminId: adminId,
-                paymentDate: paymentDate || null,
-                rawResponse: {
-                    manuallyCreated: true,
-                    createdFrom: "draft-booking-confirm",
-                    createdAt: new Date().toISOString()
-                },
-                meta: {
-                    source: "draft-booking",
-                    bookingPaymentReview: review,
-                    acknowledgementRequired: true,
-                    invoiceStatus: "PENDING_ACCOUNTANT_APPROVAL",
-                    invoiceNote: "Invoice is generated only after accountant approval"
-                }
-            }, { transaction });
+        if (isCreatedByPropertyAdmin) {
+            if (waiveOffEnabled) {
+                booking.status = "draft_submitted";
+            } else {
+                booking.status = "draft_confirmed";
+                await markDraftBookingAsConfirmed(booking, transaction);
+                // TODO: add property-admin no-waive confirmation logic.
+            }
+        } else if (isCreatedBySuperAdmin) {
+            booking.status = "draft_confirmed";
+            await markDraftBookingAsConfirmed(booking, transaction);
+            // TODO: add super-admin confirmation logic.
         } else {
-            paymentTransaction.amount = amountPaise;
-            paymentTransaction.status = "SUCCESS";
-            paymentTransaction.offlinePaymentType = normalizedPaymentType;
-            paymentTransaction.paymentDate = paymentDate || null;
-            paymentTransaction.createdByAdminId = adminId;
-            paymentTransaction.rawResponse = {
-                ...(paymentTransaction.rawResponse || {}),
-                manuallyCreated: true,
-                confirmedFrom: "draft-booking-confirm",
-                confirmedAt: new Date().toISOString()
-            };
-            paymentTransaction.meta = {
-                ...(paymentTransaction.meta || {}),
-                source: "draft-booking",
-                bookingPaymentReview: review,
-                acknowledgementRequired: true,
-                invoiceStatus: "PENDING_ACCOUNTANT_APPROVAL",
-                invoiceNote: "Invoice is generated only after accountant approval"
-            };
-            await paymentTransaction.save({ transaction });
+            await transaction.rollback();
+            return res.status(400).json({
+                success: false,
+                message: "Booking creator role is invalid for confirmation"
+            });
         }
 
-        const currentRemaining = Number(lockedBooking.remainingAmount || lockedBooking.totalAmount || 0);
-        lockedBooking.bookingSource = "OFFLINE";
-        lockedBooking.status = "draft_confirmed";
-        lockedBooking.remainingAmount = Math.max(Math.round(currentRemaining - amountReceived), 0);
-        lockedBooking.paymentStatus = lockedBooking.remainingAmount === 0 ? "COMPLETED" : "PARTIAL";
-
-        if (review.calculated.securityDepositAmount > 0) {
-            lockedBooking.securityDepositPaid = true;
-        }
-
-        lockedBooking.meta = {
-            ...(lockedBooking.meta || {}),
-            draftBookingPayment: review,
-            invoiceStatus: "PENDING_ACCOUNTANT_APPROVAL",
-            invoiceGstApplicable: review.calculated.gstApplicableOnInvoice,
-            confirmedByAdminId: adminId,
-            confirmedAt: new Date().toISOString(),
-            draftBookingPaymentTransactionId: paymentTransaction.id
-        };
-
-        await lockedBooking.save({ transaction });
+        await booking.save({ transaction });
         await transaction.commit();
 
-        const acknowledgementSent = false;
-
-        await logApiCall(req, res, 201, `Confirmed draft booking payment (Booking ID: ${lockedBooking.id}, Transaction ID: ${paymentTransaction.id})`, "Draft Booking", lockedBooking.id);
-        return res.status(201).json({
+        await logApiCall(req, res, 200, `Confirmed draft booking payment (Booking ID: ${booking.id})`, "Draft Booking", booking.id);
+        return res.status(200).json({
             success: true,
-            message: "Booking payment confirmed successfully",
-            booking: lockedBooking,
-            transaction: paymentTransaction,
-            acknowledgementSent,
-            invoiceStatus: "PENDING_ACCOUNTANT_APPROVAL"
+            message: "Draft booking confirmation processed successfully",
+            booking
         });
     } catch (err) {
         await transaction.rollback();
         console.error("[confirmBookingPayment]", err);
+        if (sendKnownError(res, err)) {
+            await logApiCall(req, res, 400, "Validation error while confirming draft booking payment", "Draft Booking", req.user?.id || 0);
+            return;
+        }
         await logApiCall(req, res, 500, "Error while confirming draft booking payment", "Draft Booking", req.user?.id || 0);
-        return res.status(500).json({ success: false, message: err.message || "Server error" });
+        return res.status(500).json(buildErrorPayload(err));
+    }
+};
+
+exports.decideWaiveOffRequest = async (req, res) => {
+    const transaction = await sequelize.transaction();
+
+    try {
+        if (req.user?.role !== 1) {
+            await transaction.rollback();
+            return res.status(403).json({ success: false, message: "Only super admin can decide waive-off requests" });
+        }
+
+        const bookingId = req.body?.bookingId || req.params?.bookingId || req.query?.bookingId;
+
+        if (!bookingId) {
+            await transaction.rollback();
+            return res.status(400).json({ success: false, message: "bookingId is required" });
+        }
+
+        if (!isPositiveInteger(bookingId)) {
+            await transaction.rollback();
+            return res.status(400).json({ success: false, message: "bookingId must be a positive integer" });
+        }
+
+        if (typeof req.body?.approved !== "boolean") {
+            await transaction.rollback();
+            return res.status(400).json({ success: false, message: "approved is required and must be true or false" });
+        }
+
+        const booking = await DraftBookingModel.findOne({
+            where: { id: bookingId },
+            transaction,
+            lock: transaction.LOCK.UPDATE
+        });
+
+        if (!booking) {
+            await transaction.rollback();
+            await logApiCall(req, res, 404, `Waive-off decision failed - booking not found (ID: ${bookingId})`, "Draft Booking", req.user?.id || 0);
+            return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        const latestTransaction = await getLatestDraftPaymentTransaction(booking.id, transaction);
+
+        if (Number(booking.createdByRole) !== 3) {
+            await transaction.rollback();
+            return res.status(400).json({ success: false, message: "Waive-off decision is only applicable for property-admin created draft bookings" });
+        }
+
+        if (booking.status !== "draft_submitted") {
+            await transaction.rollback();
+            return res.status(400).json({ success: false, message: "Only draft_submitted booking can be processed for waive-off decision" });
+        }
+
+        if (!latestTransaction?.waiveCurrentMonthRent) {
+            await transaction.rollback();
+            return res.status(400).json({ success: false, message: "No waive-off request found for this booking" });
+        }
+
+        if (req.body.approved) {
+            booking.status = "draft_confirmed";
+            await markDraftBookingAsConfirmed(booking, transaction);
+            // TODO: add super-admin accepted waive-off downstream logic.
+        } else {
+            booking.status = "draft_rejected";
+        }
+
+        await booking.save({ transaction });
+        await transaction.commit();
+
+        await logApiCall(req, res, 200, `Waive-off request ${req.body.approved ? "accepted" : "rejected"} (Booking ID: ${booking.id})`, "Draft Booking", booking.id);
+        return res.status(200).json({
+            success: true,
+            message: `Waive-off request ${req.body.approved ? "accepted" : "rejected"} successfully`,
+            booking
+        });
+    } catch (err) {
+        await transaction.rollback();
+        console.error("[decideWaiveOffRequest]", err);
+        if (sendKnownError(res, err)) {
+            await logApiCall(req, res, 400, "Validation error while deciding waive-off request", "Draft Booking", req.user?.id || 0);
+            return;
+        }
+        await logApiCall(req, res, 500, "Error while deciding waive-off request", "Draft Booking", req.user?.id || 0);
+        return res.status(500).json(buildErrorPayload(err));
+    }
+};
+
+exports.cancelDraftBooking = async (req, res) => {
+    const transaction = await sequelize.transaction();
+
+    try {
+        const bookingId = req.params?.bookingId;
+
+        if (!bookingId) {
+            await transaction.rollback();
+            return res.status(400).json({ success: false, message: "bookingId is required" });
+        }
+
+        if (!isPositiveInteger(bookingId)) {
+            await transaction.rollback();
+            return res.status(400).json({ success: false, message: "bookingId must be a positive integer" });
+        }
+
+        const booking = await DraftBookingModel.findOne({
+            where: { id: bookingId },
+            include: [
+                { model: Rooms, as: "room", required: true, attributes: ["id", "status", "capacity"] }
+            ],
+            transaction,
+            lock: transaction.LOCK.UPDATE
+        });
+
+        if (!booking) {
+            await transaction.rollback();
+            await logApiCall(req, res, 404, `Cancelled draft booking - booking not found (ID: ${bookingId})`, "Draft Booking", req.user?.id || 0);
+            return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        if (Number(booking.createdByAdminId) !== Number(req.user?.id)) {
+            await transaction.rollback();
+            return res.status(403).json({ success: false, message: "Only the booking creator can cancel this booking" });
+        }
+
+        if (!["draft_booking", "draft_payment", "draft_submitted", "draft_confirmed"].includes(booking.status)) {
+            await transaction.rollback();
+            return res.status(400).json({ success: false, message: "Only active draft bookings can be cancelled" });
+        }
+
+        booking.status = "draft_cancelled";
+        booking.confirmed = true;
+        await booking.save({ transaction });
+
+        await releaseInventoryForDraftBooking(booking, transaction);
+
+        const room = booking.room || (booking.roomId ? await Rooms.findByPk(booking.roomId, { transaction, lock: transaction.LOCK.UPDATE }) : null);
+        if (room) {
+            room.status = "available";
+            await room.save({ transaction });
+        }
+
+        await transaction.commit();
+
+        await logApiCall(req, res, 200, `Cancelled draft booking (Booking ID: ${booking.id})`, "Draft Booking", booking.id);
+        return res.status(200).json({
+            success: true,
+            message: "Draft booking cancelled successfully",
+            booking
+        });
+    } catch (err) {
+        await transaction.rollback();
+        console.error("[cancelDraftBooking]", err);
+        if (sendKnownError(res, err)) {
+            await logApiCall(req, res, 400, "Validation error while cancelling draft booking", "Draft Booking", req.user?.id || 0);
+            return;
+        }
+        await logApiCall(req, res, 500, "Error while cancelling draft booking", "Draft Booking", req.user?.id || 0);
+        return res.status(500).json(buildErrorPayload(err));
     }
 };
