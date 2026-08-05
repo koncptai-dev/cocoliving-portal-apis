@@ -5,6 +5,7 @@ const moment = require('moment');
 const { logActivity } = require('../helpers/activityLogger');
 
 const Booking=require('../models/bookRoom');
+const DraftBooking=require('../models/draftBooking');
 const Rooms=require('../models/rooms');
 const Property=require('../models/property');
 const User=require('../models/user');
@@ -19,6 +20,13 @@ const { removeUserFromRoom, addUserToRoom } = require('../utils/aliste/alisteApi
 const BookingOnboarding = require("../models/bookingOnboarding");
 const DepositDeduction = require('../models/depositDeduction');
 const RoomTransfer = require('../models/roomTransfer');
+
+const buildErrorPayload = (err, fallbackMessage = "Internal server error") => ({
+  message: err?.message || fallbackMessage,
+  error: err?.name || "Error",
+  details: err?.errors || null,
+  stack: err?.stack || null
+});
 
 const releaseInventoryForBooking = async (booking, transaction = null) => {
   if (!booking.assignedItems || booking.assignedItems.length === 0) return;
@@ -111,41 +119,52 @@ async function notifyBookingUser(booking) {
 
 exports.getAllBookings=async(req,res)=>{
   try{
-    const rawBookings = await Booking.findAll({
-      include: [
-        {
-          model: User,
-          as: 'user',
-          attributes: ["id", "fullName", "email", "phone", "gender"],
-          include: [
-            {
-              model: UserKYC,
-              as: 'userkyc',
-              attributes: ['panStatus', 'ekycStatus']
-            }
-          ]
+    const includeConfig = [
+      {
+        model: User,
+        as: 'user',
+        attributes: ["id", "fullName", "email", "phone", "gender"],
+        include: [
+          {
+            model: UserKYC,
+              as: 'kyc',
+            attributes: ['panStatus', 'ekycStatus']
+          }
+        ]
+      },
+      {
+        model: Rooms,
+        as: "room",
+        attributes: ["id", "roomNumber"],
+        include: [{ model: Property, as: 'property' }]
+      },
+      {
+        model: PropertyRateCard,
+        as: "rateCard",
+        include: [{ model: Property, as: "property" }]
+      }
+    ];
+
+    const [rawBookings, rawDraftBookings] = await Promise.all([
+      Booking.findAll({
+        include: includeConfig,
+        order: [["createdAt", "DESC"]]
+      }),
+      DraftBooking.findAll({
+        where: {
+          confirmed: false
         },
-       {
-         model: Rooms,
-          as: "room",
-          attributes: ["id", "roomNumber"],
-          include: [{ model: Property, as: 'property' }]
-        },
-        {
-          model: PropertyRateCard,
-          as: "rateCard",
-          include: [{ model: Property, as: "property" }]
-        }
-      ],
-      order: [["createdAt", "DESC"]]
-    });
+        include: includeConfig,
+        order: [["createdAt", "DESC"]]
+      })
+    ]);
 
     await logApiCall(req, res, 200, "Viewed all bookings list", "booking");
-    res.status(200).json({ booking });
+    res.status(200).json({ booking: rawBookings, draftBookings: rawDraftBookings });
   }catch(err){
     console.log("error",err);
     await logApiCall(req, res, 500, "Error occurred while fetching all bookings", "booking");
-    return res.status(500).json({message:"Internal server error"});
+    return res.status(500).json(buildErrorPayload(err, "Internal server error"));
   }
 
 } 
@@ -198,8 +217,7 @@ exports.approveBooking = async (req, res) => {
     console.error("approveBooking error:", err);
     await logApiCall(req, res, 500, "Error occurred while approving booking", "booking", parseInt(req.params.bookingId) || 0);
     res.status(500).json({
-      message: "Internal server error",
-      error: err.message
+      ...buildErrorPayload(err, "Internal server error")
     });
   }
 };
@@ -242,8 +260,7 @@ exports.rejectBooking = async (req, res) => {
     console.error("rejectBooking error:", error);
     await logApiCall(req, res, 500, "Error occurred while rejecting booking", "booking", parseInt(req.params.bookingId) || 0);
     res.status(500).json({
-      message: "Server error",
-      error: error.message
+      ...buildErrorPayload(error, "Server error")
     });
   }
 };
@@ -353,7 +370,7 @@ exports.cancelBooking = async (req, res) => {
     await t.rollback();
     console.error("cancelBooking error:", err);
     await logApiCall(req, res, 500, "Error occurred while cancelling booking", "booking", parseInt(req.params.bookingId) || 0);
-    return res.status(500).json({ message: "Internal server error", error: err.message });
+    return res.status(500).json(buildErrorPayload(err, "Internal server error"));
   }
 };
 
@@ -461,7 +478,7 @@ exports.approveCancellation = async (req, res) => {
 
   } catch (err) {
     console.error("approveCancellation error:", err);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json(buildErrorPayload(error, "Internal server error"));
   }
 };
 
@@ -518,7 +535,7 @@ exports.rejectCancellation = async (req, res) => {
 
   } catch (err) {
     console.error("rejectCancellation error:", err);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json(buildErrorPayload(err, "Internal server error"));
   }
 };
 
@@ -662,10 +679,7 @@ exports.assignInventory = async (req, res) => {
   } catch (err) {
     await t.rollback();
     console.error("Assign Set Error:", err);
-    return res.status(500).json({
-      message: "Internal server error",
-      error: err.message
-    });
+    return res.status(500).json(buildErrorPayload(err, "Internal server error"));
   }
 };
 
@@ -835,10 +849,7 @@ exports.assignInventorySetsForRoom = async (req, res) => {
   } catch (err) {
     await t.rollback();
     console.error("assignInventorySetsForRoom error:", err);
-    return res.status(500).json({
-      message: "Internal server error",
-      error: err.message
-    });
+    return res.status(500).json(buildErrorPayload(err, "Internal server error"));
   }
 };
 
@@ -880,7 +891,7 @@ exports.getInventorySets = async (req, res) => {
 
   } catch (err) {
     console.error("Get Sets Error:", err);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json(buildErrorPayload(err, "Internal server error"));
   }
 };
 
@@ -1188,8 +1199,7 @@ exports.createBookingForOfflinePayments = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
-      error: err.message,
+      ...buildErrorPayload(err, "Internal server error")
     });
   }
 };
@@ -1319,7 +1329,7 @@ exports.updateOfflineBookingDuration = async (req, res) => {
     if (!committed) await t.rollback();
     console.error("Update offline booking duration error:", err);
     await logApiCall(req, res, 500, "Error occurred while updating offline booking duration", "booking", parseInt(req.params.bookingId) || 0);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res.status(500).json({ success: false, ...buildErrorPayload(err, "Internal server error") });
   }
 };
 
@@ -1370,7 +1380,7 @@ exports.getRoomTransferDetails = async (req, res) => {
     });
   } catch (err) {
     console.error('getRoomTransferDetails error:', err);
-    return res.status(500).json({ message: 'Internal server error' });
+    return res.status(500).json(buildErrorPayload(err, 'Internal server error'));
   }
 };
 
@@ -1393,7 +1403,7 @@ exports.getRoomTransferHistory = async (req, res) => {
     });
   } catch (err) {
     console.error('getRoomTransferHistory error:', err);
-    return res.status(500).json({ message: 'Internal server error' });
+    return res.status(500).json(buildErrorPayload(err, 'Internal server error'));
   }
 };
 
@@ -1573,6 +1583,6 @@ exports.transferRoom = async (req, res) => {
   } catch (err) {
     await t.rollback();
     console.error('transferRoom error:', err);
-    return res.status(500).json({ message: 'Internal server error', error: err.message });
+    return res.status(500).json(buildErrorPayload(err, 'Internal server error'));
   }
 };

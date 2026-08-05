@@ -169,6 +169,56 @@ const DraftBooking = sequelize.define(
       type: DataTypes.BOOLEAN,
       defaultValue: false,
     },
+    paymentReviewTotalAmountReceived: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    paymentReviewRentAmount: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    paymentReviewWaiveCurrentMonthRent: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    paymentReviewWaiveCurrentMonthRentApproval: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    paymentReviewSecurityDepositType: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    paymentReviewSecurityDepositAmount: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    paymentReviewAdvanceRentAmount: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    paymentReviewAdvanceRentDurationMonths: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    paymentReviewMealSubscriptionAmount: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    paymentReviewMealSubscriptionDurationMonths: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    paymentReviewAmcChargesAmount: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    paymentReviewPanCardNumber: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
     meta: {
       type: DataTypes.JSON,
       allowNull: true,

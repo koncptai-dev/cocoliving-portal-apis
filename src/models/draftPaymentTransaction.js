@@ -58,6 +58,56 @@ const DraftPaymentTransaction = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
     },
+    totalAmountReceived: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    rentAmount: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    waiveCurrentMonthRent: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    waiveCurrentMonthRentApproval: { // remove
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    securityDepositType: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    securityDepositAmount: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    advanceRentAmount: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    advanceRentDurationMonths: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    mealSubscriptionAmount: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    mealSubscriptionDurationMonths: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    amcChargesAmount: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    panCardNumber: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
     createdByAdminId: {
       type: DataTypes.INTEGER,
       allowNull: true,
