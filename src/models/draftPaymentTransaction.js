@@ -71,11 +71,6 @@ const DraftPaymentTransaction = sequelize.define(
       allowNull: false,
       defaultValue: false,
     },
-    waiveCurrentMonthRentApproval: { // remove
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: false,
-    },
     securityDepositType: {
       type: DataTypes.STRING,
       allowNull: true,

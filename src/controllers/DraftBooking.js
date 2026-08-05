@@ -314,6 +314,17 @@ async function markDraftBookingAsConfirmed(draftBooking, transaction) {
     }
 }
 
+async function getLatestDraftPaymentTransaction(draftBookingId, transaction = null) {
+    return DraftPaymentTransaction.findOne({
+        where: {
+            draftBookingId
+        },
+        order: [["createdAt", "DESC"]],
+        transaction,
+        lock: transaction ? transaction.LOCK.UPDATE : undefined
+    });
+}
+
 function formatBookingOption(booking) {
     const userName = booking.user?.fullName || `User ${booking.userId}`;
     const propertyName = booking.property?.name || "Property";
@@ -341,10 +352,10 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
     const {
         totalAmountReceived,
         totalAmountReceivedRent,
+        waiveOff,
         rentAmount,
         currentMonthRent,
         waiveCurrentMonthRent = false,
-        waiveCurrentMonthRentApproval = false,
         securityDepositType,
         securityDepositAmount,
         securityDeposit,
@@ -366,13 +377,33 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
 
     const depositType = normalizeSecurityDepositType(securityDepositType);
     const errors = [];
+    const waiveOffRequested = normalizeBoolean(waiveOff ?? waiveCurrentMonthRent);
+
+    if (waiveOffRequested === null) {
+        errors.push("waiveOff must be true or false");
+    }
+
+    const baseMonthlyRent = Math.round(Number(
+        booking.baseMonthlyRent ??
+        booking.monthlyRent ??
+        booking.totalMonthlyAmount ??
+        0
+    ));
+    const waiveOffDetails = calculateWaiveOffForRemainingDays(
+        booking.checkInDate,
+        baseMonthlyRent,
+        Boolean(waiveOffRequested)
+    );
 
     if (!depositType) {
         errors.push("securityDepositType must be 1+1, 1+2 or DYNAMIC");
     }
 
     const received = toRupees(totalAmountReceived ?? totalAmountReceivedRent);
-    const rent = toRupees(rentAmount ?? currentMonthRent);
+    const manualRent = toRupees(rentAmount ?? currentMonthRent ?? baseMonthlyRent);
+    const rent = Boolean(waiveOffRequested)
+        ? Math.max(0, Math.round(baseMonthlyRent - waiveOffDetails.amount))
+        : manualRent;
     const securityInput = securityDepositAmount ?? securityDeposit;
     const security = depositType
         ? getSecurityDepositAmount(depositType, booking.monthlyRent, securityInput)
@@ -429,14 +460,6 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
         errors.push("amcCharges must be a valid amount");
     }
 
-    if (waiveCurrentMonthRent && !waiveCurrentMonthRentApproval) {
-        errors.push("Waive current month rent needs admin approval");
-    }
-
-    if (waiveCurrentMonthRent && rent !== 0) {
-        errors.push("rentAmount must be 0 when current month rent is waived");
-    }
-
     const computedTotal = Math.round(rent + security + advance + meal + amc);
 
     if (Math.round(received) !== computedTotal) {
@@ -469,8 +492,7 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
             inputs: {
                 totalAmountReceived: Math.round(received),
                 rentAmount: Math.round(rent),
-                waiveCurrentMonthRent: Boolean(waiveCurrentMonthRent),
-                waiveCurrentMonthRentApproval: Boolean(waiveCurrentMonthRentApproval),
+                waiveCurrentMonthRent: Boolean(waiveOffRequested),
                 securityDepositType: depositType,
                 securityDepositAmount: Math.round(security),
                 advanceRent: Math.round(advance),
@@ -488,6 +510,7 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
                 mealSubscriptionAmount: Math.round(meal),
                 mealSubscriptionDurationMonths: mealMonths,
                 amcCharges: Math.round(amc),
+                waiveOff: waiveOffDetails,
                 totalAmountReceived: Math.round(received),
                 expectedTotal: computedTotal,
                 difference: Math.round(received) - computedTotal,
@@ -957,57 +980,46 @@ exports.getDraftBookingDetails = async (req, res) => {
         const paymentFieldSource = {
             totalAmountReceived:
                 latestTransaction?.totalAmountReceived ??
-                booking.paymentReviewTotalAmountReceived ??
                 reviewInputs.totalAmountReceived ??
                 0,
             rentAmount:
                 latestTransaction?.rentAmount ??
-                booking.paymentReviewRentAmount ??
                 reviewInputs.rentAmount ??
                 0,
             waiveCurrentMonthRent:
                 latestTransaction?.waiveCurrentMonthRent ??
-                booking.paymentReviewWaiveCurrentMonthRent ??
                 reviewInputs.waiveCurrentMonthRent ??
                 false,
             securityDepositType:
                 latestTransaction?.securityDepositType ??
-                booking.paymentReviewSecurityDepositType ??
                 reviewInputs.securityDepositType ??
                 null,
             securityDepositAmount:
                 latestTransaction?.securityDepositAmount ??
-                booking.paymentReviewSecurityDepositAmount ??
                 reviewInputs.securityDepositAmount ??
                 0,
             advanceRentAmount:
                 latestTransaction?.advanceRentAmount ??
-                booking.paymentReviewAdvanceRentAmount ??
                 reviewInputs.advanceRent ??
                 0,
             advanceRentDurationMonths:
                 latestTransaction?.advanceRentDurationMonths ??
-                booking.paymentReviewAdvanceRentDurationMonths ??
                 reviewInputs.advanceRentDurationMonths ??
                 null,
             mealSubscriptionAmount:
                 latestTransaction?.mealSubscriptionAmount ??
-                booking.paymentReviewMealSubscriptionAmount ??
                 reviewInputs.mealSubscriptionAmount ??
                 0,
             mealSubscriptionDurationMonths:
                 latestTransaction?.mealSubscriptionDurationMonths ??
-                booking.paymentReviewMealSubscriptionDurationMonths ??
                 reviewInputs.mealSubscriptionDurationMonths ??
                 null,
             amcChargesAmount:
                 latestTransaction?.amcChargesAmount ??
-                booking.paymentReviewAmcChargesAmount ??
                 reviewInputs.amcCharges ??
                 0,
             panCardNumber:
                 latestTransaction?.panCardNumber ??
-                booking.paymentReviewPanCardNumber ??
                 reviewInputs.panCardNumber ??
                 null
         };
@@ -1187,7 +1199,6 @@ exports.reviewBookingPayment = async (req, res) => {
                 totalAmountReceived: review.inputs.totalAmountReceived,
                 rentAmount: review.inputs.rentAmount,
                 waiveCurrentMonthRent: review.inputs.waiveCurrentMonthRent,
-                waiveCurrentMonthRentApproval: review.inputs.waiveCurrentMonthRentApproval,
                 securityDepositType: review.inputs.securityDepositType,
                 securityDepositAmount: review.inputs.securityDepositAmount,
                 advanceRentAmount: review.inputs.advanceRent,
@@ -1216,7 +1227,6 @@ exports.reviewBookingPayment = async (req, res) => {
             paymentTransaction.totalAmountReceived = review.inputs.totalAmountReceived;
             paymentTransaction.rentAmount = review.inputs.rentAmount;
             paymentTransaction.waiveCurrentMonthRent = review.inputs.waiveCurrentMonthRent;
-            paymentTransaction.waiveCurrentMonthRentApproval = review.inputs.waiveCurrentMonthRentApproval;
             paymentTransaction.securityDepositType = review.inputs.securityDepositType;
             paymentTransaction.securityDepositAmount = review.inputs.securityDepositAmount;
             paymentTransaction.advanceRentAmount = review.inputs.advanceRent;
@@ -1242,18 +1252,6 @@ exports.reviewBookingPayment = async (req, res) => {
         }
 
         booking.status = "draft_payment";
-        booking.paymentReviewTotalAmountReceived = review.inputs.totalAmountReceived;
-        booking.paymentReviewRentAmount = review.inputs.rentAmount;
-        booking.paymentReviewWaiveCurrentMonthRent = review.inputs.waiveCurrentMonthRent;
-        booking.paymentReviewWaiveCurrentMonthRentApproval = review.inputs.waiveCurrentMonthRentApproval;
-        booking.paymentReviewSecurityDepositType = review.inputs.securityDepositType;
-        booking.paymentReviewSecurityDepositAmount = review.inputs.securityDepositAmount;
-        booking.paymentReviewAdvanceRentAmount = review.inputs.advanceRent;
-        booking.paymentReviewAdvanceRentDurationMonths = review.inputs.advanceRentDurationMonths;
-        booking.paymentReviewMealSubscriptionAmount = review.inputs.mealSubscriptionAmount;
-        booking.paymentReviewMealSubscriptionDurationMonths = review.inputs.mealSubscriptionDurationMonths;
-        booking.paymentReviewAmcChargesAmount = review.inputs.amcCharges;
-        booking.paymentReviewPanCardNumber = review.inputs.panCardNumber;
         await booking.save({ transaction });
 
         await transaction.commit();
@@ -1316,6 +1314,8 @@ exports.confirmBookingPayment = async (req, res) => {
             return res.status(404).json({ success: false, message: "Booking not found" });
         }
 
+        const latestTransaction = await getLatestDraftPaymentTransaction(booking.id, transaction);
+
         if (!["draft_payment", "draft_submitted"].includes(booking.status)) {
             await transaction.rollback();
             return res.status(400).json({
@@ -1326,7 +1326,7 @@ exports.confirmBookingPayment = async (req, res) => {
 
         const isCreatedByPropertyAdmin = Number(booking.createdByRole) === 3;
         const isCreatedBySuperAdmin = Number(booking.createdByRole) === 1;
-        const waiveOffEnabled = Boolean(booking.paymentReviewWaiveCurrentMonthRent);
+        const waiveOffEnabled = Boolean(latestTransaction?.waiveCurrentMonthRent);
 
         if (isCreatedByPropertyAdmin) {
             if (waiveOffEnabled) {
@@ -1418,6 +1418,8 @@ exports.decideWaiveOffRequest = async (req, res) => {
             return res.status(404).json({ success: false, message: "Booking not found" });
         }
 
+        const latestTransaction = await getLatestDraftPaymentTransaction(booking.id, transaction);
+
         if (Number(booking.createdByRole) !== 3) {
             await transaction.rollback();
             return res.status(400).json({ success: false, message: "Waive-off decision is only applicable for property-admin created draft bookings" });
@@ -1428,7 +1430,7 @@ exports.decideWaiveOffRequest = async (req, res) => {
             return res.status(400).json({ success: false, message: "Only draft_submitted booking can be processed for waive-off decision" });
         }
 
-        if (!booking.paymentReviewWaiveCurrentMonthRent) {
+        if (!latestTransaction?.waiveCurrentMonthRent) {
             await transaction.rollback();
             return res.status(400).json({ success: false, message: "No waive-off request found for this booking" });
         }
