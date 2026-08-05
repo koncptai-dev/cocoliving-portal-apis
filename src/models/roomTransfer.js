@@ -19,10 +19,6 @@ const RoomTransfer = sequelize.define('RoomTransfer', {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
-  transferDate: {
-    type: DataTypes.DATE,
-    allowNull: false,
-  },
   fines: {
     type: DataTypes.JSON,
     allowNull: true,

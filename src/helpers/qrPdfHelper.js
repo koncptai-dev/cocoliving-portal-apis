@@ -1,5 +1,5 @@
-const PDFDocument = require("pdfkit");
 const QRCode = require("qrcode");
+const sharp = require("sharp");
 
 const buildQrText = (inventory) => {
     return `Inventory Code : ${inventory.inventoryCode}
@@ -12,77 +12,84 @@ const generateQrBuffer = async (text) => {
     return await QRCode.toBuffer(text, {
         type: "png",
         margin: 1,
-        width: 250,
+        width: 280,
         errorCorrectionLevel: "H"
     });
 };
 
-const createPdfDocument = (res, filename) => {
-    const doc = new PDFDocument({
-        margin: 5,
-        size: "A4"
-    });
+const escapeXml = (value) => String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="${filename}"`
-    );
+const splitText = (value, maxChars = 28) => {
+    const words = String(value || "").trim().split(/\s+/);
+    const lines = [];
+    let line = "";
 
-    doc.pipe(res);
+    for (const word of words) {
+        const nextLine = line ? `${line} ${word}` : word;
+        if (line && nextLine.length > maxChars) {
+            lines.push(line);
+            line = word;
+        } else {
+            line = nextLine;
+        }
+    }
 
-    return doc;
+    if (line) lines.push(line);
+    return lines.slice(0, 2);
 };
 
-const addInventoryBlock = async (doc, inventory, x, y) => {
+const createInventoryLabel = async (inventory) => {
     const qrBuffer = await generateQrBuffer(buildQrText(inventory));
+    const roomNumber = inventory.room?.roomNumber || "Property Pool";
+    const itemLines = splitText(inventory.itemName);
+    const hasSetNumber = inventory.setNumber !== null &&
+        inventory.setNumber !== undefined &&
+        String(inventory.setNumber).trim() !== "";
+    const itemY = hasSetNumber ? 390 : 410;
+    const itemText = itemLines.map((line, index) =>
+        `<text x="250" y="${itemY + index * 24}" class="item">${escapeXml(line)}</text>`
+    ).join("");
+    const setText = hasSetNumber
+        ? `<text x="250" y="466" class="set">SET-${escapeXml(inventory.setNumber)}</text>`
+        : "";
 
-    doc.image(qrBuffer, x + 10, y + 5, {
-        width: 150,
-        height: 150
-    });
+    const overlay = Buffer.from(`
+        <svg width="500" height="500" xmlns="http://www.w3.org/2000/svg">
+            <style>
+                .room { fill: #111827; font-family: Arial, sans-serif; font-size: 24px; font-weight: 700; text-anchor: middle; }
+                .item { fill: #111827; font-family: Arial, sans-serif; font-size: 21px; font-weight: 700; text-anchor: middle; }
+                .set { fill: #374151; font-family: Arial, sans-serif; font-size: 18px; font-weight: 400; text-anchor: middle; }
+            </style>
+            <rect width="500" height="500" fill="#ffffff"/>
+            <text x="250" y="44" class="room">Room ${escapeXml(roomNumber)}</text>
+            ${itemText}
+            ${setText}
+        </svg>
+    `);
 
-    const centerX = x + 85;
-
-    doc.font("Helvetica-Bold")
-        .fontSize(10)
-        .text(
-            inventory.itemName,
-            x,
-            y + 155,
-            {
-                width: 170,
-                align: "center"
-            }
-        );
-
-    doc.font("Helvetica")
-        .fontSize(9)
-        .text(
-            `SET-${inventory.setNumber || "-"}`,
-            x,
-            y + 170,
-            {
-                width: 170,
-                align: "center"
-            }
-        );
-};
-
-const propertyFilename = (propertyName) => {
-
-    const now = new Date();
-
-    const formatted =
-        `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}_${String(now.getHours()).padStart(2,"0")}-${String(now.getMinutes()).padStart(2,"0")}`;
-
-    return `${propertyName}_${formatted}.pdf`;
+    return sharp({
+        create: {
+            width: 500,
+            height: 500,
+            channels: 4,
+            background: "#ffffff"
+        }
+    })
+        .composite([
+            { input: overlay },
+            { input: qrBuffer, left: 110, top: 75 }
+        ])
+        .png()
+        .toBuffer();
 };
 
 module.exports = {
     buildQrText,
     generateQrBuffer,
-    createPdfDocument,
-    addInventoryBlock,
-    propertyFilename
+    createInventoryLabel
 };
