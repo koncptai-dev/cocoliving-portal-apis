@@ -13,6 +13,7 @@ const PropertyRateCard = require("../models/propertyRateCard");
 const BookingExtension = require('../models/bookingExtension');
 const Inventory = require("../models/inventory");
 const UserKYC = require("../models/userKYC");
+const UserPermission = require("../models/userPermissoin");
 const Contract = require('../models/contract');
 const PaymentTransaction = require('../models/paymentTransaction');
 const { sendPushNotification } = require("../helpers/notificationHelper");
@@ -27,6 +28,21 @@ const buildErrorPayload = (err, fallbackMessage = "Internal server error") => ({
   details: err?.errors || null,
   stack: err?.stack || null
 });
+
+const getAccessiblePropertyIds = async (user) => {
+  if (!user) return [];
+  if (user.role === 1) return null;
+
+  const permission = await UserPermission.findOne({
+    where: { userId: user.id }
+  });
+
+  if (!permission || !Array.isArray(permission.properties)) {
+    return [];
+  }
+
+  return permission.properties.map((value) => Number(value)).filter(Boolean);
+};
 
 const releaseInventoryForBooking = async (booking, transaction = null) => {
   if (!booking.assignedItems || booking.assignedItems.length === 0) return;
@@ -119,6 +135,24 @@ async function notifyBookingUser(booking) {
 
 exports.getAllBookings=async(req,res)=>{
   try{
+    const isSuperAdmin = req.user?.role === 1;
+    const isPropertyAdmin = req.user?.role === 3;
+
+    const draftBookingWhere = {
+      confirmed: false
+    };
+
+    if (isPropertyAdmin) {
+      const accessiblePropertyIds = await getAccessiblePropertyIds(req.user);
+      draftBookingWhere.propertyId = {
+        [Op.in]: accessiblePropertyIds.length > 0 ? accessiblePropertyIds : [-1]
+      };
+    } else if (!isSuperAdmin) {
+      draftBookingWhere.propertyId = {
+        [Op.in]: [-1]
+      };
+    }
+
     const includeConfig = [
       {
         model: User,
@@ -151,9 +185,7 @@ exports.getAllBookings=async(req,res)=>{
         order: [["createdAt", "DESC"]]
       }),
       DraftBooking.findAll({
-        where: {
-          confirmed: false
-        },
+        where: draftBookingWhere,
         include: includeConfig,
         order: [["createdAt", "DESC"]]
       })

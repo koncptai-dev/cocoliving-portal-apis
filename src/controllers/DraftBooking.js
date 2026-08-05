@@ -1601,7 +1601,6 @@ exports.cancelDraftBooking = async (req, res) => {
         }
 
         booking.status = "draft_cancelled";
-        booking.confirmed = true;
         await booking.save({ transaction });
 
         await releaseInventoryForDraftBooking(booking, transaction);
