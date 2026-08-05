@@ -1280,9 +1280,9 @@ exports.reviewBookingPayment = async (req, res) => {
 
         let paymentTransaction = await DraftPaymentTransaction.findOne({
             where: {
-                draftBookingId: booking.id,
-                status: "PENDING"
+                draftBookingId: booking.id
             },
+            order: [["createdAt", "DESC"]],
             transaction,
             lock: transaction.LOCK.UPDATE
         });
