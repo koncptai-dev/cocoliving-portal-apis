@@ -352,9 +352,9 @@ async function convertDraftBookingToRealRecords(draftBooking, draftPaymentTransa
         mealPlan: draftBooking.mealPlan || "NONE",
         status: "approved",
         totalAmount: draftBooking.totalAmount,
-        remainingAmount: draftBooking.remainingAmount,
+        remainingAmount: 0,
         bookingType: draftBooking.bookingType,
-        paymentStatus: draftBooking.paymentStatus,
+        paymentStatus: "COMPLETED",
         onboardingStatus: draftBooking.onboardingStatus,
         contractStatus: draftBooking.contractStatus,
         adminContractStatus: draftBooking.adminContractStatus,
@@ -382,7 +382,7 @@ async function convertDraftBookingToRealRecords(draftBooking, draftPaymentTransa
         merchantOrderId: `INITIAL-${realBooking.id}-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
         amount: paymentTransaction.amount,
         type: "INITIAL",
-        status: paymentTransaction.status,
+        status: "SUCCESS",
         paymentMode: "OFFLINE",
         paymentDate: paymentTransaction.paymentDate || null,
         offlinePaymentType: paymentTransaction.offlinePaymentType || null,
@@ -1294,7 +1294,7 @@ exports.reviewBookingPayment = async (req, res) => {
                 merchantOrderId: `DRAFT-OFFLINE-PENDING-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
                 amount: amountPaise,
                 type: "OFFLINE",
-                status: "PENDING",
+                status: "SUCCESS",
                 paymentMode: "OFFLINE",
                 offlinePaymentType: normalizedPaymentType,
                 createdByAdminId: adminId,
@@ -1320,7 +1320,8 @@ exports.reviewBookingPayment = async (req, res) => {
                     acknowledgementRequired: true,
                     invoiceStatus: "PENDING_ACCOUNTANT_APPROVAL",
                     invoiceNote: "Invoice is generated only after accountant approval"
-                }
+                },
+                confirmed: true
             }, { transaction });
         } else {
             paymentTransaction.amount = amountPaise;
@@ -1344,6 +1345,8 @@ exports.reviewBookingPayment = async (req, res) => {
                 updatedFrom: "draft-booking-review",
                 updatedAt: new Date().toISOString()
             };
+            paymentTransaction.status = "SUCCESS";
+            paymentTransaction.confirmed = true;
             paymentTransaction.meta = {
                 ...(paymentTransaction.meta || {}),
                 source: "draft-booking",
