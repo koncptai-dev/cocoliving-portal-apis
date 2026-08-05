@@ -15,6 +15,8 @@ const {
 const UserPermission = require("../models/userPermissoin");
 const UserKYC = require("../models/userKYC");
 const { logApiCall } = require("../helpers/auditLog");
+const { sendEmail } = require("../utils/sendEmail");
+const { waiveOffSubmittedAdminEmail } = require("../utils/emailTemplates/emailTemplates");
 
 async function getAccessiblePropertyIds(user) {
     if (!user) return [];
@@ -131,6 +133,40 @@ function buildErrorPayload(err, fallbackMessage = "Server error") {
         details: err?.errors || null,
         stack: err?.stack || null
     };
+}
+
+async function notifySuperAdminsForWaiveOffSubmission(booking, actorUser) {
+    try {
+        const superAdmins = await User.findAll({
+            where: {
+                role: 1,
+                email: {
+                    [Op.and]: [{ [Op.ne]: null }, { [Op.ne]: "" }]
+                }
+            },
+            attributes: ["email"]
+        });
+
+        const recipientEmails = [...new Set(superAdmins.map((admin) => admin.email).filter(Boolean))];
+        if (recipientEmails.length === 0) return;
+
+        const subject = `Waive-off request submitted for Draft Booking #${booking.id}`;
+        const template = waiveOffSubmittedAdminEmail({
+            bookingId: booking.id,
+            propertyId: booking.propertyId,
+            submittedByName: actorUser?.fullName,
+            submittedByEmail: actorUser?.email
+        });
+
+        await sendEmail({
+            to: recipientEmails.join(","),
+            subject,
+            html: template.html,
+            attachments: template.attachments
+        });
+    } catch (error) {
+        console.error("[notifySuperAdminsForWaiveOffSubmission]", error);
+    }
 }
 
 function normalizeSecurityDepositType(type) {
@@ -770,13 +806,6 @@ exports.draftBooking=async(req,res)=>{
             return res.status(404).json({message: "Rate card not found."});
         }
 
-        const activeCount = await getRoomReservedCount(roomId, transaction);
-
-        if (activeCount >= room.capacity) {
-            await transaction.rollback();
-            return res.status(400).json({message: "Room is already full."});
-        }
-
         const checkOutDate = moment(checkInDate)
             .add(normalizedDuration, "months")
             .subtract(1, "day")
@@ -812,9 +841,30 @@ exports.draftBooking=async(req,res)=>{
             lock: transaction.LOCK.UPDATE
         });
 
-        if (overlappingDraftBooking) {
+        const isUpdatingExistingDraft = Boolean(overlappingDraftBooking);
+
+        if (
+            isUpdatingExistingDraft &&
+            isPropertyAdmin &&
+            Number(overlappingDraftBooking.createdByAdminId) !== Number(req.user?.id)
+        ) {
             await transaction.rollback();
-            return res.status(400).json({message: "User already has an active draft booking for this period."});
+            return res.status(403).json({
+                message: "This user already has an active draft booking created by another admin for this period."
+            });
+        }
+
+        const activeCount = await getRoomReservedCount(roomId, transaction);
+        const isSameRoomUpdate =
+            isUpdatingExistingDraft &&
+            Number(overlappingDraftBooking.roomId) === Number(roomId);
+        const effectiveRoomCountForCapacity = isSameRoomUpdate
+            ? Math.max(0, activeCount - 1)
+            : activeCount;
+
+        if (effectiveRoomCountForCapacity >= room.capacity) {
+            await transaction.rollback();
+            return res.status(400).json({message: "Room is already full."});
         }
 
         const finalMonthlyRent =
@@ -839,45 +889,79 @@ exports.draftBooking=async(req,res)=>{
         const securityDeposit = Number(room.depositAmount ?? finalTotalMonthlyAmount * 2);
         const totalAmount = Math.round(finalTotalMonthlyAmount * normalizedDuration + securityDeposit);
 
-        const booking = await DraftBookingModel.create(
-            {
-                propertyId,
-                userId,
-                roomId,
-                roomType: room.roomType,
-                rateCardId: rateCard.id,
+        const previousRoomId = isUpdatingExistingDraft ? overlappingDraftBooking.roomId : null;
 
-                bookingType: normalizedBookingType,
-                bookingSource: normalizedBookingSource,
+        let booking;
+        if (isUpdatingExistingDraft) {
+            booking = overlappingDraftBooking;
 
-                checkInDate,
-                checkOutDate,
-                duration: normalizedDuration,
+            booking.propertyId = propertyId;
+            booking.userId = userId;
+            booking.roomId = roomId;
+            booking.roomType = room.roomType;
+            booking.rateCardId = rateCard.id;
+            booking.bookingType = normalizedBookingType;
+            booking.bookingSource = normalizedBookingSource;
+            booking.checkInDate = checkInDate;
+            booking.checkOutDate = checkOutDate;
+            booking.duration = normalizedDuration;
+            booking.monthlyRent = finalTotalMonthlyAmount;
+            booking.totalAmount = totalAmount;
+            booking.remainingAmount = totalAmount;
+            booking.status = "draft_booking";
+            booking.paymentStatus = "INITIATED";
+            booking.onboardingStatus = "NOT_INITIATED";
+            booking.contractStatus = "NOT_SIGNED";
+            booking.adminContractStatus = "NOT_SIGNED";
+            booking.baseMonthlyRent = finalMonthlyRent;
+            booking.isRentIncludingMeals = rentIncludesMeals;
+            booking.mealPlan = normalizedMealPlan;
+            booking.mealAmount = mealAmount;
+            booking.totalMonthlyAmount = finalTotalMonthlyAmount;
+            booking.confirmed = false;
 
-                monthlyRent: finalTotalMonthlyAmount,
+            await booking.save({ transaction });
+        } else {
+            booking = await DraftBookingModel.create(
+                {
+                    propertyId,
+                    userId,
+                    roomId,
+                    roomType: room.roomType,
+                    rateCardId: rateCard.id,
 
-                totalAmount,
-                remainingAmount: totalAmount,
+                    bookingType: normalizedBookingType,
+                    bookingSource: normalizedBookingSource,
 
-                createdByRole: req.user?.role || null,
-                createdByAdminId: req.user?.id || null,
-                status: "draft_booking",
+                    checkInDate,
+                    checkOutDate,
+                    duration: normalizedDuration,
 
-                paymentStatus: "INITIATED",
-                onboardingStatus: "NOT_INITIATED",
-                contractStatus: "NOT_SIGNED",
-                adminContractStatus: "NOT_SIGNED",
-                assignedItems: [],
-                baseMonthlyRent: finalMonthlyRent,
-                isRentIncludingMeals: rentIncludesMeals,
-                mealPlan: normalizedMealPlan,
-                mealAmount,
-                totalMonthlyAmount: finalTotalMonthlyAmount
-            },
-            {
-                transaction
-            }
-        );
+                    monthlyRent: finalTotalMonthlyAmount,
+
+                    totalAmount,
+                    remainingAmount: totalAmount,
+
+                    createdByRole: req.user?.role || null,
+                    createdByAdminId: req.user?.id || null,
+                    status: "draft_booking",
+
+                    paymentStatus: "INITIATED",
+                    onboardingStatus: "NOT_INITIATED",
+                    contractStatus: "NOT_SIGNED",
+                    adminContractStatus: "NOT_SIGNED",
+                    assignedItems: [],
+                    baseMonthlyRent: finalMonthlyRent,
+                    isRentIncludingMeals: rentIncludesMeals,
+                    mealPlan: normalizedMealPlan,
+                    mealAmount,
+                    totalMonthlyAmount: finalTotalMonthlyAmount
+                },
+                {
+                    transaction
+                }
+            );
+        }
 
         if (setNumber !== undefined && setNumber !== null && setNumber !== "") {
             const assignment = await assignInventorySetToDraftBooking(booking, setNumber, transaction);
@@ -888,12 +972,41 @@ exports.draftBooking=async(req,res)=>{
             }
         }
 
-        room.status = activeCount + 1 >= room.capacity ? "booked" : "available";
-        await room.save({ transaction });
+        if (isUpdatingExistingDraft) {
+            const latestTargetCount = await getRoomReservedCount(roomId, transaction);
+            room.status = latestTargetCount >= room.capacity ? "booked" : "available";
+            await room.save({ transaction });
+
+            if (Number(previousRoomId) !== Number(roomId) && previousRoomId) {
+                const previousRoom = await Rooms.findByPk(previousRoomId, {
+                    transaction,
+                    lock: transaction.LOCK.UPDATE
+                });
+
+                if (previousRoom) {
+                    const previousRoomCount = await getRoomReservedCount(previousRoomId, transaction);
+                    previousRoom.status = previousRoomCount >= previousRoom.capacity ? "booked" : "available";
+                    await previousRoom.save({ transaction });
+                }
+            }
+        } else {
+            room.status = activeCount + 1 >= room.capacity ? "booked" : "available";
+            await room.save({ transaction });
+        }
 
         await transaction.commit();
-        await logApiCall(req, res, 201, "Draft booking created successfully", "Draft Booking", booking.id);
-        return res.status(201).json({message: "Draft booking created successfully.", booking});
+        await logApiCall(
+            req,
+            res,
+            isUpdatingExistingDraft ? 200 : 201,
+            isUpdatingExistingDraft ? "Draft booking updated successfully" : "Draft booking created successfully",
+            "Draft Booking",
+            booking.id
+        );
+        return res.status(isUpdatingExistingDraft ? 200 : 201).json({
+            message: isUpdatingExistingDraft ? "Draft booking updated successfully." : "Draft booking created successfully.",
+            booking
+        });
     } catch (err) {
         await transaction.rollback();
         console.error(err);
@@ -1430,6 +1543,7 @@ exports.confirmBookingPayment = async (req, res) => {
             });
         }
 
+        const previousStatus = booking.status;
         const isCreatedByPropertyAdmin = Number(booking.createdByRole) === 3;
         const isCreatedBySuperAdmin = Number(booking.createdByRole) === 1;
         const waiveOffEnabled = Boolean(latestTransaction?.waiveCurrentMonthRent);
@@ -1456,6 +1570,17 @@ exports.confirmBookingPayment = async (req, res) => {
 
         await booking.save({ transaction });
         await transaction.commit();
+
+        const shouldNotifySuperAdminForWaiveOff =
+            Number(req.user?.role) === 3 &&
+            isCreatedByPropertyAdmin &&
+            waiveOffEnabled &&
+            previousStatus !== "draft_submitted" &&
+            booking.status === "draft_submitted";
+
+        if (shouldNotifySuperAdminForWaiveOff) {
+            await notifySuperAdminsForWaiveOffSubmission(booking, req.user);
+        }
 
         await logApiCall(req, res, 200, `Confirmed draft booking payment (Booking ID: ${booking.id})`, "Draft Booking", booking.id);
         return res.status(200).json({
