@@ -1242,11 +1242,6 @@ exports.reviewBookingPayment = async (req, res) => {
                 id: bookingId,
                 ...access.whereClause
             },
-            include: [
-                { model: User, as: "user", required: true, attributes: ["id", "fullName", "email", "phone"] },
-                { model: Rooms, as: "room", required: true, attributes: ["id", "roomNumber", "roomType", "monthlyRent", "depositAmount"] },
-                { model: Property, as: "property", required: true, attributes: ["id", "name", "address"] }
-            ],
             transaction,
             lock: transaction.LOCK.UPDATE
         });
@@ -1257,7 +1252,15 @@ exports.reviewBookingPayment = async (req, res) => {
             return res.status(404).json({ success: false, message: "Booking not found" });
         }
 
-        const booking = bookingLookup;
+        const booking = await DraftBookingModel.findOne({
+            where: { id: bookingLookup.id },
+            include: [
+                { model: User, as: "user", attributes: ["id", "fullName", "email", "phone"] },
+                { model: Rooms, as: "room", attributes: ["id", "roomNumber", "roomType", "monthlyRent", "depositAmount"] },
+                { model: Property, as: "property", attributes: ["id", "name", "address"] }
+            ],
+            transaction
+        });
 
         const { errors, review } = await buildBookingPaymentReview(req.body, booking, transaction);
 
