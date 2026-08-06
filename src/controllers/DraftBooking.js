@@ -529,11 +529,17 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
         securityInput === undefined || securityInput === null || securityInput === ""
             ? null
             : Math.round(Number(securityInput));
+    const expectedSecurityBaseRent = Number(
+        booking.baseMonthlyRent ??
+        booking.monthlyRent ??
+        booking.totalMonthlyAmount ??
+        0
+    );
     const expectedFixedSecurity = depositType && depositType !== "DYNAMIC"
-        ? getSecurityDepositAmount(depositType, booking.monthlyRent, securityInput)
+        ? getSecurityDepositAmount(depositType, expectedSecurityBaseRent, securityInput)
         : null;
     const security = depositType
-        ? getSecurityDepositAmount(depositType, booking.monthlyRent, securityInput)
+        ? getSecurityDepositAmount(depositType, expectedSecurityBaseRent, securityInput)
         : toRupees(securityInput);
     const advance = toRupees(advanceRent ?? advanceRentAmount);
     const meal = toRupees(mealSubscriptionAmount ?? mealSubscription ?? mealAmount);
