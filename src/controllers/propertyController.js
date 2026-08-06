@@ -26,7 +26,48 @@ const deleteFiles = (files) => {
 exports.createProperty = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { name, address, description, amenities, is_active, rateCard, floorLayout } = req.body;
+    const {
+      name,
+      address,
+      description,
+      amenities,
+      is_active,
+      rateCard,
+      floorLayout,
+      mealSubscriptionAmountTwoTimes,
+      mealSubscriptionAmountFourTimes,
+    } = req.body;
+
+    const parsedMealSubscriptionAmountTwoTimes =
+      mealSubscriptionAmountTwoTimes !== undefined
+        ? Number(mealSubscriptionAmountTwoTimes)
+        : 0;
+    const parsedMealSubscriptionAmountFourTimes =
+      mealSubscriptionAmountFourTimes !== undefined
+        ? Number(mealSubscriptionAmountFourTimes)
+        : 0;
+
+    if (
+      Number.isNaN(parsedMealSubscriptionAmountTwoTimes) ||
+      parsedMealSubscriptionAmountTwoTimes < 0
+    ) {
+      deleteFiles(req.files || []);
+      await t.rollback();
+      return res.status(400).json({
+        message: "mealSubscriptionAmountTwoTimes must be a non-negative number",
+      });
+    }
+
+    if (
+      Number.isNaN(parsedMealSubscriptionAmountFourTimes) ||
+      parsedMealSubscriptionAmountFourTimes < 0
+    ) {
+      deleteFiles(req.files || []);
+      await t.rollback();
+      return res.status(400).json({
+        message: "mealSubscriptionAmountFourTimes must be a non-negative number",
+      });
+    }
 
     // Check if property already exists
     const existing = await Property.findOne({ where: { name, address }, transaction: t });
@@ -71,6 +112,8 @@ exports.createProperty = async (req, res) => {
       images: imageUrls,
       amenities: amenitiesArray,
       is_active,
+      mealSubscriptionAmountTwoTimes: Math.round(parsedMealSubscriptionAmountTwoTimes),
+      mealSubscriptionAmountFourTimes: Math.round(parsedMealSubscriptionAmountFourTimes),
     }, { transaction: t });
 
     // Handle rate card 
@@ -203,7 +246,39 @@ exports.editProperties = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { id } = req.params;
-    let { name, address, description, images, amenities, is_active, removedImages, rateCard, minimumBalance } = req.body;
+    let {
+      name,
+      address,
+      description,
+      images,
+      amenities,
+      is_active,
+      removedImages,
+      rateCard,
+      minimumBalance,
+      mealSubscriptionAmountTwoTimes,
+      mealSubscriptionAmountFourTimes,
+    } = req.body;
+
+    if (
+      mealSubscriptionAmountTwoTimes !== undefined &&
+      (Number.isNaN(Number(mealSubscriptionAmountTwoTimes)) || Number(mealSubscriptionAmountTwoTimes) < 0)
+    ) {
+      await t.rollback();
+      return res.status(400).json({
+        message: "mealSubscriptionAmountTwoTimes must be a non-negative number",
+      });
+    }
+
+    if (
+      mealSubscriptionAmountFourTimes !== undefined &&
+      (Number.isNaN(Number(mealSubscriptionAmountFourTimes)) || Number(mealSubscriptionAmountFourTimes) < 0)
+    ) {
+      await t.rollback();
+      return res.status(400).json({
+        message: "mealSubscriptionAmountFourTimes must be a non-negative number",
+      });
+    }
 
     const property = await Property.findByPk(id, { transaction: t });
     if (!property) {
@@ -285,6 +360,14 @@ exports.editProperties = async (req, res) => {
       amenities: amenities !== undefined ? amenitiesArray : property.amenities,
       is_active: is_active !== undefined ? is_active : property.is_active,
       minimumBalance: minimumBalance !== undefined ? parseInt(minimumBalance) : property.minimumBalance,
+      mealSubscriptionAmountTwoTimes:
+        mealSubscriptionAmountTwoTimes !== undefined
+          ? Math.round(Number(mealSubscriptionAmountTwoTimes))
+          : property.mealSubscriptionAmountTwoTimes,
+      mealSubscriptionAmountFourTimes:
+        mealSubscriptionAmountFourTimes !== undefined
+          ? Math.round(Number(mealSubscriptionAmountFourTimes))
+          : property.mealSubscriptionAmountFourTimes,
     }, { transaction: t });
 
     //for ratecard roomImages

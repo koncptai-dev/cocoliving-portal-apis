@@ -1076,6 +1076,88 @@ ${FOOTER}
   };
 }
 
+function waiveOffSubmittedAdminEmail({ bookingId, propertyId, submittedByName, submittedByEmail }) {
+  const normalizedBaseUrl = BASE_URL ? String(BASE_URL).replace(/\/$/, '') : '';
+  const reviewUrl = normalizedBaseUrl
+    ? `${normalizedBaseUrl}/admin/booking-review/${bookingId}`
+    : `#`;
+
+  return {
+    attachments: [
+      { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
+      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' },
+      ...FOOTER_ATTACHMENTS
+    ],
+    html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8" /></head>
+
+<body style="margin:0;background:#f3efe9;font-family:'Rethink Sans','Inter','Segoe UI',Arial,sans-serif;">
+<table width="100%" align="center">
+<tr><td align="center">
+
+<table width="600" style="max-width:600px;">
+
+<tr>
+<td align="center"
+style="background-color:#4F3421;
+background-image:url(cid:bg);
+background-repeat:repeat;
+background-size:400px 400px;
+padding:28px 28px 90px;">
+<img src="cid:logo" width="140" />
+</td>
+</tr>
+
+<tr>
+<td align="center" style="background:#f3efe9;padding:0 24px 40px;">
+<div style="background:#f3efe9;border-radius:80px 80px 0 0;padding:40px 24px 0;max-width:520px;margin:-60px auto 0;">
+
+<h1 style="margin:0 0 16px;font-size:32px;font-weight:700;">
+Waive-off Request Submitted
+</h1>
+
+<p style="font-size:15px;line-height:1.6;">
+A property admin has submitted a waive-off request for review.
+</p>
+
+<div style="background:#ffffff;padding:24px;border-radius:12px;margin:24px 0;text-align:left;font-size:15px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+<strong>Draft Booking ID:</strong> ${bookingId}<br/>
+<strong>Property ID:</strong> ${propertyId || 'N/A'}<br/>
+<strong>Submitted By:</strong> ${submittedByName || 'Property Admin'}<br/>
+<strong>Submitted By Email:</strong> ${submittedByEmail || 'N/A'}
+</div>
+
+<p style="font-size:15px;margin:20px 0;">
+Please review this request from the admin panel.
+</p>
+
+<a href="${reviewUrl}"
+style="display:inline-block;padding:14px 32px;background:#D36517;color:#fff;text-decoration:none;border-radius:24px;font-weight:600;">
+Review Waive-off Request
+</a>
+
+<p style="font-size:13px;line-height:1.6;margin:16px 0;color:#666;word-break:break-all;">
+If the button does not work, open this link:<br/>
+<a href="${reviewUrl}" style="color:#4F3421;">${reviewUrl}</a>
+</p>
+
+</div>
+</td>
+</tr>
+
+${FOOTER}
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>
+`
+  };
+}
+
 module.exports = {
   welcomeEmail,
   otpEmail,
@@ -1091,6 +1173,7 @@ module.exports = {
   onboardingOtpEmail,
   guestQrEmail,
   contractSignedEmail,
+  waiveOffSubmittedAdminEmail,
   FOOTER,
   FOOTER_ATTACHMENTS
 };
