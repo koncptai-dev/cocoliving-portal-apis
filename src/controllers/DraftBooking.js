@@ -591,6 +591,54 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
         errors.push("mealSubscriptionDurationMonths must be a valid non-negative integer");
     }
 
+    const bookingDurationMonths = Number(booking.duration || 0);
+    if (advanceMonths !== null && advanceMonths > bookingDurationMonths) {
+        errors.push("advanceRentDurationMonths cannot exceed booking duration");
+    }
+
+    if (mealMonths !== null && mealMonths > bookingDurationMonths) {
+        errors.push("mealSubscriptionDurationMonths cannot exceed booking duration");
+    }
+
+    const expectedAdvanceRentAmount =
+        advanceMonths === null ? null : Math.round(baseMonthlyRent * advanceMonths);
+
+    if (advanceMonths === null && Math.round(advance) > 0) {
+        errors.push("advanceRentDurationMonths is required when advanceRent is greater than 0");
+    }
+
+    if (expectedAdvanceRentAmount !== null && Math.round(advance) !== expectedAdvanceRentAmount) {
+        errors.push(`advanceRent must be ${expectedAdvanceRentAmount} for ${advanceMonths} month(s) duration`);
+    }
+
+    const normalizedBookingMealPlan = normalizeMealPlan(booking.mealPlan || "NONE") || "NONE";
+    const propertyMealTwoTimes = Number(booking.property?.mealSubscriptionAmountTwoTimes || 0);
+    const propertyMealFourTimes = Number(booking.property?.mealSubscriptionAmountFourTimes || 0);
+    const configuredMealPerMonth = normalizedBookingMealPlan === "2_TIMES"
+        ? Math.round(propertyMealTwoTimes)
+        : normalizedBookingMealPlan === "4_TIMES"
+            ? Math.round(propertyMealFourTimes)
+            : 0;
+
+    if ((normalizedBookingMealPlan === "NONE" || Boolean(booking.isRentIncludingMeals)) && (Math.round(meal) > 0 || (mealMonths !== null && mealMonths > 0))) {
+        errors.push("mealSubscriptionAmount must be 0 when meal plan is NONE or rent includes meals");
+    }
+
+    if (normalizedBookingMealPlan !== "NONE" && !Boolean(booking.isRentIncludingMeals)) {
+        if (mealMonths === null && Math.round(meal) > 0) {
+            errors.push("mealSubscriptionDurationMonths is required when mealSubscriptionAmount is greater than 0");
+        }
+
+        if (mealMonths !== null) {
+            const expectedMealSubscriptionAmount = Math.round(configuredMealPerMonth * mealMonths);
+            if (Math.round(meal) !== expectedMealSubscriptionAmount) {
+                errors.push(
+                    `mealSubscriptionAmount must be ${expectedMealSubscriptionAmount} for ${mealMonths} month(s) with ${normalizedBookingMealPlan}`
+                );
+            }
+        }
+    }
+
     if (!isValidRupeeAmount(amc)) {
         errors.push("amcCharges must be a valid amount");
     }
@@ -1003,9 +1051,25 @@ exports.draftBooking=async(req,res)=>{
             "Draft Booking",
             booking.id
         );
+
+        const frontendSummary = {
+            property: {
+                id: property.id,
+                name: property.name,
+                mealSubscriptionAmountTwoTimes: Number(property.mealSubscriptionAmountTwoTimes || 0),
+                mealSubscriptionAmountFourTimes: Number(property.mealSubscriptionAmountFourTimes || 0)
+            },
+            room: {
+                id: room.id,
+                rent: Number(room.monthlyRent || 0),
+                depositAmount: Number(room.depositAmount || 0)
+            }
+        };
+
         return res.status(isUpdatingExistingDraft ? 200 : 201).json({
             message: isUpdatingExistingDraft ? "Draft booking updated successfully." : "Draft booking created successfully.",
-            booking
+            booking,
+            frontendSummary
         });
     } catch (err) {
         await transaction.rollback();
@@ -1370,7 +1434,7 @@ exports.reviewBookingPayment = async (req, res) => {
             include: [
                 { model: User, as: "user", attributes: ["id", "fullName", "email", "phone"] },
                 { model: Rooms, as: "room", attributes: ["id", "roomNumber", "roomType", "monthlyRent", "depositAmount"] },
-                { model: Property, as: "property", attributes: ["id", "name", "address"] }
+                { model: Property, as: "property", attributes: ["id", "name", "address", "mealSubscriptionAmountTwoTimes", "mealSubscriptionAmountFourTimes"] }
             ],
             transaction
         });
