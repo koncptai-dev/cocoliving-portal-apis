@@ -316,11 +316,25 @@ async function assignInventorySetToDraftBooking(draftBooking, setNumber, transac
         return { error: "Selected set has no inventory", statusCode: 400 };
     }
 
-    if (items.some(item => item.status !== "Available")) {
+    const currentlyAssignedIds = Array.isArray(draftBooking.assignedItems)
+        ? draftBooking.assignedItems.map(id => Number(id))
+        : [];
+    const currentlyAssignedSet = new Set(currentlyAssignedIds);
+
+    if (items.some(item => item.status !== "Available" && !currentlyAssignedSet.has(Number(item.id)))) {
         return { error: "Selected set is not fully available", statusCode: 400 };
     }
 
-    const assignedInventory = items.map(item => item.id);
+    const assignedInventory = items.map(item => Number(item.id));
+    const normalizedCurrentAssigned = [...currentlyAssignedIds].sort((a, b) => a - b);
+    const normalizedTargetAssigned = [...assignedInventory].sort((a, b) => a - b);
+    const isSameAssignment =
+        normalizedCurrentAssigned.length === normalizedTargetAssigned.length &&
+        normalizedCurrentAssigned.every((id, index) => id === normalizedTargetAssigned[index]);
+
+    if (isSameAssignment) {
+        return { assignedInventory, reusedExisting: true };
+    }
 
     await releaseInventoryForDraftBooking(draftBooking, transaction);
     await Inventory.update(
@@ -944,6 +958,8 @@ exports.draftBooking=async(req,res)=>{
         const totalAmount = Math.round(finalTotalMonthlyAmount * normalizedDuration + securityDeposit);
 
         const previousRoomId = isUpdatingExistingDraft ? overlappingDraftBooking.roomId : null;
+        const isRoomChanged = isUpdatingExistingDraft && Number(previousRoomId) !== Number(roomId);
+        const isSetNumberProvided = setNumber !== undefined && setNumber !== null && setNumber !== "";
 
         let booking;
         if (isUpdatingExistingDraft) {
@@ -1017,7 +1033,11 @@ exports.draftBooking=async(req,res)=>{
             );
         }
 
-        if (setNumber !== undefined && setNumber !== null && setNumber !== "") {
+        if (isRoomChanged && !isSetNumberProvided) {
+            await releaseInventoryForDraftBooking(booking, transaction);
+        }
+
+        if (isSetNumberProvided) {
             const assignment = await assignInventorySetToDraftBooking(booking, setNumber, transaction);
 
             if (assignment.error) {
@@ -1233,6 +1253,10 @@ exports.getDraftBookingDetails = async (req, res) => {
             return res.status(404).json({ success: false, message: "Booking not found" });
         }
 
+        if (booking.status === "draft_discard") {
+            return res.status(400).json({ success: false, message: "Discarded draft booking cannot be accessed" });
+        }
+
         const reviewData = booking.meta?.draftBookingPaymentReview || null;
         const reviewInputs = reviewData?.inputs || {};
 
@@ -1444,6 +1468,11 @@ exports.reviewBookingPayment = async (req, res) => {
             ],
             transaction
         });
+
+        if (booking.status === "draft_discard") {
+            await transaction.rollback();
+            return res.status(400).json({ success: false, message: "Discarded draft booking cannot be edited" });
+        }
 
         const { errors, review } = await buildBookingPaymentReview(req.body, booking, transaction);
 
@@ -1822,6 +1851,81 @@ exports.cancelDraftBooking = async (req, res) => {
             return;
         }
         await logApiCall(req, res, 500, "Error while cancelling draft booking", "Draft Booking", req.user?.id || 0);
+        return res.status(500).json(buildErrorPayload(err));
+    }
+};
+
+exports.discardDraftBooking = async (req, res) => {
+    const transaction = await sequelize.transaction();
+
+    try {
+        const bookingId = req.params?.bookingId;
+
+        if (!bookingId) {
+            await transaction.rollback();
+            return res.status(400).json({ success: false, message: "bookingId is required" });
+        }
+
+        if (!isPositiveInteger(bookingId)) {
+            await transaction.rollback();
+            return res.status(400).json({ success: false, message: "bookingId must be a positive integer" });
+        }
+
+        const booking = await DraftBookingModel.findOne({
+            where: { id: bookingId },
+            transaction,
+            lock: transaction.LOCK.UPDATE
+        });
+
+        if (!booking) {
+            await transaction.rollback();
+            await logApiCall(req, res, 404, `Discarded draft booking - booking not found (ID: ${bookingId})`, "Draft Booking", req.user?.id || 0);
+            return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        if (Number(booking.createdByAdminId) !== Number(req.user?.id)) {
+            await transaction.rollback();
+            return res.status(403).json({ success: false, message: "Only the booking creator can discard this booking" });
+        }
+
+        if (booking.status === "draft_discard") {
+            await transaction.rollback();
+            return res.status(400).json({ success: false, message: "Draft booking is already discarded" });
+        }
+
+        if (!["draft_booking", "draft_payment", "draft_submitted", "draft_confirmed", "draft_rejected", "draft_cancelled"].includes(booking.status)) {
+            await transaction.rollback();
+            return res.status(400).json({ success: false, message: "This draft booking cannot be discarded" });
+        }
+
+        booking.status = "draft_discard";
+        await booking.save({ transaction });
+
+        await releaseInventoryForDraftBooking(booking, transaction);
+
+        const room = booking.roomId ? await Rooms.findByPk(booking.roomId, { transaction, lock: transaction.LOCK.UPDATE }) : null;
+        if (room) {
+            const activeCount = await getRoomReservedCount(room.id, transaction);
+            room.status = activeCount >= room.capacity ? "booked" : "available";
+            await room.save({ transaction });
+        }
+
+        await transaction.commit();
+
+        await logApiCall(req, res, 200, `Discarded draft booking (Booking ID: ${booking.id})`, "Draft Booking", booking.id);
+        return res.status(200).json({
+            success: true,
+            message: "Draft booking discarded successfully",
+            booking
+        });
+    } catch (err) {
+        await transaction.rollback();
+        console.error("[discardDraftBooking]", err);
+        if (sendKnownError(res, err)) {
+            await logApiCall(req, res, 400, "Validation error while discarding draft booking", "Draft Booking", req.user?.id || 0);
+            return;
+        }
+        await logApiCall(req, res, 500, "Error while discarding draft booking", "Draft Booking", req.user?.id || 0);
         return res.status(500).json(buildErrorPayload(err));
     }
 };

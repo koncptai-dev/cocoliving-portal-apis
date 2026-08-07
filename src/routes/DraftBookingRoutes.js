@@ -12,6 +12,7 @@ router.post( "/payment-form/review", authMiddleware, authorizeRole(1, 3), author
 router.post( "/payment-form/confirm", authMiddleware, authorizeRole(1, 3), authorizePage("Bookings", "write"), DraftBooking.confirmBookingPayment );
 router.post( "/payment-form/waive-off/decision", authMiddleware, authorizeRole(1), authorizePage("Bookings", "write"), DraftBooking.decideWaiveOffRequest );
 router.post( "/:bookingId/cancel", authMiddleware, authorizeRole(1, 3), authorizePage("Bookings", "write"), DraftBooking.cancelDraftBooking );
+router.post( "/:bookingId/discard", authMiddleware, authorizeRole(1, 3), authorizePage("Bookings", "write"), DraftBooking.discardDraftBooking );
 router.post( "/", authMiddleware, authorizeRole(1, 3), authorizePage("Bookings", "write"), DraftBooking.draftBooking );
 
 module.exports = router;
