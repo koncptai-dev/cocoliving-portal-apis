@@ -1873,9 +1873,6 @@ exports.discardDraftBooking = async (req, res) => {
 
         const booking = await DraftBookingModel.findOne({
             where: { id: bookingId },
-            include: [
-                { model: Rooms, as: "room", required: false, attributes: ["id", "status", "capacity"] }
-            ],
             transaction,
             lock: transaction.LOCK.UPDATE
         });
@@ -1906,7 +1903,7 @@ exports.discardDraftBooking = async (req, res) => {
 
         await releaseInventoryForDraftBooking(booking, transaction);
 
-        const room = booking.room || (booking.roomId ? await Rooms.findByPk(booking.roomId, { transaction, lock: transaction.LOCK.UPDATE }) : null);
+        const room = booking.roomId ? await Rooms.findByPk(booking.roomId, { transaction, lock: transaction.LOCK.UPDATE }) : null;
         if (room) {
             const activeCount = await getRoomReservedCount(room.id, transaction);
             room.status = activeCount >= room.capacity ? "booked" : "available";
