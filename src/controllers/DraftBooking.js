@@ -1367,7 +1367,8 @@ exports.getDraftBookingDetails = async (req, res) => {
                 mealAmount: Number(booking.mealAmount || 0),
                 totalMonthlyAmount: Number(booking.totalMonthlyAmount || 0),
                 isRentIncludingMeals: Boolean(booking.isRentIncludingMeals),
-                mealPlan: booking.mealPlan || "NONE"
+                mealPlan: booking.mealPlan || "NONE",
+                assignedItems: booking.assignedItems || []
             },
             payment: {
                 bookingReference: `BKG-${String(booking.id).padStart(4, "0")}`,
