@@ -316,11 +316,25 @@ async function assignInventorySetToDraftBooking(draftBooking, setNumber, transac
         return { error: "Selected set has no inventory", statusCode: 400 };
     }
 
-    if (items.some(item => item.status !== "Available")) {
+    const currentlyAssignedIds = Array.isArray(draftBooking.assignedItems)
+        ? draftBooking.assignedItems.map(id => Number(id))
+        : [];
+    const currentlyAssignedSet = new Set(currentlyAssignedIds);
+
+    if (items.some(item => item.status !== "Available" && !currentlyAssignedSet.has(Number(item.id)))) {
         return { error: "Selected set is not fully available", statusCode: 400 };
     }
 
-    const assignedInventory = items.map(item => item.id);
+    const assignedInventory = items.map(item => Number(item.id));
+    const normalizedCurrentAssigned = [...currentlyAssignedIds].sort((a, b) => a - b);
+    const normalizedTargetAssigned = [...assignedInventory].sort((a, b) => a - b);
+    const isSameAssignment =
+        normalizedCurrentAssigned.length === normalizedTargetAssigned.length &&
+        normalizedCurrentAssigned.every((id, index) => id === normalizedTargetAssigned[index]);
+
+    if (isSameAssignment) {
+        return { assignedInventory, reusedExisting: true };
+    }
 
     await releaseInventoryForDraftBooking(draftBooking, transaction);
     await Inventory.update(
@@ -944,6 +958,8 @@ exports.draftBooking=async(req,res)=>{
         const totalAmount = Math.round(finalTotalMonthlyAmount * normalizedDuration + securityDeposit);
 
         const previousRoomId = isUpdatingExistingDraft ? overlappingDraftBooking.roomId : null;
+        const isRoomChanged = isUpdatingExistingDraft && Number(previousRoomId) !== Number(roomId);
+        const isSetNumberProvided = setNumber !== undefined && setNumber !== null && setNumber !== "";
 
         let booking;
         if (isUpdatingExistingDraft) {
@@ -1017,7 +1033,11 @@ exports.draftBooking=async(req,res)=>{
             );
         }
 
-        if (setNumber !== undefined && setNumber !== null && setNumber !== "") {
+        if (isRoomChanged && !isSetNumberProvided) {
+            await releaseInventoryForDraftBooking(booking, transaction);
+        }
+
+        if (isSetNumberProvided) {
             const assignment = await assignInventorySetToDraftBooking(booking, setNumber, transaction);
 
             if (assignment.error) {
