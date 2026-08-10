@@ -202,12 +202,6 @@ function normalizeMealPlan(value) {
     return null;
 }
 
-function getMealAmount(mealPlan) {
-    if (mealPlan === "2_TIMES") return 4000;
-    if (mealPlan === "4_TIMES") return 6000;
-    return 0;
-}
-
 function calculateWaiveOffForRemainingDays(checkInDate, monthlyRent, waiveEnabled) {
     if (!waiveEnabled) {
         return {
@@ -941,7 +935,11 @@ exports.draftBooking=async(req,res)=>{
                 ? Number(monthlyRent)
                 : Number(rateCard.rent ?? room.monthlyRent);
 
-        const mealAmount = rentIncludesMeals ? 0 : getMealAmount(normalizedMealPlan);
+        if (normalizeMealPlan == "2_TIMES") {
+            mealAmount = property.mealSubscriptionAmountTwoTimes
+        } else if (normalizeMealPlan == "4_TIMES") {
+            mealAmount = property.mealSubscriptionAmountFourTimes
+        }
         const finalTotalMonthlyAmount = Math.round(finalMonthlyRent + mealAmount);
 
         if (
