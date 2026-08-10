@@ -82,6 +82,11 @@ const PaymentTransaction = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
     },
+    additionalDetails: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: true,
+    },
     totalAmountReceived: {
       type: DataTypes.INTEGER,
       allowNull: true,

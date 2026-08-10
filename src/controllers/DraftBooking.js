@@ -437,6 +437,7 @@ async function convertDraftBookingToRealRecords(draftBooking, draftPaymentTransa
         paymentDate: paymentTransaction.paymentDate || null,
         offlinePaymentType: paymentTransaction.offlinePaymentType || null,
         paymentImage: paymentTransaction.paymentImage || null,
+        additionalDetails: true,
         totalAmountReceived: paymentTransaction.totalAmountReceived,
         waiveCurrentMonthRent: paymentTransaction.waiveCurrentMonthRent,
         securityDepositType: paymentTransaction.securityDepositType,
