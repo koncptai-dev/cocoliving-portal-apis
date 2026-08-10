@@ -21,6 +21,7 @@ const { removeUserFromRoom, addUserToRoom } = require('../utils/aliste/alisteApi
 const BookingOnboarding = require("../models/bookingOnboarding");
 const DepositDeduction = require('../models/depositDeduction');
 const RoomTransfer = require('../models/roomTransfer');
+const { calculateBookingFinancials } = require('../helpers/bookingEditUtils');
 
 const buildErrorPayload = (err, fallbackMessage = "Internal server error") => ({
   message: err?.message || fallbackMessage,
@@ -1233,6 +1234,170 @@ exports.createBookingForOfflinePayments = async (req, res) => {
       success: false,
       ...buildErrorPayload(err, "Internal server error")
     });
+  }
+};
+
+exports.editOfflineBooking = async (req, res) => {
+  const t = await sequelize.transaction();
+  let committed = false;
+
+  try {
+    const { bookingId } = req.params;
+    const body = req.body || {};
+
+    const booking = await Booking.findByPk(bookingId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!booking) {
+      await t.rollback();
+      return res.status(404).json({ success: false, message: "Booking not found" });
+    }
+
+    if (booking.bookingSource !== "OFFLINE") {
+      await t.rollback();
+      return res.status(400).json({ success: false, message: "Only offline bookings can be edited" });
+    }
+
+    if (["cancelled", "rejected", "completed"].includes(booking.status)) {
+      await t.rollback();
+      return res.status(400).json({ success: false, message: "Editing is not allowed for a closed booking" });
+    }
+
+    // const contract = await Contract.findOne({
+    //   where: { bookingId: booking.id },
+    //   transaction: t,
+    //   lock: t.LOCK.UPDATE,
+    // });
+
+    // const contractHasBeenSigned =
+    //   booking.contractStatus === "SIGNED" ||
+    //   booking.adminContractStatus === "SIGNED" ||
+    //   Boolean(contract?.signedAt || contract?.residentSignedAt || contract?.adminSignedAt);
+
+    // if (contractHasBeenSigned) {
+    //   await t.rollback();
+    //   return res.status(400).json({ success: false, message: "Booking cannot be edited after the contract is signed" });
+    // }
+
+    const updates = {};
+    const editableFields = ["roomId", "assignedItems", "checkInDate", "checkOutDate", "duration", "monthlyRent", "isRentIncludingMeals", "mealPlan"];
+
+    for (const field of editableFields) {
+      if (Object.prototype.hasOwnProperty.call(body, field)) {
+        updates[field] = body[field];
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      await t.rollback();
+      return res.status(400).json({ success: false, message: "No valid booking fields were provided" });
+    }
+
+    if (updates.roomId !== undefined && updates.roomId !== null && updates.roomId !== "") {
+      const roomExists = await Rooms.findByPk(Number(updates.roomId), { transaction: t });
+      if (!roomExists) {
+        await t.rollback();
+        return res.status(404).json({ success: false, message: "Room not found" });
+      }
+    }
+
+    if (updates.monthlyRent !== undefined) {
+      const parsedMonthlyRent = Number(updates.monthlyRent);
+      if (!Number.isFinite(parsedMonthlyRent) || parsedMonthlyRent <= 0) {
+        await t.rollback();
+        return res.status(400).json({ success: false, message: "monthlyRent must be a positive number" });
+      }
+      updates.monthlyRent = parsedMonthlyRent;
+    }
+
+    if (updates.duration !== undefined) {
+      const parsedDuration = Number(updates.duration);
+      if (!Number.isInteger(parsedDuration) || parsedDuration <= 0) {
+        await t.rollback();
+        return res.status(400).json({ success: false, message: "duration must be a positive whole number of months" });
+      }
+      updates.duration = parsedDuration;
+    }
+
+    if (updates.roomId !== undefined) {
+      updates.roomId = updates.roomId === "" ? null : Number(updates.roomId);
+    }
+
+    if (updates.assignedItems !== undefined && !Array.isArray(updates.assignedItems)) {
+      await t.rollback();
+      return res.status(400).json({ success: false, message: "assignedItems must be an array" });
+    }
+
+    const finalCheckInDate = updates.checkInDate ?? booking.checkInDate;
+    const finalDuration = updates.duration ?? booking.duration;
+    const finalCheckOutDate = Object.prototype.hasOwnProperty.call(body, "checkOutDate")
+      ? body.checkOutDate
+      : moment(finalCheckInDate)
+          .add(finalDuration, "months")
+          .subtract(1, "day")
+          .format("YYYY-MM-DD");
+
+    updates.checkInDate = finalCheckInDate;
+    updates.duration = finalDuration;
+    updates.checkOutDate = finalCheckOutDate;
+
+    Object.assign(booking, updates);
+    await booking.save({ transaction: t });
+
+    const successfulPayments = await PaymentTransaction.findAll({
+      where: {
+        bookingId: booking.id,
+        status: "SUCCESS",
+        type: { [Op.ne]: "REFUND" },
+      },
+      attributes: ["amount"],
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    const paidAmount = successfulPayments.reduce(
+      (total, payment) => total + Number(payment.amount || 0) / 100,
+      0
+    );
+    const securityDepositAmount = Number(booking.monthlyRent || 0) * 2;
+    const financials = calculateBookingFinancials({
+      monthlyRent: booking.monthlyRent,
+      duration: booking.duration,
+      paidAmount,
+    });
+
+    booking.totalAmount = financials.totalAmount;
+    booking.remainingAmount = financials.remainingAmount;
+    await booking.save({ transaction: t });
+
+    await t.commit();
+    committed = true;
+
+    await logActivity({
+      userId: req.user?.id,
+      name: req.user?.fullName,
+      role: req.user?.role,
+      action: "Offline Booking Updated",
+      entityType: "Booking",
+      entityId: booking.id,
+      details: updates,
+    });
+
+    await logApiCall(req, res, 200, `Updated offline booking (ID: ${booking.id})`, "booking", booking.id);
+
+    return res.status(200).json({
+      success: true,
+      message: "Offline booking updated successfully",
+      booking,
+      payment: financials,
+    });
+  } catch (err) {
+    if (!committed) await t.rollback();
+    console.error("Edit offline booking error:", err);
+    await logApiCall(req, res, 500, "Error occurred while editing offline booking", "booking", parseInt(req.params.bookingId) || 0);
+    return res.status(500).json({ success: false, ...buildErrorPayload(err, "Internal server error") });
   }
 };
 
