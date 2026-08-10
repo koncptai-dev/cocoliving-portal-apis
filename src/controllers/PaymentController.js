@@ -1,9 +1,11 @@
+const sequelize = require('../config/database');
 const PaymentTransaction = require('../models/paymentTransaction');
 const Booking = require('../models/bookRoom');
 const User = require('../models/user');
 const { getOrderStatus } = require('../utils/phonepe/phonepeApi');
 const { Op } = require('sequelize');
 const { logApiCall } = require("../helpers/auditLog");
+const { calculateBookingFinancials, validateOfflinePaymentPayload } = require('../helpers/bookingEditUtils');
 // const { generateAndSendInvoice } = require('../utils/invoiceService');
 const { generateAndSendAcknowledgementReceipt } = require('../utils/acknowledgementReceiptService');
 exports.checkOrderStatus = async (req, res) => {
@@ -426,5 +428,158 @@ exports.createOfflinePayment = async (req, res) => {
       success: false,
       message: err.message || 'Server error'
     });
+  }
+};
+
+
+exports.editOfflinePayment = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  let committed = false;
+
+  try {
+    const { transactionId } = req.params;
+    const body = req.body || {};
+
+    const payment = await PaymentTransaction.findByPk(transactionId, {
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!payment) {
+      await transaction.rollback();
+      return res.status(404).json({ success: false, message: "Payment transaction not found" });
+    }
+
+    const booking = await Booking.findByPk(payment.bookingId, {
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!booking) {
+      await transaction.rollback();
+      return res.status(404).json({ success: false, message: "Booking not found" });
+    }
+
+    if (booking.bookingSource !== "OFFLINE") {
+      await transaction.rollback();
+      return res.status(400).json({ success: false, message: "Only payments for offline bookings can be edited" });
+    }
+
+    const paymentDate = body.paymentDate ?? payment.paymentDate;
+    if (paymentDate && !/^\d{2}\/\d{2}\/\d{4}$/.test(paymentDate)) {
+      await transaction.rollback();
+      return res.status(400).json({ success: false, message: "paymentDate must be in DD/MM/YYYY format" });
+    }
+
+    if (body.amount !== undefined) {
+      const parsedAmount = Number(body.amount);
+      if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+        await transaction.rollback();
+        return res.status(400).json({ success: false, message: "amount must be a positive number" });
+      }
+      payment.amount = Math.round(parsedAmount * 100);
+    }
+
+    const paymentType = body.offlinePaymentType ?? body.paymentType ?? payment.offlinePaymentType;
+    if (paymentType !== undefined && !['CASH', 'CHEQUE', 'UPI'].includes(paymentType)) {
+      await transaction.rollback();
+      return res.status(400).json({ success: false, message: "Invalid paymentType" });
+    }
+
+    const effectiveAmount = body.amount !== undefined ? Number(body.amount) : Number(payment.amount || 0) / 100;
+    const effectiveSecurityDepositAmount = Object.prototype.hasOwnProperty.call(body, "securityDepositAmount")
+      ? Number(body.securityDepositAmount || 0)
+      : Number(payment.securityDepositAmount || 0);
+    const effectiveAdvanceRentAmount = Object.prototype.hasOwnProperty.call(body, "advanceRentAmount")
+      ? Number(body.advanceRentAmount || 0)
+      : Number(payment.advanceRentAmount || 0);
+    const effectiveMealSubscriptionAmount = Object.prototype.hasOwnProperty.call(body, "mealSubscriptionAmount")
+      ? Number(body.mealSubscriptionAmount || 0)
+      : Number(payment.mealSubscriptionAmount || 0);
+    const effectiveAmcChargesAmount = Object.prototype.hasOwnProperty.call(body, "amcChargesAmount")
+      ? Number(body.amcChargesAmount || 0)
+      : Number(payment.amcChargesAmount || 0);
+
+    const validationErrors = validateOfflinePaymentPayload({
+      amount: effectiveAmount,
+      securityDepositAmount: effectiveSecurityDepositAmount,
+      advanceRentAmount: effectiveAdvanceRentAmount,
+      mealSubscriptionAmount: effectiveMealSubscriptionAmount,
+      amcChargesAmount: effectiveAmcChargesAmount,
+    });
+
+    if (validationErrors.length > 0) {
+      await transaction.rollback();
+      return res.status(400).json({ success: false, message: "Payment validation failed", errors: validationErrors });
+    }
+
+    const paymentImage = req.file
+      ? `/uploads/paymentProofs/${req.file.filename}`
+      : Object.prototype.hasOwnProperty.call(body, "paymentImage")
+        ? body.paymentImage
+        : payment.paymentImage;
+
+    payment.paymentDate = paymentDate || null;
+    payment.offlinePaymentType = paymentType || null;
+    payment.adminNote = body.adminNote !== undefined ? body.adminNote : payment.adminNote;
+    payment.paymentImage = paymentImage;
+    payment.securityDepositType = Object.prototype.hasOwnProperty.call(body, "securityDepositType") ? body.securityDepositType : payment.securityDepositType;
+    payment.securityDepositAmount = Object.prototype.hasOwnProperty.call(body, "securityDepositAmount") ? Number(body.securityDepositAmount) : payment.securityDepositAmount;
+    payment.advanceRentAmount = Object.prototype.hasOwnProperty.call(body, "advanceRentAmount") ? Number(body.advanceRentAmount) : payment.advanceRentAmount;
+    payment.advanceRentDurationMonths = Object.prototype.hasOwnProperty.call(body, "advanceRentDurationMonths") ? Number(body.advanceRentDurationMonths) : payment.advanceRentDurationMonths;
+    payment.mealAmount = Object.prototype.hasOwnProperty.call(body, "mealAmount") ? Number(body.mealAmount) : payment.mealAmount;
+    payment.mealSubscriptionAmount = Object.prototype.hasOwnProperty.call(body, "mealSubscriptionAmount") ? Number(body.mealSubscriptionAmount) : payment.mealSubscriptionAmount;
+    payment.mealSubscriptionDurationMonths = Object.prototype.hasOwnProperty.call(body, "mealSubscriptionDurationMonths") ? Number(body.mealSubscriptionDurationMonths) : payment.mealSubscriptionDurationMonths;
+    payment.amcChargesAmount = Object.prototype.hasOwnProperty.call(body, "amcChargesAmount") ? Number(body.amcChargesAmount) : payment.amcChargesAmount;
+    payment.panCardNumber = Object.prototype.hasOwnProperty.call(body, "panCardNumber") ? body.panCardNumber : payment.panCardNumber;
+
+    await payment.save({ transaction });
+
+    const successfulPayments = await PaymentTransaction.findAll({
+      where: {
+        bookingId: booking.id,
+        status: "SUCCESS",
+        type: { [Op.ne]: "REFUND" },
+      },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    const paidAmount = successfulPayments.reduce(
+      (sum, tx) => sum + Number(tx.amount || 0) / 100,
+      0
+    );
+
+    const securityDepositAmount = Number(booking.monthlyRent || 0) * 2;
+    const financials = calculateBookingFinancials({
+      monthlyRent: booking.monthlyRent,
+      duration: booking.duration,
+      amc: payment.amcChargesAmount,
+      paidAmount,
+      securityDeposit: payment.securityDepositAmount
+    });
+
+    booking.totalAmount = financials.totalAmount;
+    booking.remainingAmount = financials.remainingAmount;
+    booking.securityDepositPaid = financials.securityDepositPaid;
+    await booking.save({ transaction });
+
+    await transaction.commit();
+    committed = true;
+
+    await logApiCall(req, res, 200, `Edited offline payment transaction ${payment.id}`, "payment", payment.id);
+
+    return res.status(200).json({
+      success: true,
+      message: "Offline payment updated successfully",
+      payment,
+      booking,
+      financials,
+    });
+  } catch (err) {
+    if (!committed) await transaction.rollback();
+    console.error("[editOfflinePayment]", err);
+    await logApiCall(req, res, 500, "Error while editing offline payment", "payment", req.user?.id || 0);
+    return res.status(500).json({ success: false, message: err.message || "Server error" });
   }
 };
