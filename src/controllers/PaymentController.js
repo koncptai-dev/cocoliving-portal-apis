@@ -130,11 +130,11 @@ exports.getUserTransactions = async (req, res) => {
         invoicePdfPath: r.invoicePdfPath,
         additionalDetails: r.additionalDetails === true,
         ...(r.additionalDetails === true && {
-          advanceRentAmount: r.advanceRentAmount,
-          securityDepositAmount: r.securityDepositAmount,
-          amcChargesAmount: r.amcChargesAmount,
-          mealSubscriptionAmount: r.mealSubscriptionAmount,
-          mealSubscriptionDurationMonths: r.mealSubscriptionDurationMonths,
+          advanceRent: r.advanceRentAmount,
+          securityDeposit: r.securityDepositAmount,
+          amcCharges: r.amcChargesAmount,
+          mealSubscriptionCharges: r.mealSubscriptionAmount,
+          mealSubscriptionDuration: r.mealSubscriptionDurationMonths,
         }),
       };
     });
