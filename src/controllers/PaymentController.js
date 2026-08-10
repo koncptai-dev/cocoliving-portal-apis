@@ -128,6 +128,14 @@ exports.getUserTransactions = async (req, res) => {
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
         invoicePdfPath: r.invoicePdfPath,
+        additionalDetails: r.additionalDetails === true,
+        ...(r.additionalDetails === true && {
+          advanceRentAmount: r.advanceRentAmount,
+          securityDepositAmount: r.securityDepositAmount,
+          amcChargesAmount: r.amcChargesAmount,
+          mealSubscriptionAmount: r.mealSubscriptionAmount,
+          mealSubscriptionDurationMonths: r.mealSubscriptionDurationMonths,
+        }),
       };
     });
 
