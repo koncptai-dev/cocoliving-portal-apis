@@ -936,9 +936,9 @@ exports.draftBooking=async(req,res)=>{
                 : Number(rateCard.rent ?? room.monthlyRent);
 
         let mealAmount = 0
-        if (normalizeMealPlan == "2_TIMES") {
+        if (normalizedMealPlan == "2_TIMES") {
             mealAmount = property.mealSubscriptionAmountTwoTimes
-        } else if (normalizeMealPlan == "4_TIMES") {
+        } else if (normalizedMealPlan == "4_TIMES") {
             mealAmount = property.mealSubscriptionAmountFourTimes
         }
         const finalTotalMonthlyAmount = Math.round(finalMonthlyRent + mealAmount);
