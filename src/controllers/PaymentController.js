@@ -137,7 +137,7 @@ exports.getUserTransactions = async (req, res) => {
           amcCharges: r.amcChargesAmount,
           mealSubscriptionCharges: r.mealSubscriptionAmount,
           mealSubscriptionDuration: r.mealSubscriptionDurationMonths,
-          totalAmount: r.amountRupees,
+          totalAmount: r.totalAmountReceived,
         }),
       };
     });
