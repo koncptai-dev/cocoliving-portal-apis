@@ -930,6 +930,11 @@ exports.draftBooking=async(req,res)=>{
             return res.status(400).json({message: "Room is already full."});
         }
 
+        const finalMonthlyRent =
+            monthlyRent !== undefined && monthlyRent !== null
+                ? Number(monthlyRent)
+                : Number(rateCard.rent ?? room.monthlyRent);
+
         let mealAmount = 0
         if (normalizeMealPlan == "2_TIMES") {
             mealAmount = property.mealSubscriptionAmountTwoTimes
