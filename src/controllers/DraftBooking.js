@@ -936,23 +936,12 @@ exports.draftBooking=async(req,res)=>{
                 : Number(rateCard.rent ?? room.monthlyRent);
 
         let mealAmount = 0
-        if (normalizeMealPlan == "2_TIMES") {
+        if (normalizedMealPlan == "2_TIMES") {
             mealAmount = property.mealSubscriptionAmountTwoTimes
-        } else if (normalizeMealPlan == "4_TIMES") {
+        } else if (normalizedMealPlan == "4_TIMES") {
             mealAmount = property.mealSubscriptionAmountFourTimes
         }
         const finalTotalMonthlyAmount = Math.round(finalMonthlyRent + mealAmount);
-
-        if (
-            totalMonthlyAmount !== undefined &&
-            totalMonthlyAmount !== null &&
-            Number(totalMonthlyAmount) !== finalTotalMonthlyAmount
-        ) {
-            await transaction.rollback();
-            return res.status(400).json({
-                message: "totalMonthlyAmount must equal monthlyRent plus meal amount."
-            });
-        }
 
         const securityDeposit = Number(room.depositAmount ?? finalTotalMonthlyAmount * 2);
         const totalAmount = Math.round(finalTotalMonthlyAmount * normalizedDuration + securityDeposit);
