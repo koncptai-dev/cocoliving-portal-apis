@@ -45,7 +45,7 @@ const PaymentTransaction = sequelize.define(
       comment: 'Amount in paise (integer)',
     },
     type: {
-      type: DataTypes.ENUM('PREBOOK', 'FULL', 'REMAINING','SECURITY_DEPOSIT','MONTHLY_RENT', 'REFUND', 'EXTENSION', 'BOOK_DEPOSIT','OFFLINE', 'ELECTRICITY_RECHARGE'),
+      type: DataTypes.ENUM('INITIAL', 'PREBOOK', 'FULL', 'REMAINING','SECURITY_DEPOSIT','MONTHLY_RENT', 'REFUND', 'EXTENSION', 'BOOK_DEPOSIT','OFFLINE', 'ELECTRICITY_RECHARGE'),
       allowNull: false,
     },
     status: {
@@ -79,6 +79,56 @@ const PaymentTransaction = sequelize.define(
       allowNull: true,
     },
     invoicePdfPath: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    additionalDetails: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: true,
+    },
+    totalAmountReceived: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    waiveCurrentMonthRent: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    securityDepositType: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    securityDepositAmount: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    advanceRentAmount: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    advanceRentDurationMonths: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    mealAmount: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    mealSubscriptionAmount: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    mealSubscriptionDurationMonths: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    amcChargesAmount: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    panCardNumber: {
       type: DataTypes.STRING,
       allowNull: true,
     },

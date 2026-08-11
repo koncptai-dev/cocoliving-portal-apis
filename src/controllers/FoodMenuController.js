@@ -102,7 +102,7 @@ exports.upsertFoodMenu = async (req, res) => {
     let existingMenu = await FoodMenu.findOne({ where: { propertyId } });
 
     const allowedDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-    const allowedMeals = ["breakfast", "lunch", "dinner"];
+    const allowedMeals = ["breakfast", "lunch", "dinner", "eveningSnack"];
     let imagePaths = [];
 
     if (req.files && req.files.length) {
@@ -116,7 +116,7 @@ exports.upsertFoodMenu = async (req, res) => {
       }
       if (!allowedMeals.includes(mealType)) {
         await logApiCall(req, res, 400, "Upserted food menu - invalid mealType", "foodMenu");
-        return res.status(400).json({ message: "mealType must be one of: breakfast, lunch, dinner" });
+        return res.status(400).json({ message: "mealType must be one of: breakfast, lunch, dinner, eveningSnack" });
       }
       for (const file of req.files) {
 
@@ -146,7 +146,7 @@ exports.upsertFoodMenu = async (req, res) => {
         : {};
       if (imagePaths.length) {
         if (!currentPhotos[photoDay]) {
-          currentPhotos[photoDay] = { breakfast: [], lunch: [], dinner: [] };
+          currentPhotos[photoDay] = { breakfast: [], lunch: [], dinner: [], eveningSnack: [] };
         }
         if (!currentPhotos[photoDay][mealType]) {
           currentPhotos[photoDay][mealType] = [];
@@ -162,7 +162,7 @@ exports.upsertFoodMenu = async (req, res) => {
       // Create new menu
       const photos = {};
       if (imagePaths.length) {
-        photos[photoDay] = { breakfast: [], lunch: [], dinner: [] };
+        photos[photoDay] = { breakfast: [], lunch: [], dinner: [], eveningSnack: [] };
         photos[photoDay][mealType].push(...imagePaths);
       }
       const newMenu = await FoodMenu.create({ propertyId, menu, photos });

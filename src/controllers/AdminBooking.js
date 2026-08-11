@@ -5,6 +5,7 @@ const moment = require('moment');
 const { logActivity } = require('../helpers/activityLogger');
 
 const Booking=require('../models/bookRoom');
+const DraftBooking=require('../models/draftBooking');
 const Rooms=require('../models/rooms');
 const Property=require('../models/property');
 const User=require('../models/user');
@@ -12,6 +13,7 @@ const PropertyRateCard = require("../models/propertyRateCard");
 const BookingExtension = require('../models/bookingExtension');
 const Inventory = require("../models/inventory");
 const UserKYC = require("../models/userKYC");
+const UserPermission = require("../models/userPermissoin");
 const Contract = require('../models/contract');
 const PaymentTransaction = require('../models/paymentTransaction');
 const { sendPushNotification } = require("../helpers/notificationHelper");
@@ -19,6 +21,29 @@ const { removeUserFromRoom, addUserToRoom } = require('../utils/aliste/alisteApi
 const BookingOnboarding = require("../models/bookingOnboarding");
 const DepositDeduction = require('../models/depositDeduction');
 const RoomTransfer = require('../models/roomTransfer');
+const { calculateBookingFinancials } = require('../helpers/bookingEditUtils');
+
+const buildErrorPayload = (err, fallbackMessage = "Internal server error") => ({
+  message: err?.message || fallbackMessage,
+  error: err?.name || "Error",
+  details: err?.errors || null,
+  stack: err?.stack || null
+});
+
+const getAccessiblePropertyIds = async (user) => {
+  if (!user) return [];
+  if (user.role === 1) return null;
+
+  const permission = await UserPermission.findOne({
+    where: { userId: user.id }
+  });
+
+  if (!permission || !Array.isArray(permission.properties)) {
+    return [];
+  }
+
+  return permission.properties.map((value) => Number(value)).filter(Boolean);
+};
 
 const releaseInventoryForBooking = async (booking, transaction = null) => {
   if (!booking.assignedItems || booking.assignedItems.length === 0) return;
@@ -111,41 +136,68 @@ async function notifyBookingUser(booking) {
 
 exports.getAllBookings=async(req,res)=>{
   try{
-    const rawBookings = await Booking.findAll({
-      include: [
-        {
-          model: User,
-          as: 'user',
-          attributes: ["id", "fullName", "email", "phone", "gender"],
-          include: [
-            {
-              model: UserKYC,
+    const isSuperAdmin = req.user?.role === 1;
+    const isPropertyAdmin = req.user?.role === 3;
+
+    const draftBookingWhere = {
+      confirmed: false
+    };
+
+    if (isPropertyAdmin) {
+      const accessiblePropertyIds = await getAccessiblePropertyIds(req.user);
+      draftBookingWhere.propertyId = {
+        [Op.in]: accessiblePropertyIds.length > 0 ? accessiblePropertyIds : [-1]
+      };
+    } else if (!isSuperAdmin) {
+      draftBookingWhere.propertyId = {
+        [Op.in]: [-1]
+      };
+    }
+
+    const includeConfig = [
+      {
+        model: User,
+        as: 'user',
+        attributes: ["id", "fullName", "email", "phone", "gender"],
+        include: [
+          {
+            model: UserKYC,
               as: 'kyc',
-              attributes: ['panStatus', 'ekycStatus']
-            }
-          ]
-        },
-       {
-         model: Rooms,
-          as: "room",
-          attributes: ["id", "roomNumber"],
-          include: [{ model: Property, as: 'property' }]
-        },
-        {
-          model: PropertyRateCard,
-          as: "rateCard",
-          include: [{ model: Property, as: "property" }]
-        }
-      ],
-      order: [["createdAt", "DESC"]]
-    });
+            attributes: ['panStatus', 'ekycStatus']
+          }
+        ]
+      },
+      {
+        model: Rooms,
+        as: "room",
+        attributes: ["id", "roomNumber"],
+        include: [{ model: Property, as: 'property' }]
+      },
+      {
+        model: PropertyRateCard,
+        as: "rateCard",
+        include: [{ model: Property, as: "property" }]
+      }
+    ];
+
+    const [rawBookings, rawDraftBookings] = await Promise.all([
+      Booking.findAll({
+        include: includeConfig,
+        order: [["createdAt", "DESC"]]
+      }),
+      DraftBooking.findAll({
+        where: draftBookingWhere,
+        include: includeConfig,
+        order: [["createdAt", "DESC"]]
+      })
+    ]);
 
     await logApiCall(req, res, 200, "Viewed all bookings list", "booking");
-    res.status(200).json({ booking: rawBookings });
+    res.status(200).json({ booking: rawBookings, draftBookings: rawDraftBookings });
   }catch(err){
     console.log("error",err);
     await logApiCall(req, res, 500, "Error occurred while fetching all bookings", "booking");
-    return res.status(500).json({message:"Internal server error"});
+    return res.status(500).json(buildErrorPayload(err, "Internal server error"));
   }
 
 } 
@@ -198,8 +250,7 @@ exports.approveBooking = async (req, res) => {
     console.error("approveBooking error:", err);
     await logApiCall(req, res, 500, "Error occurred while approving booking", "booking", parseInt(req.params.bookingId) || 0);
     res.status(500).json({
-      message: "Internal server error",
-      error: err.message
+      ...buildErrorPayload(err, "Internal server error")
     });
   }
 };
@@ -242,8 +293,7 @@ exports.rejectBooking = async (req, res) => {
     console.error("rejectBooking error:", error);
     await logApiCall(req, res, 500, "Error occurred while rejecting booking", "booking", parseInt(req.params.bookingId) || 0);
     res.status(500).json({
-      message: "Server error",
-      error: error.message
+      ...buildErrorPayload(error, "Server error")
     });
   }
 };
@@ -353,7 +403,7 @@ exports.cancelBooking = async (req, res) => {
     await t.rollback();
     console.error("cancelBooking error:", err);
     await logApiCall(req, res, 500, "Error occurred while cancelling booking", "booking", parseInt(req.params.bookingId) || 0);
-    return res.status(500).json({ message: "Internal server error", error: err.message });
+    return res.status(500).json(buildErrorPayload(err, "Internal server error"));
   }
 };
 
@@ -461,7 +511,7 @@ exports.approveCancellation = async (req, res) => {
 
   } catch (err) {
     console.error("approveCancellation error:", err);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json(buildErrorPayload(error, "Internal server error"));
   }
 };
 
@@ -518,7 +568,7 @@ exports.rejectCancellation = async (req, res) => {
 
   } catch (err) {
     console.error("rejectCancellation error:", err);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json(buildErrorPayload(err, "Internal server error"));
   }
 };
 
@@ -662,10 +712,7 @@ exports.assignInventory = async (req, res) => {
   } catch (err) {
     await t.rollback();
     console.error("Assign Set Error:", err);
-    return res.status(500).json({
-      message: "Internal server error",
-      error: err.message
-    });
+    return res.status(500).json(buildErrorPayload(err, "Internal server error"));
   }
 };
 
@@ -835,10 +882,7 @@ exports.assignInventorySetsForRoom = async (req, res) => {
   } catch (err) {
     await t.rollback();
     console.error("assignInventorySetsForRoom error:", err);
-    return res.status(500).json({
-      message: "Internal server error",
-      error: err.message
-    });
+    return res.status(500).json(buildErrorPayload(err, "Internal server error"));
   }
 };
 
@@ -880,7 +924,7 @@ exports.getInventorySets = async (req, res) => {
 
   } catch (err) {
     console.error("Get Sets Error:", err);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json(buildErrorPayload(err, "Internal server error"));
   }
 };
 
@@ -1188,9 +1232,172 @@ exports.createBookingForOfflinePayments = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
-      error: err.message,
+      ...buildErrorPayload(err, "Internal server error")
     });
+  }
+};
+
+exports.editOfflineBooking = async (req, res) => {
+  const t = await sequelize.transaction();
+  let committed = false;
+
+  try {
+    const { bookingId } = req.params;
+    const body = req.body || {};
+
+    const booking = await Booking.findByPk(bookingId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!booking) {
+      await t.rollback();
+      return res.status(404).json({ success: false, message: "Booking not found" });
+    }
+
+    if (booking.bookingSource !== "OFFLINE") {
+      await t.rollback();
+      return res.status(400).json({ success: false, message: "Only offline bookings can be edited" });
+    }
+
+    if (["cancelled", "rejected", "completed"].includes(booking.status)) {
+      await t.rollback();
+      return res.status(400).json({ success: false, message: "Editing is not allowed for a closed booking" });
+    }
+
+    // const contract = await Contract.findOne({
+    //   where: { bookingId: booking.id },
+    //   transaction: t,
+    //   lock: t.LOCK.UPDATE,
+    // });
+
+    // const contractHasBeenSigned =
+    //   booking.contractStatus === "SIGNED" ||
+    //   booking.adminContractStatus === "SIGNED" ||
+    //   Boolean(contract?.signedAt || contract?.residentSignedAt || contract?.adminSignedAt);
+
+    // if (contractHasBeenSigned) {
+    //   await t.rollback();
+    //   return res.status(400).json({ success: false, message: "Booking cannot be edited after the contract is signed" });
+    // }
+
+    const updates = {};
+    const editableFields = ["roomId", "assignedItems", "checkInDate", "checkOutDate", "duration", "monthlyRent", "isRentIncludingMeals", "mealPlan"];
+
+    for (const field of editableFields) {
+      if (Object.prototype.hasOwnProperty.call(body, field)) {
+        updates[field] = body[field];
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      await t.rollback();
+      return res.status(400).json({ success: false, message: "No valid booking fields were provided" });
+    }
+
+    if (updates.roomId !== undefined && updates.roomId !== null && updates.roomId !== "") {
+      const roomExists = await Rooms.findByPk(Number(updates.roomId), { transaction: t });
+      if (!roomExists) {
+        await t.rollback();
+        return res.status(404).json({ success: false, message: "Room not found" });
+      }
+    }
+
+    if (updates.monthlyRent !== undefined) {
+      const parsedMonthlyRent = Number(updates.monthlyRent);
+      if (!Number.isFinite(parsedMonthlyRent) || parsedMonthlyRent <= 0) {
+        await t.rollback();
+        return res.status(400).json({ success: false, message: "monthlyRent must be a positive number" });
+      }
+      updates.monthlyRent = parsedMonthlyRent;
+    }
+
+    if (updates.duration !== undefined) {
+      const parsedDuration = Number(updates.duration);
+      if (!Number.isInteger(parsedDuration) || parsedDuration <= 0) {
+        await t.rollback();
+        return res.status(400).json({ success: false, message: "duration must be a positive whole number of months" });
+      }
+      updates.duration = parsedDuration;
+    }
+
+    if (updates.roomId !== undefined) {
+      updates.roomId = updates.roomId === "" ? null : Number(updates.roomId);
+    }
+
+    if (updates.assignedItems !== undefined && !Array.isArray(updates.assignedItems)) {
+      await t.rollback();
+      return res.status(400).json({ success: false, message: "assignedItems must be an array" });
+    }
+
+    const finalCheckInDate = updates.checkInDate ?? booking.checkInDate;
+    const finalDuration = updates.duration ?? booking.duration;
+    const finalCheckOutDate = Object.prototype.hasOwnProperty.call(body, "checkOutDate")
+      ? body.checkOutDate
+      : moment(finalCheckInDate)
+          .add(finalDuration, "months")
+          .subtract(1, "day")
+          .format("YYYY-MM-DD");
+
+    updates.checkInDate = finalCheckInDate;
+    updates.duration = finalDuration;
+    updates.checkOutDate = finalCheckOutDate;
+
+    Object.assign(booking, updates);
+    await booking.save({ transaction: t });
+
+    const successfulPayments = await PaymentTransaction.findAll({
+      where: {
+        bookingId: booking.id,
+        status: "SUCCESS",
+        type: { [Op.ne]: "REFUND" },
+      },
+      attributes: ["amount"],
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    const paidAmount = successfulPayments.reduce(
+      (total, payment) => total + Number(payment.amount || 0) / 100,
+      0
+    );
+    const securityDepositAmount = Number(booking.monthlyRent || 0) * 2;
+    const financials = calculateBookingFinancials({
+      monthlyRent: booking.monthlyRent,
+      duration: booking.duration,
+      paidAmount,
+    });
+
+    booking.totalAmount = financials.totalAmount;
+    booking.remainingAmount = financials.remainingAmount;
+    await booking.save({ transaction: t });
+
+    await t.commit();
+    committed = true;
+
+    await logActivity({
+      userId: req.user?.id,
+      name: req.user?.fullName,
+      role: req.user?.role,
+      action: "Offline Booking Updated",
+      entityType: "Booking",
+      entityId: booking.id,
+      details: updates,
+    });
+
+    await logApiCall(req, res, 200, `Updated offline booking (ID: ${booking.id})`, "booking", booking.id);
+
+    return res.status(200).json({
+      success: true,
+      message: "Offline booking updated successfully",
+      booking,
+      payment: financials,
+    });
+  } catch (err) {
+    if (!committed) await t.rollback();
+    console.error("Edit offline booking error:", err);
+    await logApiCall(req, res, 500, "Error occurred while editing offline booking", "booking", parseInt(req.params.bookingId) || 0);
+    return res.status(500).json({ success: false, ...buildErrorPayload(err, "Internal server error") });
   }
 };
 
@@ -1319,7 +1526,7 @@ exports.updateOfflineBookingDuration = async (req, res) => {
     if (!committed) await t.rollback();
     console.error("Update offline booking duration error:", err);
     await logApiCall(req, res, 500, "Error occurred while updating offline booking duration", "booking", parseInt(req.params.bookingId) || 0);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res.status(500).json({ success: false, ...buildErrorPayload(err, "Internal server error") });
   }
 };
 
@@ -1370,7 +1577,7 @@ exports.getRoomTransferDetails = async (req, res) => {
     });
   } catch (err) {
     console.error('getRoomTransferDetails error:', err);
-    return res.status(500).json({ message: 'Internal server error' });
+    return res.status(500).json(buildErrorPayload(err, 'Internal server error'));
   }
 };
 
@@ -1393,7 +1600,7 @@ exports.getRoomTransferHistory = async (req, res) => {
     });
   } catch (err) {
     console.error('getRoomTransferHistory error:', err);
-    return res.status(500).json({ message: 'Internal server error' });
+    return res.status(500).json(buildErrorPayload(err, 'Internal server error'));
   }
 };
 
@@ -1570,6 +1777,6 @@ exports.transferRoom = async (req, res) => {
   } catch (err) {
     await t.rollback();
     console.error('transferRoom error:', err);
-    return res.status(500).json({ message: 'Internal server error', error: err.message });
+    return res.status(500).json(buildErrorPayload(err, 'Internal server error'));
   }
 };
