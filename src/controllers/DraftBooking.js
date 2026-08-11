@@ -935,6 +935,7 @@ exports.draftBooking=async(req,res)=>{
                 ? Number(monthlyRent)
                 : Number(rateCard.rent ?? room.monthlyRent);
 
+        let mealAmount = 0
         if (normalizeMealPlan == "2_TIMES") {
             mealAmount = property.mealSubscriptionAmountTwoTimes
         } else if (normalizeMealPlan == "4_TIMES") {
