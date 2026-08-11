@@ -936,6 +936,7 @@ exports.draftBooking=async(req,res)=>{
         } else if (normalizeMealPlan == "4_TIMES") {
             mealAmount = property.mealSubscriptionAmountFourTimes
         }
+        const finalTotalMonthlyAmount = Math.round(finalMonthlyRent + mealAmount);
 
         const securityDeposit = Number(room.depositAmount ?? finalTotalMonthlyAmount * 2);
         const totalAmount = Math.round(finalTotalMonthlyAmount * normalizedDuration + securityDeposit);
