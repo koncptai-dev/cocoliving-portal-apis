@@ -930,28 +930,11 @@ exports.draftBooking=async(req,res)=>{
             return res.status(400).json({message: "Room is already full."});
         }
 
-        const finalMonthlyRent =
-            monthlyRent !== undefined && monthlyRent !== null
-                ? Number(monthlyRent)
-                : Number(rateCard.rent ?? room.monthlyRent);
-
         let mealAmount = 0
         if (normalizeMealPlan == "2_TIMES") {
             mealAmount = property.mealSubscriptionAmountTwoTimes
         } else if (normalizeMealPlan == "4_TIMES") {
             mealAmount = property.mealSubscriptionAmountFourTimes
-        }
-        const finalTotalMonthlyAmount = Math.round(finalMonthlyRent + mealAmount);
-
-        if (
-            totalMonthlyAmount !== undefined &&
-            totalMonthlyAmount !== null &&
-            Number(totalMonthlyAmount) !== finalTotalMonthlyAmount
-        ) {
-            await transaction.rollback();
-            return res.status(400).json({
-                message: "totalMonthlyAmount must equal monthlyRent plus meal amount."
-            });
         }
 
         const securityDeposit = Number(room.depositAmount ?? finalTotalMonthlyAmount * 2);
