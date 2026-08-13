@@ -396,7 +396,7 @@ async function convertDraftBookingToRealRecords(draftBooking, draftPaymentTransa
         mealPlan: draftBooking.mealPlan || "NONE",
         status: "approved",
         totalAmount: draftBooking.totalAmount,
-        remainingAmount: 0,
+        remainingAmount: draftBooking.totalAmount - paymentTransaction.totalAmountReceived,
         bookingType: draftBooking.bookingType,
         paymentStatus: "COMPLETED",
         onboardingStatus: draftBooking.onboardingStatus,

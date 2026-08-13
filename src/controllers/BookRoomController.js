@@ -7,6 +7,27 @@ const { logApiCall } = require("../helpers/auditLog");
 const { getCancellationMeta } = require("../helpers/cancellation");
 const { Op } = require('sequelize');
 
+
+function getMealSubscriptionInfo(mealPlan, isRentIncludingMeals) {
+  const MEAL_PLAN_LABELS = {
+    NONE: null,
+    '2_TIMES': 'Two Times a day',
+    '4_TIMES': 'Four Times a day',
+  };
+
+  if (!mealPlan || mealPlan === 'NONE') {
+    return 'No meal plan selected for this booking.';
+  }
+
+  const label = MEAL_PLAN_LABELS[mealPlan] || mealPlan;
+
+  if (isRentIncludingMeals) {
+    return `Your meal is included in rent. (${label}). For more details go to meals page.`;
+  }
+
+  return `You have subscribed to a meal plan (${label}). For more details go to meals page.`;
+}
+
 exports.getUserBookings = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -44,7 +65,8 @@ exports.getUserBookings = async (req, res) => {
 
       return {
         ...b.toJSON(),
-        displayStatus
+        displayStatus,
+        mealSubscriptionInfo: getMealSubscriptionInfo(b.mealPlan, b.isRentIncludingMeals)
       };
     });
     const totalPages = Math.ceil(count / limit);
