@@ -48,6 +48,7 @@ const ExportRoutes = require("./routes/ExportRoutes");
 const CouponRoute = require('./routes/CouponRoute');
 const BlogRoutes = require("./routes/blogRoutes");
 const DraftBookingRoutes = require("./routes/DraftBookingRoutes");
+const AccountsManagementRoutes = require("./routes/AccountsManagementRoutes");
 
 const VerifyWebhook = require('./middleware/alisteWebhookAuth');
 // cron job for admin notifications about users with pending rent
@@ -158,6 +159,7 @@ app.use("/api/announcement", AnnouncementRoute);
 app.use("/api/property", PropertyRoute);
 app.use("/api/admin-booking", AdminBooking);
 app.use("/api/draft-booking", DraftBookingRoutes);
+app.use("/api/accounts-management", AccountsManagementRoutes);
 app.use("/api/user-and-booking", UserAndBookingDetails);
 app.use("/api/pages", PagesRoute);
 app.use("/api/admin/blogs", BlogRoutes);

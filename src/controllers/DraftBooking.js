@@ -407,6 +407,8 @@ async function convertDraftBookingToRealRecords(draftBooking, draftPaymentTransa
         adminCancelReason: draftBooking.adminCancelReason,
         cancelEffectiveCheckOutDate: draftBooking.cancelEffectiveCheckOutDate,
         securityDepositPaid: draftBooking.securityDepositPaid,
+        createdByAdminId: draftBooking.createdByAdminId || null,
+        accountingStatus: "PENDING",
         monthlyPlanSelected: draftBooking.monthlyPlanSelected,
         monthlyInstallment: draftBooking.monthlyInstallment,
         installmentsPaid: draftBooking.installmentsPaid,
