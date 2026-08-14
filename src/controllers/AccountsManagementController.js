@@ -7,12 +7,15 @@ const {
   Booking,
   PaymentTransaction,
   User,
+  Rooms,
+  Property,
 } = require("../models");
 
 const { logApiCall } = require("../helpers/auditLog");
 const { sendEmail } = require("../utils/sendEmail");
 const {
   accountantInvoiceEmail,
+  accountantRejectionEmail
 } = require("../utils/emailTemplates/emailTemplates");
 
 const buildErrorPayload = (
@@ -156,11 +159,19 @@ exports.decideAccounting = async (req, res) => {
       committed = true;
 
       try {
+        console.log(
+          `[AccountsManagement] Preparing accountant invoice email for booking ${booking.id}`
+        );
+
         const resident = await User.findByPk(booking.userId, {
           attributes: ["id", "fullName", "email"],
         });
 
         if (resident?.email) {
+          console.log(
+            `[AccountsManagement] Sending accountant invoice email for booking ${booking.id} to ${resident.email}`
+          );
+
           const emailTemplate = accountantInvoiceEmail({
             userName: resident.fullName,
             bookingId: booking.id,
@@ -186,6 +197,10 @@ exports.decideAccounting = async (req, res) => {
               },
             ],
           });
+
+          console.log(
+            `[AccountsManagement] Accountant invoice email sent successfully for booking ${booking.id} to ${resident.email}`
+          );
         } else {
           console.warn(
             `[AccountsManagement] Resident email unavailable for booking ${booking.id}`
@@ -255,7 +270,12 @@ exports.decideAccounting = async (req, res) => {
 
     await transaction.commit();
     committed = true;
+    let rejectionEmails = [];
+
     if (booking.createdByAdminId) {
+      console.log(
+        `[AccountsManagement] Looking up booking creator ${booking.createdByAdminId} for rejection notification, booking ${booking.id}`
+      );
       try {
         const bookingCreator = await User.findByPk(
           booking.createdByAdminId,
@@ -265,57 +285,104 @@ exports.decideAccounting = async (req, res) => {
         );
 
         if (bookingCreator?.email) {
-          await sendEmail({
-            to: bookingCreator.email,
-            subject: `Booking #${booking.id} Requires Correction`,
-            html: `
-              <!DOCTYPE html>
-              <html>
-              <head>
-                <meta charset="UTF-8" />
-              </head>
-              <body style="font-family: Arial, sans-serif; line-height: 1.6;">
-                <h2>Booking Requires Correction</h2>
-
-                <p>
-                  Hello ${bookingCreator.fullName || "Admin"},
-                </p>
-
-                <p>
-                  The accountant has reviewed Booking
-                  <strong>#${booking.id}</strong> and rejected the
-                  payment for the following reason:
-                </p>
-
-                <div style="
-                  background:#f5f5f5;
-                  border-left:4px solid #D36517;
-                  padding:12px 16px;
-                  margin:16px 0;
-                ">
-                  ${rejectionReason}
-                </div>
-
-                <p>
-                  Please review and correct the booking details.
-                  Once corrected, submit the booking for accountant
-                  approval again.
-                </p>
-              </body>
-              </html>
-            `,
-          });
+          rejectionEmails = [bookingCreator.email];
+          console.log(
+            `[AccountsManagement] Booking creator email found for booking ${booking.id}: ${bookingCreator.email}`
+          );
         } else {
           console.warn(
-            `[AccountsManagement] No email found for booking creator ${booking.createdByAdminId} on booking ${booking.id}`
+            `[AccountsManagement] Booking creator email unavailable for booking ${booking.id}`
           );
         }
+      } catch (emailError) {
+        console.error(
+          `[AccountsManagement] Failed to find booking creator ${booking.createdByAdminId}:`,
+          emailError
+        );
+      }
+    }
+
+    if (rejectionEmails.length === 0) {
+      rejectionEmails = (process.env.ACCOUNTING_REJECTION_FALLBACK_EMAILS || "")
+        .split(",")
+        .map((email) => email.trim())
+        .filter(Boolean);
+
+      if (rejectionEmails.length > 0) {
+        console.log(
+          `[AccountsManagement] Using fallback rejection emails for booking ${booking.id}: ${rejectionEmails.join(", ")}`
+        );
+      }
+    }
+
+    if (rejectionEmails.length > 0) {
+      try {
+        console.log(
+          `[AccountsManagement] Sending accountant rejection email for booking ${booking.id} to: ${rejectionEmails.join(", ")}`
+        );
+
+        const bookingDetails = await Booking.findByPk(booking.id, {
+          include: [
+            {
+              model: User,
+              as: "user",
+              attributes: ["id", "fullName", "email", "phone"],
+            },
+            {
+              model: Rooms,
+              as: "room",
+              attributes: ["id", "roomNumber"],
+              include: [
+                {
+                  model: Property,
+                  as: "property",
+                  attributes: ["id", "name"],
+                },
+              ],
+            },
+          ],
+        });
+
+        const emailTemplate = accountantRejectionEmail({
+          bookingId: booking.id,
+
+          userName: bookingDetails?.user?.fullName,
+          userEmail: bookingDetails?.user?.email,
+          userPhone: bookingDetails?.user?.phone,
+
+          propertyName: bookingDetails?.room?.property?.propertyName,
+          roomNumber: bookingDetails?.room?.roomNumber,
+
+          checkInDate: booking.checkInDate,
+          checkOutDate: booking.checkOutDate,
+          duration: booking.duration,
+          monthlyRent: booking.monthlyRent,
+
+          paymentAmount: Number(initialPayment.amount || 0) / 100,
+
+          rejectionReason,
+        });
+
+        await sendEmail({
+          to: rejectionEmails,
+          subject: `Booking #${booking.id} Requires Correction`,
+          html: emailTemplate.html,
+          attachments: emailTemplate.attachments || [],
+        });
+
+        console.log(
+          `[AccountsManagement] Accountant rejection email sent successfully for booking ${booking.id}`
+        );
       } catch (emailError) {
         console.error(
           `[AccountsManagement] Failed to send accountant rejection email for booking ${booking.id}:`,
           emailError
         );
       }
+    } else {
+      console.warn(
+        `[AccountsManagement] No rejection notification recipients available for booking ${booking.id}`
+      );
     }
 
     await logApiCall(

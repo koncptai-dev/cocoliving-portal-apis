@@ -756,6 +756,210 @@ ${FOOTER}
   };
 }
 
+function accountantRejectionEmail({
+  bookingId,
+  userName,
+  userEmail,
+  userPhone,
+  propertyName,
+  roomNumber,
+  checkInDate,
+  checkOutDate,
+  duration,
+  monthlyRent,
+  paymentAmount,
+  rejectionReason
+}) {
+  const normalizedBaseUrl = BASE_URL
+    ? String(BASE_URL).replace(/\/$/, '')
+    : '';
+
+  const reviewUrl = normalizedBaseUrl
+    ? `${normalizedBaseUrl}/admin/bookings/${bookingId}/edit`
+    : '#';
+
+  return {
+    attachments: [
+      {
+        filename: 'logo.png',
+        path: path.join(__dirname, 'assets/logo.png'),
+        cid: 'logo'
+      },
+      {
+        filename: 'bg-pattern.png',
+        path: path.join(__dirname, 'assets/bg-pattern.png'),
+        cid: 'bg'
+      },
+      ...FOOTER_ATTACHMENTS
+    ],
+
+    html: `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+</head>
+
+<body style="
+  margin:0;
+  background:#f3efe9;
+  font-family:'Rethink Sans','Inter','Segoe UI',Arial,sans-serif;
+">
+
+<table width="100%" align="center">
+<tr>
+<td align="center">
+
+<table width="600" style="max-width:600px;">
+
+<tr>
+<td align="center"
+style="
+  background-color:#4F3421;
+  background-image:url(cid:bg);
+  background-repeat:repeat;
+  background-size:400px 400px;
+  padding:28px 28px 90px;
+">
+  <img src="cid:logo" width="140" />
+</td>
+</tr>
+
+<tr>
+<td align="center" style="background:#f3efe9;padding:0 24px 40px;">
+
+<div style="
+  background:#f3efe9;
+  border-radius:80px 80px 0 0;
+  padding:40px 24px 0;
+  max-width:520px;
+  margin:-60px auto 0;
+">
+
+<h1 style="
+  margin:0 0 16px;
+  font-size:32px;
+  font-weight:700;
+">
+  Booking Requires Correction
+</h1>
+
+<p style="
+  font-size:15px;
+  line-height:1.6;
+">
+  The accountant has reviewed Booking
+  <strong>#${bookingId}</strong> and found an issue
+  that requires your attention.
+</p>
+
+<div style="
+  background:#fff5f3;
+  border-left:4px solid #c94b3c;
+  padding:16px;
+  margin:24px 0;
+  text-align:left;
+">
+
+<strong style="color:#8f3025;">
+Accountant's Reason
+</strong>
+
+<p style="
+  margin:8px 0 0;
+  font-size:15px;
+  line-height:1.6;
+">
+${rejectionReason}
+</p>
+
+</div>
+
+<div style="
+  background:#ffffff;
+  padding:24px;
+  border-radius:12px;
+  margin:24px 0;
+  text-align:left;
+  font-size:14px;
+  line-height:1.8;
+  box-shadow:0 2px 8px rgba(0,0,0,0.08);
+">
+
+<strong>Booking Details</strong>
+<br/><br/>
+
+<strong>Booking ID:</strong> #${bookingId}<br/>
+<strong>Resident:</strong> ${userName || 'N/A'}<br/>
+<strong>Email:</strong> ${userEmail || 'N/A'}<br/>
+<strong>Phone:</strong> ${userPhone || 'N/A'}<br/>
+<strong>Property:</strong> ${propertyName || 'N/A'}<br/>
+<strong>Room:</strong> ${roomNumber || 'N/A'}<br/>
+<strong>Check-in:</strong> ${checkInDate || 'N/A'}<br/>
+<strong>Check-out:</strong> ${checkOutDate || 'N/A'}<br/>
+<strong>Duration:</strong> ${duration || 'N/A'} month(s)<br/>
+<strong>Monthly Rent:</strong> ₹${Number(monthlyRent || 0).toLocaleString('en-IN')}<br/>
+<strong>Payment Reviewed:</strong> ₹${Number(paymentAmount || 0).toLocaleString('en-IN')}
+
+</div>
+
+<a
+  href="${reviewUrl}"
+  style="
+    display:inline-block;
+    padding:14px 30px;
+    background:#D36517;
+    color:#fff;
+    text-decoration:none;
+    border-radius:24px;
+    font-weight:600;
+  "
+>
+  Review & Correct Booking
+</a>
+
+<p style="
+  font-size:13px;
+  line-height:1.6;
+  margin:20px 0;
+  color:#666;
+">
+  Please review the booking details, make the necessary
+  corrections, and submit the booking for accountant
+  approval again.
+</p>
+
+<p style="
+  font-size:12px;
+  line-height:1.5;
+  color:#888;
+  word-break:break-all;
+">
+  If the button does not work, login on admin panel through this link and navigate to this booking edit page:<br/>
+  <a href="${BASE_URL}/admin-login" style="color:#4F3421;">
+    ${BASE_URL}/admin-login
+  </a>
+</p>
+
+</div>
+
+</td>
+</tr>
+
+${FOOTER}
+
+</table>
+
+</td>
+</tr>
+</table>
+
+</body>
+</html>
+`
+  };
+}
+
 function acknowledgementReceiptEmail({ userName }) {
   return {
     attachments: [
@@ -1272,6 +1476,7 @@ module.exports = {
   securityDepositPaymentEmail,
   invoiceEmail,
   accountantInvoiceEmail,
+  accountantRejectionEmail,
   acknowledgementReceiptEmail,
   rentDueAdminEmail,
   couponShareEmail,
