@@ -1386,7 +1386,6 @@ exports.editOfflineBooking = async (req, res) => {
     Object.assign(booking, updates);
     if (submitForAccountantApproval) {
       booking.accountingStatus = "PENDING";
-      booking.accountingRejectionReason = null;
     }
     await booking.save({ transaction: t });
 

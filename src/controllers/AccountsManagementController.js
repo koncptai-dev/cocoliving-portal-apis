@@ -147,7 +147,6 @@ exports.decideAccounting = async (req, res) => {
       });
 
       booking.accountingStatus = "APPROVED";
-      booking.accountingRejectionReason = null;
 
       await booking.save({
         transaction,
@@ -248,6 +247,7 @@ exports.decideAccounting = async (req, res) => {
 
     booking.accountingStatus = "REJECTED";
     booking.accountingRejectionReason = rejectionReason;
+    booking.accountingRejectionTimestamp = new Date();
 
     await booking.save({
       transaction,

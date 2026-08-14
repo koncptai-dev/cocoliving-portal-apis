@@ -154,6 +154,10 @@ const Booking = sequelize.define(
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    accountingRejectionTimestamp: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
     securityDepositPaid: {
       type: DataTypes.BOOLEAN,
       defaultValue: false
