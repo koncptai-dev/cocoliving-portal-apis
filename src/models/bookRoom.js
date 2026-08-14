@@ -141,6 +141,23 @@ const Booking = sequelize.define(
       type: DataTypes.DATEONLY,
       allowNull: true,
     },
+    createdByAdminId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    accountingStatus: {
+      type: DataTypes.ENUM('PENDING', 'APPROVED', 'REJECTED'),
+      allowNull: false,
+      defaultValue: 'PENDING',
+    },
+    accountingRejectionReason: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    accountingRejectionTimestamp: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
     securityDepositPaid: {
       type: DataTypes.BOOLEAN,
       defaultValue: false

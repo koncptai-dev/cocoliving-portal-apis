@@ -138,6 +138,21 @@ exports.getAllBookings=async(req,res)=>{
   try{
     const isSuperAdmin = req.user?.role === 1;
     const isPropertyAdmin = req.user?.role === 3;
+    const { accountingStatus } = req.query;
+    if (
+      accountingStatus !== undefined &&
+      !["PENDING", "APPROVED", "REJECTED"].includes(accountingStatus)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid accountingStatus. Allowed values are PENDING, APPROVED, REJECTED."
+      });
+    }
+    const bookingWhere = {};
+    if (accountingStatus) {
+      bookingWhere.accountingStatus = accountingStatus;
+    }
 
     const draftBookingWhere = {
       confirmed: false
@@ -182,6 +197,7 @@ exports.getAllBookings=async(req,res)=>{
 
     const [rawBookings, rawDraftBookings] = await Promise.all([
       Booking.findAll({
+        where: bookingWhere,
         include: includeConfig,
         order: [["createdAt", "DESC"]]
       }),
@@ -1244,6 +1260,24 @@ exports.editOfflineBooking = async (req, res) => {
   try {
     const { bookingId } = req.params;
     const body = req.body || {};
+    let submitForAccountantApproval = false;
+    if (body.submitForAccountantApproval !== undefined) {
+      if (
+        body.submitForAccountantApproval !== true &&
+        body.submitForAccountantApproval !== false &&
+        body.submitForAccountantApproval !== "true" &&
+        body.submitForAccountantApproval !== "false"
+      ) {
+        await t.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "submitForAccountantApproval must be a boolean"
+        });
+      }
+      submitForAccountantApproval =
+        body.submitForAccountantApproval === true ||
+        body.submitForAccountantApproval === "true";
+    }
 
     const booking = await Booking.findByPk(bookingId, {
       transaction: t,
@@ -1290,9 +1324,15 @@ exports.editOfflineBooking = async (req, res) => {
       }
     }
 
-    if (Object.keys(updates).length === 0) {
+    if (
+      Object.keys(updates).length === 0 &&
+      !submitForAccountantApproval
+    ) {
       await t.rollback();
-      return res.status(400).json({ success: false, message: "No valid booking fields were provided" });
+      return res.status(400).json({
+        success: false,
+        message: "No valid booking fields or accountant submission action was provided"
+      });
     }
 
     if (updates.roomId !== undefined && updates.roomId !== null && updates.roomId !== "") {
@@ -1344,6 +1384,9 @@ exports.editOfflineBooking = async (req, res) => {
     updates.checkOutDate = finalCheckOutDate;
 
     Object.assign(booking, updates);
+    if (submitForAccountantApproval) {
+      booking.accountingStatus = "PENDING";
+    }
     await booking.save({ transaction: t });
 
     const successfulPayments = await PaymentTransaction.findAll({

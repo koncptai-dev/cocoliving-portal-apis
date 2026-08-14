@@ -82,6 +82,10 @@ const PaymentTransaction = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
     },
+    accountantInvoicePdfPath: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
     additionalDetails: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,

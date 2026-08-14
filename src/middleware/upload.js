@@ -22,6 +22,7 @@ const storage = multer.diskStorage({
         else if (file.fieldname === 'thumbnail' || file.fieldname === 'upload') folder = 'blogs';   // ← Fixed for both thumbnail and CKEditor
         else if (file.fieldname === 'resolutionImages') folder = 'ticketResolution';
         else if (file.fieldname === 'paymentImage') folder = 'paymentProofs';
+        else if (file.fieldname === 'invoice') folder = 'accountantInvoices';
 //   const uploadDir = path.join(__dirname, '..', 'uploads', folder);
       const uploadDir = path.join(__dirname, '..', 'uploads', folder);
 // const uploadDir = path.join(__dirname, '..', '..', 'uploads', folder);  // go up two levels to project root
@@ -65,7 +66,7 @@ const fileFilter = (req, file, cb) => {
         // check video size <= 50MB
         if (file.size > 50 * 1024 * 1024) return cb(new Error('Video exceeds 50MB limit!'));
         return cb(null, true);
-    }else if (file.fieldname === 'proofOfWork') {
+    }else if (file.fieldname === 'proofOfWork' || file.fieldname === 'invoice') {
         const allowedTypes = /jpeg|jpg|png|pdf/;
         const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
         const mimetype = /image\/jpeg|image\/jpg|image\/png|application\/pdf/.test(file.mimetype);
