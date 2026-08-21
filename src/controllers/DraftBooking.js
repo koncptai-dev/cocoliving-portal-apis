@@ -774,15 +774,6 @@ exports.draftBooking=async(req,res)=>{
             return res.status(400).json({message: "checkInDate must be in YYYY-MM-DD format."});
         }
 
-        const normalizedCheckInDate = moment(checkInDate, "YYYY-MM-DD", true);
-        const today = moment().startOf("day");
-        const maxCheckInDate = moment(today).add(3, "months").endOf("day");
-
-        if (normalizedCheckInDate.isBefore(today) || normalizedCheckInDate.isAfter(maxCheckInDate)) {
-            await transaction.rollback();
-            return res.status(400).json({message: "checkInDate must be between today and 3 months from today."});
-        }
-
         if (
             monthlyRent !== undefined &&
             monthlyRent !== null &&
