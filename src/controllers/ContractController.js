@@ -712,7 +712,7 @@ exports.initiateEsign = async (req, res) => {
       agreement_type: "rental_agreement",
       docket_title: `Rental Agreement - Booking #${bookingId}`,
       docket_description: `CoCo Living rental agreement for ${booking.user.fullName}`,
-      final_copy_recipients: (process.env.ESIGN_FINAL_COPY_RECIPIENTS || "").split(",").map((email) => email.trim()).filter(Boolean),
+      final_copy_recipients: process.env.ESIGN_FINAL_COPY_RECIPIENTS || "",
       callback_file_content: false,
       documents: [
         {
