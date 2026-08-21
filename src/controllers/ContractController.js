@@ -588,14 +588,6 @@ exports.initiateEsign = async (req, res) => {
     fs.mkdirSync(calibrationDir, {
       recursive: true
     });
-    console.info(
-      "[ContractController] Original PDF saved:",
-      {
-        path: originalPdf,
-        exists: fs.existsSync(originalPdf),
-        size: fs.statSync(originalPdf).size
-      }
-    );
 
     const originalPdf = path.join(
       calibrationDir,
@@ -608,6 +600,15 @@ exports.initiateEsign = async (req, res) => {
     );
 
     fs.writeFileSync(originalPdf, pdfBuffer);
+
+    console.info(
+      "[ContractController] Original PDF saved:",
+      {
+        path: originalPdf,
+        exists: fs.existsSync(originalPdf),
+        size: fs.statSync(originalPdf).size
+      }
+    );
 
     if (
       process.env.ESIGN_CALIBRATION === "true"
