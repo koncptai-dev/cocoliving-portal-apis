@@ -437,9 +437,60 @@ exports.getContract = async (req, res) => {
 };
 
 exports.initiateEsign = async (req, res) => {
+  console.info("\n\n");
+  console.info("============================================================");
+  console.info("                 INITIATE ESIGN START");
+  console.info("============================================================");
+
+  console.info("[ContractController] Request:", {
+    method: req.method,
+    url: req.originalUrl,
+    params: req.params,
+    user: {
+      id: req.user?.id,
+      role: req.user?.role
+    }
+  });
+
   try {
     const { bookingId } = req.params;
+    console.info("[ContractController] bookingId:", bookingId);
     const booking = await loadBookingForContract(bookingId);
+    console.info(
+      "[ContractController] Booking loaded:",
+      booking
+        ? {
+            id: booking.id,
+            userId: booking.userId,
+            status: booking.status,
+            contractStatus: booking.contractStatus,
+            adminContractStatus: booking.adminContractStatus,
+            bookingType: booking.bookingType,
+            bookingSource: booking.bookingSource
+          }
+        : null
+    );
+
+    if (booking?.user) {
+      console.info(
+        "[ContractController] User:",
+        booking.user
+      );
+    }
+
+    if (booking?.room) {
+      console.info(
+        "[ContractController] Room:",
+        booking.room
+      );
+    }
+
+    if (booking?.room?.property) {
+      console.info(
+        "[ContractController] Property:",
+        booking.room.property
+      );
+    }
     if (!booking) return res.status(404).json({ message: "Booking not found" });
     if (booking.status !== "approved")
       return res.status(400).json({ message: "Booking not approved" });
@@ -458,6 +509,27 @@ exports.initiateEsign = async (req, res) => {
     }
 
     const isStudent = booking.user.userType === "student";
+    const layout =
+      isStudent
+        ? "student"
+        : "professional";
+    console.info(
+      "[ContractController] eSign configuration:",
+      {
+        isStudent,
+        layout,
+        IDTO_BASE_URL: process.env.IDTO_BASE_URL,
+        hasIDTOClientId: Boolean(process.env.IDTO_CLIENT_ID),
+        IDTOClientIdLength: process.env.IDTO_CLIENT_ID?.length || 0,
+        hasIDTOApiKey: Boolean(process.env.IDTO_API_KEY),
+        IDTOApiKeyLength: process.env.IDTO_API_KEY?.length || 0,
+        API_BASE_URL: process.env.API_BASE_URL,
+        ESIGN_CALIBRATION: process.env.ESIGN_CALIBRATION,
+        hasCallbackToken: Boolean(process.env.ESIGN_CALLBACK_TOKEN),
+        callbackTokenLength: process.env.ESIGN_CALLBACK_TOKEN?.length || 0,
+        ESIGN_SIGNATURE_TYPE: process.env.ESIGN_SIGNATURE_TYPE
+      }
+    );
     if (isStudent && (!booking.user.parentEmail || !booking.user.parentMobile)) {
       return res.status(400).json({
         message: "Guardian email and mobile number are required before initiating eSign for a student booking"
@@ -469,10 +541,6 @@ exports.initiateEsign = async (req, res) => {
     //   return res.status(400).json({ message: "Generated contract PDF exceeds IDto's 10MB limit" });
     // }
     // const pdfBase64 = Buffer.from(pdfBuffer).toString("base64");
-    const layout =
-      isStudent
-        ? "student"
-        : "professional";
     let callbackUrl;
 
     if (process.env.ESIGN_CALIBRATION === "true") {
@@ -495,7 +563,22 @@ exports.initiateEsign = async (req, res) => {
     } else {
         callbackUrl = getEsignCallbackUrl();
     }
+    console.info(
+      "[ContractController] Callback URL:",
+      callbackUrl.replace(
+        /([?&]token=)[^&]+/i,
+        "$1[REDACTED_CALLBACK_TOKEN]"
+      )
+    );
     const pdfBuffer = await renderContractPdf(booking);
+    console.info(
+      "[ContractController] Original PDF generated:",
+      {
+        type: pdfBuffer?.constructor?.name,
+        isBuffer: Buffer.isBuffer(pdfBuffer),
+        byteLength: pdfBuffer?.length
+      }
+    );
 
     const calibrationDir = path.join(
       __dirname,
@@ -517,6 +600,15 @@ exports.initiateEsign = async (req, res) => {
     );
 
     fs.writeFileSync(originalPdf, pdfBuffer);
+
+    console.info(
+      "[ContractController] Original PDF saved:",
+      {
+        path: originalPdf,
+        exists: fs.existsSync(originalPdf),
+        size: fs.statSync(originalPdf).size
+      }
+    );
 
     if (
       process.env.ESIGN_CALIBRATION === "true"
@@ -559,6 +651,14 @@ exports.initiateEsign = async (req, res) => {
     let sequence = 1;
 
     const residentBox = getSignatureBox(layout, "resident");
+    console.info(
+      "[ContractController] Resident signature box:",
+      {
+        layout,
+        page_number: residentBox.page_number,
+        box: residentBox.box
+      }
+    );
     signers.push({
       signer_ref_id: `resident-${booking.user.id}`,
       signer_name: booking.user.fullName,
@@ -589,12 +689,30 @@ exports.initiateEsign = async (req, res) => {
         sequence: String(sequence++)
       });
     }
+    console.info(
+      "[ContractController] Generated signers_info:",
+      JSON.stringify(signers, null, 2)
+    );
 
+    console.info(
+      "[ContractController] Signer field types:",
+      signers.map((signer, index) => ({
+        index,
+        fields: Object.fromEntries(
+          Object.entries(signer).map(([key, value]) => [
+            key,
+            Array.isArray(value)
+              ? "array"
+              : typeof value
+          ])
+        )
+      }))
+    );
     const payload = {
       agreement_type: "rental_agreement",
       docket_title: `Rental Agreement - Booking #${bookingId}`,
       docket_description: `CoCo Living rental agreement for ${booking.user.fullName}`,
-      final_copy_recipients: (process.env.ESIGN_FINAL_COPY_RECIPIENTS || "").split(",").map((email) => email.trim()).filter(Boolean),
+      final_copy_recipients: process.env.ESIGN_FINAL_COPY_RECIPIENTS || "",
       callback_file_content: false,
       documents: [
         {
@@ -608,7 +726,83 @@ exports.initiateEsign = async (req, res) => {
       signers_info: signers,
       user_id: String(booking.user.id)
     };
+    const safePayloadForLog = JSON.parse(
+      JSON.stringify(payload)
+    );
 
+    if (Array.isArray(safePayloadForLog.documents)) {
+      safePayloadForLog.documents =
+        safePayloadForLog.documents.map(document => ({
+          ...document,
+          content:
+            `[PDF_BASE64_REDACTED length=${document.content?.length || 0}]`,
+          return_url: document.return_url?.replace(
+            /([?&]token=)[^&]+/i,
+            "$1[REDACTED_CALLBACK_TOKEN]"
+          )
+        }));
+    }
+
+    console.info(
+      "\n============================================================"
+    );
+
+    console.info(
+      "[ContractController] COMPLETE IDTO PAYLOAD:"
+    );
+
+    console.info(
+      JSON.stringify(
+        safePayloadForLog,
+        null,
+        2
+      )
+    );
+
+    console.info(
+      "============================================================\n"
+    );
+    console.info(
+  "[ContractController] TOP LEVEL PAYLOAD TYPES:",
+  Object.fromEntries(
+    Object.entries(payload).map(([key, value]) => [
+      key,
+      Array.isArray(value)
+        ? "array"
+        : typeof value
+    ])
+  )
+);
+
+console.info(
+  "[ContractController] DOCUMENT TYPES:",
+  payload.documents.map((document, index) => ({
+    index,
+    fields: Object.fromEntries(
+      Object.entries(document).map(([key, value]) => [
+        key,
+        Array.isArray(value)
+          ? "array"
+          : typeof value
+      ])
+    )
+  }))
+);
+
+console.info(
+  "[ContractController] SIGNER TYPES:",
+  payload.signers_info.map((signer, index) => ({
+    index,
+    fields: Object.fromEntries(
+      Object.entries(signer).map(([key, value]) => [
+        key,
+        Array.isArray(value)
+          ? "array"
+          : typeof value
+      ])
+    )
+  }))
+);
     const safeCallbackUrl = new URL(callbackUrl);
     safeCallbackUrl.searchParams.delete("token");
     console.info("initiateEsign: sending IDTO request", {
@@ -623,7 +817,16 @@ exports.initiateEsign = async (req, res) => {
       signer_count: payload.signers_info.length
     });
 
+    console.info(
+      "[ContractController] Calling initiateEsign()..."
+    );
+
     const idtoResponse = await initiateEsign(payload);
+
+    console.info(
+      "[ContractController] IDTO SUCCESS RESPONSE:",
+      JSON.stringify(idtoResponse, null, 2)
+    );
     if (!contract) {
       contract = await Contract.create({ bookingId, signedPdfPath: "" });
     }
@@ -645,9 +848,62 @@ exports.initiateEsign = async (req, res) => {
     });
  
   } catch (err) {
-    console.error("Error in initiateEsign:", err);
+
+    console.error(
+      "\n============================================================"
+    );
+
+    console.error(
+      "[ContractController] INITIATE ESIGN FAILED"
+    );
+
+    console.error(
+      "[ContractController] Error:",
+      err
+    );
+
+    console.error(
+      "[ContractController] Error message:",
+      err.message
+    );
+
+    console.error(
+      "[ContractController] Error status:",
+      err.status
+    );
+
+    console.error(
+      "[ContractController] Provider details:",
+      JSON.stringify(
+        err.providerDetails,
+        null,
+        2
+      )
+    );
+
+    if (err.providerResponse) {
+      console.error(
+        "[ContractController] Provider response:",
+        JSON.stringify(
+          err.providerResponse,
+          null,
+          2
+        )
+      );
+    }
+
+    console.error(
+      "[ContractController] Stack:",
+      err.stack
+    );
+
+    console.error(
+      "============================================================\n"
+    );
+
     return res.status(err.status || 500).json({
-      message: "Unable to initiate eSign request. Please try again later."
+      message:
+        "Unable to initiate eSign request. Please try again later."
     });
   }
 };
