@@ -509,6 +509,10 @@ exports.initiateEsign = async (req, res) => {
     }
 
     const isStudent = booking.user.userType === "student";
+    const layout =
+      isStudent
+        ? "student"
+        : "professional";
     console.info(
       "[ContractController] eSign configuration:",
       {
@@ -537,10 +541,6 @@ exports.initiateEsign = async (req, res) => {
     //   return res.status(400).json({ message: "Generated contract PDF exceeds IDto's 10MB limit" });
     // }
     // const pdfBase64 = Buffer.from(pdfBuffer).toString("base64");
-    const layout =
-      isStudent
-        ? "student"
-        : "professional";
     let callbackUrl;
 
     if (process.env.ESIGN_CALIBRATION === "true") {
