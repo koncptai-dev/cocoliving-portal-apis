@@ -1,0 +1,424 @@
+name: PR Security Gate (Staging)
+
+on:
+  pull_request:
+    branches:
+      - development
+    # This ensures the pipeline re-runs automatically if the manager/dev adds a label!
+    types: [opened, synchronize, labeled]
+
+jobs:
+  security:
+    name: 🔐 Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      critical: ${{ steps.audit.outputs.critical }}
+      high: ${{ steps.audit.outputs.high }}
+      moderate: ${{ steps.audit.outputs.moderate }}
+      low: ${{ steps.audit.outputs.low }}
+      approval_required: ${{ steps.audit.outputs.approval_required }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Security Audit
+        id: audit
+        run: |
+          set +e
+          # Run audit and save output (|| true prevents it from crashing immediately)
+          npm audit --json > audit_report.json
+          AUDIT_EXIT=$?
+
+          echo "npm audit exit code: $AUDIT_EXIT"
+
+          # ==========================================
+          # 1. Check for High/Critical (HARD BLOCK)
+          # ==========================================
+
+          CRITICAL=$(node -p \
+            "require('./audit_report.json').metadata?.vulnerabilities?.critical || 0")
+
+          HIGH=$(node -p \
+            "require('./audit_report.json').metadata?.vulnerabilities?.high || 0")
+
+          MODERATE=$(node -p \
+            "require('./audit_report.json').metadata?.vulnerabilities?.moderate || 0")
+
+          LOW=$(node -p \
+            "require('./audit_report.json').metadata?.vulnerabilities?.low || 0")
+
+          TOTAL=$(node -p \
+            "require('./audit_report.json').metadata?.vulnerabilities?.total || 0")
+
+          echo "Critical: $CRITICAL"
+          echo "High: $HIGH"
+          echo "Moderate: $MODERATE"
+          echo "Low: $LOW"
+          echo "Total: $TOTAL"
+
+          echo "critical=$CRITICAL" >> "$GITHUB_OUTPUT"
+          echo "high=$HIGH" >> "$GITHUB_OUTPUT"
+          echo "moderate=$MODERATE" >> "$GITHUB_OUTPUT"
+          echo "low=$LOW" >> "$GITHUB_OUTPUT"
+
+          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+            echo "approval_required=false" >> "$GITHUB_OUTPUT"
+          elif [ "$MODERATE" -gt 0 ] || [ "$LOW" -gt 0 ]; then
+            echo "approval_required=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "approval_required=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Print vulnerability details
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+
+          const audit = JSON.parse(
+            fs.readFileSync("audit_report.json", "utf8")
+          );
+
+          console.log("");
+          console.log("==========================================");
+          console.log("🔍 VULNERABILITY DETAILS");
+          console.log("==========================================");
+
+          for (
+            const [packageName, vuln]
+            of Object.entries(audit.vulnerabilities || {})
+          ) {
+            console.log("");
+            console.log(`📦 ${packageName}`);
+            console.log(`   Severity: ${vuln.severity}`);
+            console.log(`   Range: ${vuln.range || "N/A"}`);
+            console.log(
+              `   Fix available: ${vuln.fixAvailable ? "YES" : "NO"}`
+            );
+
+            if (Array.isArray(vuln.via)) {
+              for (const item of vuln.via) {
+                if (typeof item === "object") {
+                  console.log(
+                    `   Title: ${item.title || "Unknown"}`
+                  );
+
+                  console.log(
+                    `   CVE: ${item.cve || "N/A"}`
+                  );
+
+                  console.log(
+                    `   Advisory: ${item.url || "N/A"}`
+                  );
+                }
+              }
+            }
+          }
+
+          console.log("");
+          console.log("==========================================");
+          NODE
+
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-security-audit
+          path: audit_report.json
+
+# ============================================================
+
+  # 2. HARD SECURITY GATE
+  #    Critical / High = FAIL
+  # ============================================================
+  security-block:
+    name: 🚨 Security Block
+    needs: security
+    if: |
+      needs.security.outputs.critical != '0' ||
+      needs.security.outputs.high != '0'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      PR_URL: ${{ github.event.pull_request.html_url }}
+      PR_NUM: ${{ github.event.pull_request.number }}
+      TEAMS_WEBHOOK: ${{ secrets.MS_TEAMS_WEBHOOK_URL }}
+    steps:
+      - name: Block High/Critical vulnerabilities
+        run: |
+          echo "=========================================="
+          echo "🚨 HIGH or CRITICAL vulnerabilities detected! Merge is permanently blocked."
+          echo "=========================================="
+
+          echo "Critical vulnerabilities: ${{ needs.security.outputs.critical }}"
+          echo "High vulnerabilities:     ${{ needs.security.outputs.high }}"
+
+           # Send alert to MS Teams
+          if [ -n "$TEAMS_WEBHOOK" ]; then
+              MSG="🚨 **SECURITY ALERT:**
+
+              PR #$PR_NUM has been HARD REJECTED due to High/Critical vulnerabilities in the **backend**.
+
+              Critical: ${{ needs.security.outputs.critical }}
+              High: ${{ needs.security.outputs.high }}
+
+              The merge is permanently blocked.
+              PR_Link: $PR_URL"
+
+              JSON_PAYLOAD=$(cat <<EOF
+              {
+                "type": "message",
+                "attachments": [{ "contentType": "application/vnd.microsoft.card.adaptive", "content": { "type": "AdaptiveCard", "version": "1.2", "body": [{ "type": "TextBlock", "text": "$MSG", "wrap": true }] } }]
+              }
+            EOF
+              )
+
+          curl -s -H "Content-Type: application/json" -d "$JSON_PAYLOAD" "$TEAMS_WEBHOOK"
+
+          echo ""
+          echo "Merge is blocked."
+          echo "=========================================="
+          else
+            echo "⚠️ TEAMS_WEBHOOK is not configured."
+          fi
+
+          exit 1
+
+   # ============================================================
+  # 3. SECURITY APPROVAL
+  #
+  #    Moderate / Low → wait for reviewer
+  #
+  # ============================================================
+  security-approval:
+    name: 🛡️ Security Approval
+    needs: security
+
+    if: |
+      needs.security.outputs.critical == '0' &&
+      needs.security.outputs.high == '0' &&
+      (
+        needs.security.outputs.moderate != '0' ||
+        needs.security.outputs.low != '0'
+      )
+
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write # Gives the bot permission to post comments
+      contents: read
+    env:
+      # GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+      MANAGER_USERNAME: ${{ vars.MANAGER_USERNAME }}
+      MANAGER_NAME: ${{ vars.MANAGER_NAME }}
+      PR_URL: ${{ github.event.pull_request.html_url }}
+      PR_NUM: ${{ github.event.pull_request.number }}
+      HAS_OVERRIDE: ${{ contains(github.event.pull_request.labels.*.name, 'security-approved') }}
+      TEAMS_WEBHOOK: ${{ secrets.MS_TEAMS_WEBHOOK_URL }}
+
+    steps:
+
+        # ============================================================
+        # Check security-approved label
+        # ============================================================
+        - name: Check security approval
+          run: |
+
+            echo "=========================================="
+            echo "🛡️ SECURITY APPROVAL CHECK"
+            echo "=========================================="
+
+            echo "Critical : ${{ needs.security.outputs.critical }}"
+            echo "High     : ${{ needs.security.outputs.high }}"
+            echo "Moderate : ${{ needs.security.outputs.moderate }}"
+            echo "Low      : ${{ needs.security.outputs.low }}"
+            echo "Approval label: $HAS_OVERRIDE"
+
+            echo "Manager: $MANAGER_NAME"
+            echo "Developer: @${{ github.event.pull_request.user.login }}"
+
+            echo "=========================================="
+
+            # ========================================================
+            # APPROVED
+            # ========================================================
+
+            if [ "$HAS_OVERRIDE" = "true" ]; then
+
+              echo "✅ security-approved label is present."
+              echo "➡️ Security exception approved."
+              echo "➡️ Continuing CI."
+
+              exit 0
+            fi
+
+            # ========================================================
+            # NOT APPROVED
+            # ========================================================
+
+            echo "⚠️ security-approved label is NOT present."
+            echo "⏸️ Security approval required."
+
+            # ========================================================
+            # PR COMMENT
+            # ========================================================
+
+            gh pr comment "$PR_URL" --body \
+            "### ⚠️ Security Approval Required
+
+            The CI/CD pipeline detected **Low/Moderate vulnerabilities** in the backend.
+
+            **Security Summary**
+
+            - 🔴 Critical: ${{ needs.security.outputs.critical }}
+            - 🟠 High: ${{ needs.security.outputs.high }}
+            - 🟡 Moderate: ${{ needs.security.outputs.moderate }}
+            - 🟢 Low: ${{ needs.security.outputs.low }}
+
+            **Action Required**
+
+            @$MANAGER_USERNAME / @${{ github.event.pull_request.user.login }}
+
+            Please review the security audit logs.
+
+            If you approve the security exception, add the following label to this Pull Request:
+
+            \`security-approved\`
+
+            **PR:** $PR_URL"
+
+            # ========================================================
+            # TEAMS MESSAGE
+            # ========================================================
+
+            MSG="⚠️ ACTION REQUIRED
+
+            PR #$PR_NUM has Low/Moderate security vulnerabilities.
+
+            Security Summary:
+            Critical: ${{ needs.security.outputs.critical }}
+            High: ${{ needs.security.outputs.high }}
+            Moderate: ${{ needs.security.outputs.moderate }}
+            Low: ${{ needs.security.outputs.low }}
+
+            @$MANAGER_NAME @${{ github.event.pull_request.user.login }}, please review the security audit.
+
+            To approve:
+            GitHub → Pull Request → Labels → security-approved
+
+            PR: $PR_URL"
+
+            # ========================================================
+            # Send Teams notification
+            # ========================================================
+
+            JSON_PAYLOAD=$(jq -n \
+              --arg msg "$MSG" \
+              '{
+                type: "message",
+                attachments: [
+                  {
+                    contentType: "application/vnd.microsoft.card.adaptive",
+                    content: {
+                      type: "AdaptiveCard",
+                      version: "1.2",
+                      body: [
+                        {
+                          type: "TextBlock",
+                          text: $msg,
+                          wrap: true
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }'
+            )
+
+            curl -fsS \
+              -H "Content-Type: application/json" \
+              -d "$JSON_PAYLOAD" \
+              "$TEAMS_WEBHOOK"
+
+            # ========================================================
+            # Block CI
+            # ========================================================
+
+            echo ""
+            echo "❌ Security approval has NOT been granted."
+            echo "❌ CI is blocked until 'security-approved' is added."
+
+            exit 1
+
+  test:
+    name: 🧪 Tests
+    needs: quality
+
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write # Gives the bot permission to post comments
+      contents: read
+    env:
+      # GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+      PR_URL: ${{ github.event.pull_request.html_url }}
+      PR_NUM: ${{ github.event.pull_request.number }}
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        id: tests
+        run: |
+          echo "=========================================="
+          echo "🧪 RUNNING TEST CASES"
+          echo "=========================================="
+
+          npm test -- --runInBand
+
+      - name: Comment on PR - Test failure
+        if: failure()
+        run: |
+          echo "=========================================="
+          echo "❌ TEST CASES FAILED"
+          echo "=========================================="
+
+          gh pr comment "$PR_URL" --body \
+          "### ❌ Automated Tests Failed
+
+          The test suite for **PR #$PR_NUM** has failed.
+
+          **Test command:**
+          \`npm test\`
+
+          Please check the **Tests** job in GitHub Actions for the failing Jest test cases.
+
+          **Action required:** Fix the failing tests and push a new commit.
+
+          **PR:** $PR_URL"
+
+          echo ""
+          echo "❌ Tests failed. Pipeline cannot continue."
+
+          exit 1
