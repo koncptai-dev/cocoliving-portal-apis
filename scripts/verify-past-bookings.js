@@ -4,10 +4,12 @@ const { Op } = require("sequelize");
 const projectRoot = path.resolve(__dirname, "..");
 const ExcelJS = require(path.join(projectRoot, "node_modules/exceljs"));
 const sequelize = require(path.join(projectRoot, "src/config/database"));
-const { Property, Rooms, User, Booking } = require(path.join(
+const { Rooms, User, Booking } = require(path.join(
   projectRoot,
   "src/models"
 ));
+
+const TARGET_PROPERTY_ID = 1;
 
 function extractCellValue(val) {
   if (val === null || val === undefined) return null;
@@ -53,11 +55,16 @@ function sanitizeEmail(val) {
   return String(extractCellValue(val)).trim().toLowerCase();
 }
 
+function normalizeName(name) {
+  if (!name) return "";
+  return String(name).toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 class SheetLogger {
   constructor(filePath, sheetTitle) {
     this.filePath = filePath;
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(this.filePath, `=== ${sheetTitle} Log ===\n\n`, "utf8");
+    fs.writeFileSync(this.filePath, `=== ${sheetTitle} Log (Property ID: ${TARGET_PROPERTY_ID}) ===\n\n`, "utf8");
   }
 
   log(message = "") {
@@ -80,17 +87,6 @@ async function verifyPastBookings() {
 
   await sequelize.authenticate();
 
-  // Find Property matching "Coco Au" or "Coco Living AU"
-  const property = await Property.findOne({
-    where: {
-      [Op.or]: [
-        { name: { [Op.iLike]: "%Coco%AU%" } },
-        { name: { [Op.iLike]: "%Coco Au%" } },
-      ],
-    },
-  });
-
-  const propertyId = property ? property.id : null;
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.readFile(excelFilePath);
 
@@ -108,6 +104,9 @@ async function verifyPastBookings() {
     });
 
     let totalProcessed = 0;
+    let roomNotFoundCount = 0;
+    let userNotFoundCount = 0;
+    let nameMismatchCount = 0;
     let realBookingsCount = 0;
     let deposit1Plus1Count = 0;
     let calcMatchCount = 0;
@@ -136,10 +135,24 @@ async function verifyPastBookings() {
 
       totalProcessed++;
 
-      // 1. Initial row info
       logger.log(`Row ${rowNumber}: Resident: "${residentName}", Room: ${roomNumber}, Email: ${email || "N/A"}, Phone: ${phone || "N/A"}`);
 
-      // 2. Real booking in DB check
+      // 1. Check if room exists for Property ID 1
+      const dbRoom = await Rooms.findOne({
+        where: {
+          roomNumber: Number(roomNumber) || 0,
+          propertyId: TARGET_PROPERTY_ID,
+        },
+      });
+
+      if (!dbRoom) {
+        roomNotFoundCount++;
+        logger.log(`- Room in DB (Property ID ${TARGET_PROPERTY_ID}): No (Room ${roomNumber} not found - Skipping row)\n`);
+        continue;
+      }
+      logger.log(`- Room in DB (Property ID ${TARGET_PROPERTY_ID}): Yes (Room ID: ${dbRoom.id})`);
+
+      // 2. Check if user exists with email / phone
       const userConditions = [];
       if (email) userConditions.push({ email });
       if (phone) userConditions.push({ phone });
@@ -149,22 +162,31 @@ async function verifyPastBookings() {
         dbUser = await User.findOne({ where: { [Op.or]: userConditions } });
       }
 
-      let dbRoom = null;
-      if (roomNumber) {
-        const roomWhere = { roomNumber: Number(roomNumber) || 0 };
-        if (propertyId) roomWhere.propertyId = propertyId;
-        dbRoom = await Rooms.findOne({ where: roomWhere });
+      if (!dbUser) {
+        userNotFoundCount++;
+        logger.log(`- User in DB: No (Email: ${email || "N/A"}, Phone: ${phone || "N/A"} - Skipping row)\n`);
+        continue;
+      }
+      logger.log(`- User in DB: Yes (User ID: ${dbUser.id}, Name: "${dbUser.fullName}")`);
+
+      // 3. Cross check name
+      const normExcelName = normalizeName(residentName);
+      const normDbName = normalizeName(dbUser.fullName);
+      if (normExcelName !== normDbName) {
+        nameMismatchCount++;
+        logger.log(`- Name check: MISMATCH (Excel: "${residentName}" != DB: "${dbUser.fullName}")`);
+      } else {
+        logger.log(`- Name check: MATCH`);
       }
 
-      let existingBooking = null;
-      if (dbUser || dbRoom) {
-        const bookingWhere = {};
-        if (dbUser) bookingWhere.userId = dbUser.id;
-        if (dbRoom) bookingWhere.roomId = dbRoom.id;
-        if (propertyId) bookingWhere.propertyId = propertyId;
-
-        existingBooking = await Booking.findOne({ where: bookingWhere });
-      }
+      // 4. Check real booking in DB for this user and room
+      const existingBooking = await Booking.findOne({
+        where: {
+          userId: dbUser.id,
+          roomId: dbRoom.id,
+          propertyId: TARGET_PROPERTY_ID,
+        },
+      });
 
       if (existingBooking) {
         realBookingsCount++;
@@ -173,7 +195,7 @@ async function verifyPastBookings() {
         logger.log(`- Real booking in DB: No`);
       }
 
-      // 3. Security deposit check
+      // 5. Security deposit check
       const secDepositType = String(rowData["Security Deposit Type"] || "").trim();
       const totalAmountReceived = parseAmount(rowData["Total Amount Received"]);
       const waiveRent = parseAmount(rowData["Waive Current Month Rent"]);
@@ -189,7 +211,7 @@ async function verifyPastBookings() {
         logger.log(`- Security deposit type: ${secDepositType || "1+2"}`);
       }
 
-      // 4. Total amount calculation check
+      // 6. Total amount calculation check
       const expectedTotalAmount = waiveRent + secDepositAmt + advRent1stMonth + advRentLastMonth + amcCharges;
       const isCalcMatch = Math.round(totalAmountReceived) === Math.round(expectedTotalAmount);
 
@@ -201,17 +223,15 @@ async function verifyPastBookings() {
         logger.log(`- Total amount calculation: MISMATCH (Received: ${totalAmountReceived}, Calculated: ${expectedTotalAmount})`);
       }
 
-      // 5. Booking with same total amount check
-      let amountMatchedBooking = null;
-      if (dbUser && dbRoom) {
-        amountMatchedBooking = await Booking.findOne({
-          where: {
-            userId: dbUser.id,
-            roomId: dbRoom.id,
-            totalAmount: totalAmountReceived,
-          },
-        });
-      }
+      // 7. Booking with same total amount check
+      const amountMatchedBooking = await Booking.findOne({
+        where: {
+          userId: dbUser.id,
+          roomId: dbRoom.id,
+          propertyId: TARGET_PROPERTY_ID,
+          totalAmount: totalAmountReceived,
+        },
+      });
 
       if (amountMatchedBooking) {
         amountMatchedCount++;
@@ -222,7 +242,10 @@ async function verifyPastBookings() {
     }
 
     logger.log(`--- Summary ---`);
-    logger.log(`Total Rows: ${totalProcessed}`);
+    logger.log(`Total Rows Processed: ${totalProcessed}`);
+    logger.log(`Skipped (Room not found): ${roomNotFoundCount}`);
+    logger.log(`Skipped (User not found): ${userNotFoundCount}`);
+    logger.log(`Name Mismatches: ${nameMismatchCount}`);
     logger.log(`Real Bookings Found: ${realBookingsCount}`);
     logger.log(`Security Deposit 1+1: ${deposit1Plus1Count}`);
     logger.log(`Calculation Matches: ${calcMatchCount}`);
@@ -244,6 +267,9 @@ async function verifyPastBookings() {
     });
 
     let totalProcessed = 0;
+    let roomNotFoundCount = 0;
+    let userNotFoundCount = 0;
+    let nameMismatchCount = 0;
     let realBookingsCount = 0;
     let calcMatchCount = 0;
     let calcMismatchCount = 0;
@@ -271,10 +297,24 @@ async function verifyPastBookings() {
 
       totalProcessed++;
 
-      // 1. Initial row info
       logger.log(`Row ${rowNumber}: Resident: "${residentName}", Room: ${roomNumber}, Email: ${email || "N/A"}, Phone: ${phone || "N/A"}`);
 
-      // 2. Real booking in DB check
+      // 1. Check if room exists for Property ID 1
+      const dbRoom = await Rooms.findOne({
+        where: {
+          roomNumber: Number(roomNumber) || 0,
+          propertyId: TARGET_PROPERTY_ID,
+        },
+      });
+
+      if (!dbRoom) {
+        roomNotFoundCount++;
+        logger.log(`- Room in DB (Property ID ${TARGET_PROPERTY_ID}): No (Room ${roomNumber} not found - Skipping row)\n`);
+        continue;
+      }
+      logger.log(`- Room in DB (Property ID ${TARGET_PROPERTY_ID}): Yes (Room ID: ${dbRoom.id})`);
+
+      // 2. Check if user exists with email / phone
       const userConditions = [];
       if (email) userConditions.push({ email });
       if (phone) userConditions.push({ phone });
@@ -284,22 +324,31 @@ async function verifyPastBookings() {
         dbUser = await User.findOne({ where: { [Op.or]: userConditions } });
       }
 
-      let dbRoom = null;
-      if (roomNumber) {
-        const roomWhere = { roomNumber: Number(roomNumber) || 0 };
-        if (propertyId) roomWhere.propertyId = propertyId;
-        dbRoom = await Rooms.findOne({ where: roomWhere });
+      if (!dbUser) {
+        userNotFoundCount++;
+        logger.log(`- User in DB: No (Email: ${email || "N/A"}, Phone: ${phone || "N/A"} - Skipping row)\n`);
+        continue;
+      }
+      logger.log(`- User in DB: Yes (User ID: ${dbUser.id}, Name: "${dbUser.fullName}")`);
+
+      // 3. Cross check name
+      const normExcelName = normalizeName(residentName);
+      const normDbName = normalizeName(dbUser.fullName);
+      if (normExcelName !== normDbName) {
+        nameMismatchCount++;
+        logger.log(`- Name check: MISMATCH (Excel: "${residentName}" != DB: "${dbUser.fullName}")`);
+      } else {
+        logger.log(`- Name check: MATCH`);
       }
 
-      let existingBooking = null;
-      if (dbUser || dbRoom) {
-        const bookingWhere = {};
-        if (dbUser) bookingWhere.userId = dbUser.id;
-        if (dbRoom) bookingWhere.roomId = dbRoom.id;
-        if (propertyId) bookingWhere.propertyId = propertyId;
-
-        existingBooking = await Booking.findOne({ where: bookingWhere });
-      }
+      // 4. Check real booking in DB for this user and room
+      const existingBooking = await Booking.findOne({
+        where: {
+          userId: dbUser.id,
+          roomId: dbRoom.id,
+          propertyId: TARGET_PROPERTY_ID,
+        },
+      });
 
       if (existingBooking) {
         realBookingsCount++;
@@ -308,7 +357,7 @@ async function verifyPastBookings() {
         logger.log(`- Real booking in DB: No`);
       }
 
-      // 3. CEPT total calculation check
+      // 5. CEPT total calculation check
       const totalAmountReceived = parseAmount(rowData["Total Amount Received"]);
       const waiveRent = parseAmount(rowData["Waive Current Month Rent"]);
       const secDepositAmt = parseAmount(rowData["Security Deposit Amount"]);
@@ -327,17 +376,15 @@ async function verifyPastBookings() {
         logger.log(`- Total amount calculation: MISMATCH (Received: ${totalAmountReceived}, Calculated: ${expectedTotalAmount})`);
       }
 
-      // 4. Booking with same total amount check
-      let amountMatchedBooking = null;
-      if (dbUser && dbRoom) {
-        amountMatchedBooking = await Booking.findOne({
-          where: {
-            userId: dbUser.id,
-            roomId: dbRoom.id,
-            totalAmount: totalAmountReceived,
-          },
-        });
-      }
+      // 6. Booking with same total amount check
+      const amountMatchedBooking = await Booking.findOne({
+        where: {
+          userId: dbUser.id,
+          roomId: dbRoom.id,
+          propertyId: TARGET_PROPERTY_ID,
+          totalAmount: totalAmountReceived,
+        },
+      });
 
       if (amountMatchedBooking) {
         amountMatchedCount++;
@@ -348,7 +395,10 @@ async function verifyPastBookings() {
     }
 
     logger.log(`--- Summary ---`);
-    logger.log(`Total Rows: ${totalProcessed}`);
+    logger.log(`Total Rows Processed: ${totalProcessed}`);
+    logger.log(`Skipped (Room not found): ${roomNotFoundCount}`);
+    logger.log(`Skipped (User not found): ${userNotFoundCount}`);
+    logger.log(`Name Mismatches: ${nameMismatchCount}`);
     logger.log(`Real Bookings Found: ${realBookingsCount}`);
     logger.log(`Calculation Matches: ${calcMatchCount}`);
     logger.log(`Calculation Mismatches: ${calcMismatchCount}`);
