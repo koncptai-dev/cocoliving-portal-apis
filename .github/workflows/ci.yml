@@ -397,7 +397,6 @@ jobs:
 
   test:
     name: 🧪 Tests
-    needs: quality
 
     runs-on: ubuntu-latest
     permissions:
@@ -518,7 +517,7 @@ jobs:
           echo "🧪 RUNNING TEST CASES"
           echo "=========================================="
 
-          npm test
+          npm run test
 
       - name: Comment on PR - Test failure
         if: failure()
