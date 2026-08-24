@@ -362,8 +362,6 @@ jobs:
 
   test:
     name: 🧪 Tests
-    needs: quality
-
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write # Gives the bot permission to post comments
