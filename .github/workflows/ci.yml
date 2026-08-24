@@ -395,7 +395,7 @@ jobs:
           echo "🧪 RUNNING TEST CASES"
           echo "=========================================="
 
-          npm test -- --runInBand
+          npm run test
 
       - name: Comment on PR - Test failure
         if: failure()
