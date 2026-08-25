@@ -96,9 +96,9 @@ exports.updateGatePass = async (req, res) => {
         req,
         res,
         404,
-        `Failed to update gate pass - not found (ID: ${gatePassId})`,
+        "Failed to update gate pass - not found",
         "gatePass",
-        userId
+        parseInt(gatePassId)
       );
       return res.status(404).json({ message: "Gate pass not found" });
     }
@@ -109,9 +109,9 @@ exports.updateGatePass = async (req, res) => {
         req,
         res,
         403,
-        `Failed to update gate pass - unauthorized (ID: ${gatePassId})`,
+        "Failed to update gate pass - unauthorized",
         "gatePass",
-        userId
+        parseInt(gatePassId)
       );
       return res.status(403).json({
         message: "You are not authorized to update this gate pass",
@@ -124,9 +124,9 @@ exports.updateGatePass = async (req, res) => {
         req,
         res,
         400,
-        `Failed to update gate pass - cannot edit approved/rejected request (ID: ${gatePassId})`,
+        "Failed to update gate pass - cannot edit approved/rejected request",
         "gatePass",
-        userId
+        parseInt(gatePassId)
       );
       return res.status(400).json({
         message: "You can only edit pending gate pass requests",

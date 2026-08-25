@@ -22,11 +22,16 @@ async function fetchNewToken() {
     client_version: CLIENT_VERSION,
   });
 
-  const response = await fetch(AUTH_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body,
-  });
+  const response = await fetch(
+    process.env.PHONEPE_ENV === "prod"
+      ? "https://api.phonepe.com/apis/identity-manager/v1/oauth/token"
+      : "https://api-preprod.phonepe.com/apis/pg-sandbox/v1/oauth/token", 
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    }
+  );
 
   const json = await response.json().catch(() => null);
 

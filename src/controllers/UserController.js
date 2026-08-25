@@ -456,7 +456,7 @@ exports.editUserProfile = async (req, res) => {
         });
 
         if (phoneExists) {
-          await logApiCall(req, res, 400, `Duplicate phone update attempt (ID: ${id})`, "user", parseInt(id));
+          await logApiCall(req, res, 400, "Duplicate phone update attempt", "user", parseInt(id));
           return res.status(400).json({
             message: "Mobile number already registered with another account"
           });
