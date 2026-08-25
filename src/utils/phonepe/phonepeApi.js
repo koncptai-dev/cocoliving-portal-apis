@@ -10,9 +10,9 @@ const { getPhonePeAuthToken, clearPhonePeAuthToken } = require('./phonepeAuth');
 
 // Create Payment Website
 async function createPayment(payload) {
-  const token = await getPhonePeAuthToken();
+  let token = await getPhonePeAuthToken();
 
-  const res = await fetch(CREATE_PAYMENT_URL, {
+  let res = await fetch(process.env.PHONEPE_ENV === "prod" ? "https://api.phonepe.com/apis/pg/checkout/v2/pay" : "https://api-preprod.phonepe.com/apis/pg-sandbox/checkout/v2/pay", {
     method: 'POST',
     headers: {
       Authorization: `O-Bearer ${token}`,
@@ -24,7 +24,7 @@ async function createPayment(payload) {
     clearPhonePeAuthToken();
     token = await getPhonePeAuthToken();
 
-    res = await fetch(CREATE_PAYMENT_URL, {
+    res = await fetch( process.env.PHONEPE_ENV === "prod" ? "https://api.phonepe.com/apis/pg/checkout/v2/pay" : "https://api-preprod.phonepe.com/apis/pg-sandbox/checkout/v2/pay", {
       method: 'POST',
       headers: {
         Authorization: `O-Bearer ${token}`,
@@ -68,7 +68,7 @@ async function getOrderStatus(merchantOrderId) {
 async function initiateRefund(payload) {
   const token = await getPhonePeAuthToken();
 
-  const res = await fetch(REFUND_URL, {
+  const res = await fetch( process.env.PHONEPE_ENV === "prod" ? "https://api.phonepe.com/apis/pg/payments/v2/refund" : "https://api-preprod.phonepe.com/apis/pg-sandbox/payments/v2/refund", {
     method: 'POST',
     headers: {
       Authorization: `O-Bearer ${token}`,
@@ -89,7 +89,7 @@ async function initiateRefund(payload) {
 // Create Order ( Mobile App )
 async function createMobileOrder({ merchantOrderId, amount, userId }) {
   const token = await getPhonePeAuthToken();
-  const res = await fetch(MOBILE_SDK_ORDER_URL, {
+  const res = await fetch( process.env.PHONEPE_ENV === "prod" ? "https://api.phonepe.com/apis/pg/checkout/v2/sdk/order" : "https://api-preprod.phonepe.com/apis/pg-sandbox/checkout/v2/sdk/order", {
       method: 'POST',
       headers: {
         Authorization: `O-Bearer ${token}`,

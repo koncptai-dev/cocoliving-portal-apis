@@ -171,7 +171,7 @@ exports.deleteInventory = async (req, res) => {
         req,
         res,
         409,
-        `Attempted delete on allocated inventory item (ID: ${id})`,
+        "Attempted delete on allocated inventory item",
         "inventory",
         parseInt(id)
       );

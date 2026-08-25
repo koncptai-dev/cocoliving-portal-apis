@@ -15,24 +15,24 @@ exports.checkOrderStatus = async (req, res) => {
       await logApiCall(req, res, 400, "Checked order status - merchantOrderId required", "payment");
       return res.status(400).json({ message: "merchantOrderId required" });
     }
-
-    // 1. Fetch from PhonePe
-    const phonepeResp = await getOrderStatus(merchantOrderId);
-
-    // 2. Load existing transaction
     const tx = await PaymentTransaction.findOne({
       where: { merchantOrderId },
     });
 
-    if (tx) {
-      // Only store the raw snapshot – do NOT change status here
-      tx.rawResponse = Object.assign({}, tx.rawResponse || {}, {
-        orderStatusCheck: phonepeResp,
-        lastPolledAt: new Date().toISOString(),
+    if (!tx) {
+      return res.status(404).json({
+        message: "Payment transaction not found",
       });
-
-      await tx.save(); // simple update only, non-destructive
     }
+    const phonepeResp = await getOrderStatus(merchantOrderId);
+
+    
+    tx.rawResponse = Object.assign({}, tx.rawResponse || {}, {
+      orderStatusCheck: phonepeResp,
+      lastPolledAt: new Date().toISOString(),
+    });
+
+    await tx.save();
 
     // 3. Derive state without modifying DB
     const mappedState =
