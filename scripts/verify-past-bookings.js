@@ -4,7 +4,7 @@ const { Op } = require("sequelize");
 const projectRoot = path.resolve(__dirname, "..");
 const ExcelJS = require(path.join(projectRoot, "node_modules/exceljs"));
 const sequelize = require(path.join(projectRoot, "src/config/database"));
-const { Rooms, User, Booking } = require(path.join(
+const { Rooms, User, Booking, PaymentTransaction } = require(path.join(
   projectRoot,
   "src/models"
 ));
@@ -60,6 +60,14 @@ function normalizeName(name) {
   return String(name).toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+function formatSummaryLine(label, rowList) {
+  const count = rowList.length;
+  if (count === 0) {
+    return `${label}: 0`;
+  }
+  return `${label}: ${count} (Rows: ${rowList.join(", ")})`;
+}
+
 class SheetLogger {
   constructor(filePath, sheetTitle) {
     this.filePath = filePath;
@@ -104,14 +112,16 @@ async function verifyPastBookings() {
     });
 
     let totalProcessed = 0;
-    let roomNotFoundCount = 0;
-    let userNotFoundCount = 0;
-    let nameMismatchCount = 0;
-    let realBookingsCount = 0;
-    let deposit1Plus1Count = 0;
-    let calcMatchCount = 0;
-    let calcMismatchCount = 0;
-    let amountMatchedCount = 0;
+    const skippedRoomRows = [];
+    const skippedUserRows = [];
+    const skippedBookingRows = [];
+    const nameMismatchRows = [];
+    const approvedBookingFoundRows = [];
+    const deposit1Plus1Rows = [];
+    const calcMatchRows = [];
+    const calcMismatchRows = [];
+    const paymentMatchedRows = [];
+    const paymentNotMatchedRows = [];
 
     for (let rowNumber = 2; rowNumber <= nonCeptSheet.rowCount; rowNumber++) {
       const row = nonCeptSheet.getRow(rowNumber);
@@ -146,7 +156,7 @@ async function verifyPastBookings() {
       });
 
       if (!dbRoom) {
-        roomNotFoundCount++;
+        skippedRoomRows.push(rowNumber);
         logger.log(`- Room in DB (Property ID ${TARGET_PROPERTY_ID}): No (Room ${roomNumber} not found - Skipping row)\n`);
         continue;
       }
@@ -163,7 +173,7 @@ async function verifyPastBookings() {
       }
 
       if (!dbUser) {
-        userNotFoundCount++;
+        skippedUserRows.push(rowNumber);
         logger.log(`- User in DB: No (Email: ${email || "N/A"}, Phone: ${phone || "N/A"} - Skipping row)\n`);
         continue;
       }
@@ -173,27 +183,30 @@ async function verifyPastBookings() {
       const normExcelName = normalizeName(residentName);
       const normDbName = normalizeName(dbUser.fullName);
       if (normExcelName !== normDbName) {
-        nameMismatchCount++;
+        nameMismatchRows.push(rowNumber);
         logger.log(`- Name check: MISMATCH (Excel: "${residentName}" != DB: "${dbUser.fullName}")`);
       } else {
         logger.log(`- Name check: MATCH`);
       }
 
-      // 4. Check real booking in DB for this user and room
+      // 4. Check real booking in DB with status: 'approved'
       const existingBooking = await Booking.findOne({
         where: {
           userId: dbUser.id,
           roomId: dbRoom.id,
           propertyId: TARGET_PROPERTY_ID,
+          status: { [Op.iLike]: "approved" },
         },
       });
 
-      if (existingBooking) {
-        realBookingsCount++;
-        logger.log(`- Real booking in DB: Yes (Booking ID: ${existingBooking.id}, Status: ${existingBooking.status})`);
-      } else {
-        logger.log(`- Real booking in DB: No`);
+      if (!existingBooking) {
+        skippedBookingRows.push(rowNumber);
+        logger.log(`- Real approved booking in DB: No (No approved booking found for User ID ${dbUser.id} and Room ID ${dbRoom.id} - Skipping row)\n`);
+        continue;
       }
+
+      approvedBookingFoundRows.push(rowNumber);
+      logger.log(`- Real approved booking in DB: Yes (Booking ID: ${existingBooking.id}, Status: ${existingBooking.status})`);
 
       // 5. Security deposit check
       const secDepositType = String(rowData["Security Deposit Type"] || "").trim();
@@ -205,7 +218,7 @@ async function verifyPastBookings() {
       const amcCharges = parseAmount(rowData["AMC Charges Amount"]);
 
       if (secDepositType.includes("1+1")) {
-        deposit1Plus1Count++;
+        deposit1Plus1Rows.push(rowNumber);
         logger.log(`- Security deposit type: 1+1 (Expecting 1+2 for 2 advance rent, not 1+1)`);
       } else {
         logger.log(`- Security deposit type: ${secDepositType || "1+2"}`);
@@ -216,41 +229,52 @@ async function verifyPastBookings() {
       const isCalcMatch = Math.round(totalAmountReceived) === Math.round(expectedTotalAmount);
 
       if (isCalcMatch) {
-        calcMatchCount++;
+        calcMatchRows.push(rowNumber);
         logger.log(`- Total amount calculation: MATCH (${totalAmountReceived} == ${waiveRent} + ${secDepositAmt} + ${advRent1stMonth} + ${advRentLastMonth} + ${amcCharges})`);
       } else {
-        calcMismatchCount++;
+        calcMismatchRows.push(rowNumber);
         logger.log(`- Total amount calculation: MISMATCH (Received: ${totalAmountReceived}, Calculated: ${expectedTotalAmount})`);
       }
 
-      // 7. Booking with same total amount check
-      const amountMatchedBooking = await Booking.findOne({
-        where: {
-          userId: dbUser.id,
-          roomId: dbRoom.id,
-          propertyId: TARGET_PROPERTY_ID,
-          totalAmount: totalAmountReceived,
-        },
+      // 7. Check which Payment Transaction row for this booking has this total amount
+      const paymentTransactions = await PaymentTransaction.findAll({
+        where: { bookingId: existingBooking.id },
       });
 
-      if (amountMatchedBooking) {
-        amountMatchedCount++;
-        logger.log(`- Booking with matching total amount in DB: Yes (Booking ID: ${amountMatchedBooking.id}, Amount: ${amountMatchedBooking.totalAmount})\n`);
+      const matchingTx = paymentTransactions.find((tx) => {
+        const txTotalReceived = Number(tx.totalAmountReceived);
+        const txAmountRupees = Math.round(Number(tx.amount) / 100);
+        const txAmountRaw = Number(tx.amount);
+        return (
+          txTotalReceived === totalAmountReceived ||
+          txAmountRupees === totalAmountReceived ||
+          txAmountRaw === totalAmountReceived
+        );
+      });
+
+      if (matchingTx) {
+        paymentMatchedRows.push(rowNumber);
+        const amountDisplay = matchingTx.totalAmountReceived ?? (matchingTx.amount / 100);
+        logger.log(`- Payment row with matching total amount: Found (Payment ID: ${matchingTx.id}, Type: ${matchingTx.type}, Status: ${matchingTx.status}, Total Amount Received: ₹${amountDisplay}, Mode: ${matchingTx.paymentMode || "N/A"})\n`);
       } else {
-        logger.log(`- Booking with matching total amount in DB: No\n`);
+        paymentNotMatchedRows.push(rowNumber);
+        logger.log(`- Payment row with matching total amount: No (Checked ${paymentTransactions.length} payment row(s) for Booking ID ${existingBooking.id}, none matched total ₹${totalAmountReceived})\n`);
       }
     }
 
     logger.log(`--- Summary ---`);
     logger.log(`Total Rows Processed: ${totalProcessed}`);
-    logger.log(`Skipped (Room not found): ${roomNotFoundCount}`);
-    logger.log(`Skipped (User not found): ${userNotFoundCount}`);
-    logger.log(`Name Mismatches: ${nameMismatchCount}`);
-    logger.log(`Real Bookings Found: ${realBookingsCount}`);
-    logger.log(`Security Deposit 1+1: ${deposit1Plus1Count}`);
-    logger.log(`Calculation Matches: ${calcMatchCount}`);
-    logger.log(`Calculation Mismatches: ${calcMismatchCount}`);
-    logger.log(`Bookings Matching Total Amount: ${amountMatchedCount}\n`);
+    logger.log(formatSummaryLine(`Skipped - Room not found`, skippedRoomRows));
+    logger.log(formatSummaryLine(`Skipped - User not found`, skippedUserRows));
+    logger.log(formatSummaryLine(`Skipped - Approved Booking not found`, skippedBookingRows));
+    logger.log(formatSummaryLine(`Name Mismatches`, nameMismatchRows));
+    logger.log(`Real Approved Bookings Found: ${approvedBookingFoundRows.length}`);
+    logger.log(formatSummaryLine(`Security Deposit 1+1 Flagged`, deposit1Plus1Rows));
+    logger.log(`Calculation Matches: ${calcMatchRows.length}`);
+    logger.log(formatSummaryLine(`Calculation Mismatches`, calcMismatchRows));
+    logger.log(`Payment Row with Matching Total Amount Found: ${paymentMatchedRows.length}`);
+    logger.log(formatSummaryLine(`Payment Row with Matching Total Amount Not Found`, paymentNotMatchedRows));
+    logger.log("");
   }
 
   // ============================================================================
@@ -267,13 +291,15 @@ async function verifyPastBookings() {
     });
 
     let totalProcessed = 0;
-    let roomNotFoundCount = 0;
-    let userNotFoundCount = 0;
-    let nameMismatchCount = 0;
-    let realBookingsCount = 0;
-    let calcMatchCount = 0;
-    let calcMismatchCount = 0;
-    let amountMatchedCount = 0;
+    const skippedRoomRows = [];
+    const skippedUserRows = [];
+    const skippedBookingRows = [];
+    const nameMismatchRows = [];
+    const approvedBookingFoundRows = [];
+    const calcMatchRows = [];
+    const calcMismatchRows = [];
+    const paymentMatchedRows = [];
+    const paymentNotMatchedRows = [];
 
     for (let rowNumber = 2; rowNumber <= ceptSheet.rowCount; rowNumber++) {
       const row = ceptSheet.getRow(rowNumber);
@@ -308,7 +334,7 @@ async function verifyPastBookings() {
       });
 
       if (!dbRoom) {
-        roomNotFoundCount++;
+        skippedRoomRows.push(rowNumber);
         logger.log(`- Room in DB (Property ID ${TARGET_PROPERTY_ID}): No (Room ${roomNumber} not found - Skipping row)\n`);
         continue;
       }
@@ -325,7 +351,7 @@ async function verifyPastBookings() {
       }
 
       if (!dbUser) {
-        userNotFoundCount++;
+        skippedUserRows.push(rowNumber);
         logger.log(`- User in DB: No (Email: ${email || "N/A"}, Phone: ${phone || "N/A"} - Skipping row)\n`);
         continue;
       }
@@ -335,27 +361,30 @@ async function verifyPastBookings() {
       const normExcelName = normalizeName(residentName);
       const normDbName = normalizeName(dbUser.fullName);
       if (normExcelName !== normDbName) {
-        nameMismatchCount++;
+        nameMismatchRows.push(rowNumber);
         logger.log(`- Name check: MISMATCH (Excel: "${residentName}" != DB: "${dbUser.fullName}")`);
       } else {
         logger.log(`- Name check: MATCH`);
       }
 
-      // 4. Check real booking in DB for this user and room
+      // 4. Check real booking in DB with status: 'approved'
       const existingBooking = await Booking.findOne({
         where: {
           userId: dbUser.id,
           roomId: dbRoom.id,
           propertyId: TARGET_PROPERTY_ID,
+          status: { [Op.iLike]: "approved" },
         },
       });
 
-      if (existingBooking) {
-        realBookingsCount++;
-        logger.log(`- Real booking in DB: Yes (Booking ID: ${existingBooking.id}, Status: ${existingBooking.status})`);
-      } else {
-        logger.log(`- Real booking in DB: No`);
+      if (!existingBooking) {
+        skippedBookingRows.push(rowNumber);
+        logger.log(`- Real approved booking in DB: No (No approved booking found for User ID ${dbUser.id} and Room ID ${dbRoom.id} - Skipping row)\n`);
+        continue;
       }
+
+      approvedBookingFoundRows.push(rowNumber);
+      logger.log(`- Real approved booking in DB: Yes (Booking ID: ${existingBooking.id}, Status: ${existingBooking.status})`);
 
       // 5. CEPT total calculation check
       const totalAmountReceived = parseAmount(rowData["Total Amount Received"]);
@@ -369,40 +398,51 @@ async function verifyPastBookings() {
       const isCalcMatch = Math.round(totalAmountReceived) === Math.round(expectedTotalAmount);
 
       if (isCalcMatch) {
-        calcMatchCount++;
+        calcMatchRows.push(rowNumber);
         logger.log(`- Total amount calculation: MATCH (${totalAmountReceived} == ${waiveRent} + ${secDepositAmt} + ${advRentAmt} + ${mealSubscriptionAmt} + ${amcCharges})`);
       } else {
-        calcMismatchCount++;
+        calcMismatchRows.push(rowNumber);
         logger.log(`- Total amount calculation: MISMATCH (Received: ${totalAmountReceived}, Calculated: ${expectedTotalAmount})`);
       }
 
-      // 6. Booking with same total amount check
-      const amountMatchedBooking = await Booking.findOne({
-        where: {
-          userId: dbUser.id,
-          roomId: dbRoom.id,
-          propertyId: TARGET_PROPERTY_ID,
-          totalAmount: totalAmountReceived,
-        },
+      // 6. Check which Payment Transaction row for this booking has this total amount
+      const paymentTransactions = await PaymentTransaction.findAll({
+        where: { bookingId: existingBooking.id },
       });
 
-      if (amountMatchedBooking) {
-        amountMatchedCount++;
-        logger.log(`- Booking with matching total amount in DB: Yes (Booking ID: ${amountMatchedBooking.id}, Amount: ${amountMatchedBooking.totalAmount})\n`);
+      const matchingTx = paymentTransactions.find((tx) => {
+        const txTotalReceived = Number(tx.totalAmountReceived);
+        const txAmountRupees = Math.round(Number(tx.amount) / 100);
+        const txAmountRaw = Number(tx.amount);
+        return (
+          txTotalReceived === totalAmountReceived ||
+          txAmountRupees === totalAmountReceived ||
+          txAmountRaw === totalAmountReceived
+        );
+      });
+
+      if (matchingTx) {
+        paymentMatchedRows.push(rowNumber);
+        const amountDisplay = matchingTx.totalAmountReceived ?? (matchingTx.amount / 100);
+        logger.log(`- Payment row with matching total amount: Found (Payment ID: ${matchingTx.id}, Type: ${matchingTx.type}, Status: ${matchingTx.status}, Total Amount Received: ₹${amountDisplay}, Mode: ${matchingTx.paymentMode || "N/A"})\n`);
       } else {
-        logger.log(`- Booking with matching total amount in DB: No\n`);
+        paymentNotMatchedRows.push(rowNumber);
+        logger.log(`- Payment row with matching total amount: No (Checked ${paymentTransactions.length} payment row(s) for Booking ID ${existingBooking.id}, none matched total ₹${totalAmountReceived})\n`);
       }
     }
 
     logger.log(`--- Summary ---`);
     logger.log(`Total Rows Processed: ${totalProcessed}`);
-    logger.log(`Skipped (Room not found): ${roomNotFoundCount}`);
-    logger.log(`Skipped (User not found): ${userNotFoundCount}`);
-    logger.log(`Name Mismatches: ${nameMismatchCount}`);
-    logger.log(`Real Bookings Found: ${realBookingsCount}`);
-    logger.log(`Calculation Matches: ${calcMatchCount}`);
-    logger.log(`Calculation Mismatches: ${calcMismatchCount}`);
-    logger.log(`Bookings Matching Total Amount: ${amountMatchedCount}\n`);
+    logger.log(formatSummaryLine(`Skipped - Room not found`, skippedRoomRows));
+    logger.log(formatSummaryLine(`Skipped - User not found`, skippedUserRows));
+    logger.log(formatSummaryLine(`Skipped - Approved Booking not found`, skippedBookingRows));
+    logger.log(formatSummaryLine(`Name Mismatches`, nameMismatchRows));
+    logger.log(`Real Approved Bookings Found: ${approvedBookingFoundRows.length}`);
+    logger.log(`Calculation Matches: ${calcMatchRows.length}`);
+    logger.log(formatSummaryLine(`Calculation Mismatches`, calcMismatchRows));
+    logger.log(`Payment Row with Matching Total Amount Found: ${paymentMatchedRows.length}`);
+    logger.log(formatSummaryLine(`Payment Row with Matching Total Amount Not Found`, paymentNotMatchedRows));
+    logger.log("");
   }
 
   await sequelize.close();
