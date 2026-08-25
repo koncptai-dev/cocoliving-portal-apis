@@ -797,7 +797,7 @@ exports.deleteProperty = async (req, res) => {
       const fullPath = path.join(__dirname, '..', imgPath.replace(/^\//, ''));
       if (fs.existsSync(fullPath)) {
         fs.unlink(fullPath, err => {
-          if (err) console.error(`Failed to delete file ${fullPath}:`, err);
+          if (err) console.error("Failed to delete file:", fullPath, err);
         });
       }
     }
