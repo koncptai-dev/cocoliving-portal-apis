@@ -677,12 +677,8 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
     const existingPan = kyc?.panNumber || null;
     const finalPanNumber = panCardNumber || panNumber || existingPan;
 
-    if (received > 100000) {
-        if (!finalPanNumber) {
-            errors.push("PAN card number is required when amount is greater than INR 1,00,000");
-        } else if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(String(finalPanNumber).toUpperCase())) {
-            errors.push("PAN card number must be valid");
-        }
+    if (finalPanNumber && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(String(finalPanNumber).toUpperCase())) {
+        errors.push("PAN card number must be valid");
     }
 
     return {
@@ -714,7 +710,7 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
                 totalAmountReceived: Math.round(received),
                 expectedTotal: computedTotal,
                 difference: Math.round(received) - computedTotal,
-                panRequired: received > 100000,
+                panRequired: false,
                 gstApplicableOnInvoice: received > 20000,
                 invoiceStatus: "PENDING_ACCOUNTANT_APPROVAL"
             }
