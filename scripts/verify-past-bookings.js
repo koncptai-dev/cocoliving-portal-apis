@@ -239,8 +239,51 @@ async function verifyPastBookings() {
 
         if (classification === "BOOKING_NOT_FOUND") {
           skippedBookingRows.push(rowNumber);
+
+          finalClassificationRows.push({
+            rowNumber,
+            residentName,
+            roomNumber,
+            userId: dbUser.id,
+            dbUserName: dbUser.fullName,
+            bookingId: null,
+            bookingStatus: null,
+            classification,
+            calculation: "NOT_CHECKED",
+            payment: "NOT_CHECKED",
+          });
+
+          logger.log(`- User bookings in DB for Property ID ${TARGET_PROPERTY_ID}: 0`);
+          logger.log(`- Real approved booking in DB for Excel Room ID ${dbRoom.id}: No`);
+          logger.log(`- Final classification: ${classification}\n`);
+          continue;
+        }
+
+        bookingDataMismatchRows.push(rowNumber);
+
+        logger.log(`- User bookings in DB for Property ID ${TARGET_PROPERTY_ID}: ${userBookings.length}`);
+
+        for (const booking of userBookings) {
+          const actualRoom = await Rooms.findByPk(booking.roomId);
+          logger.log(`  - Booking ID: ${booking.id}, Room ID: ${booking.roomId}, Room Number: ${actualRoom?.roomNumber ?? "N/A"}, Status: ${booking.status}, Total Amount: ${booking.totalAmount ?? "N/A"}`);
+        }
+
+        const totalAmountReceived = parseAmount(rowData["Total Amount Received"]);
+        const waiveRent = parseAmount(rowData["Waive Current Month Rent"]);
+        const secDepositAmt = parseAmount(rowData["Security Deposit Amount"]);
+        const advRent1stMonth = parseAmount(rowData["Advance Rent Amount 1st Month Rental"]);
+        const advRentLastMonth = parseAmount(rowData["Advance Rent Duration (Last Month of tenure )"]);
+        const amcCharges = parseAmount(rowData["AMC Charges Amount"]);
+
+        const expectedTotalAmount = waiveRent + secDepositAmt + advRent1stMonth + advRentLastMonth + amcCharges;
+        const isCalcMatch = Math.round(totalAmountReceived) === Math.round(expectedTotalAmount);
+
+        if (isCalcMatch) {
+          calcMatchRows.push(rowNumber);
+          logger.log(`- Total amount calculation: MATCH (${totalAmountReceived} == ${waiveRent} + ${secDepositAmt} + ${advRent1stMonth} + ${advRentLastMonth} + ${amcCharges})`);
         } else {
-          bookingDataMismatchRows.push(rowNumber);
+          calcMismatchRows.push(rowNumber);
+          logger.log(`- Total amount calculation: MISMATCH (Received: ${totalAmountReceived}, Calculated: ${expectedTotalAmount}, Difference: ${totalAmountReceived - expectedTotalAmount})`);
         }
 
         finalClassificationRows.push({
@@ -252,17 +295,14 @@ async function verifyPastBookings() {
           bookingId: null,
           bookingStatus: null,
           classification,
-          calculation: "NOT_CHECKED",
+          calculation: isCalcMatch ? "MATCH" : "MISMATCH",
+          totalAmountReceived,
+          calculatedAmount: expectedTotalAmount,
+          difference: totalAmountReceived - expectedTotalAmount,
           payment: "NOT_CHECKED",
         });
 
-        logger.log(`- User bookings in DB for Property ID ${TARGET_PROPERTY_ID}: ${userBookings.length}`);
-
-        for (const booking of userBookings) {
-          logger.log(`  - Booking ID: ${booking.id}, Room ID: ${booking.roomId}, Status: ${booking.status}, Total Amount: ${booking.totalAmount ?? "N/A"}`);
-        }
-
-        logger.log(`- Real approved booking in DB for Excel Room ID ${dbRoom.id}: No`);
+        logger.log(`- Payment check: NOT_CHECKED (Booking data mismatch - payment lookup not performed)`);
         logger.log(`- Final classification: ${classification}\n`);
         continue;
       }
@@ -314,13 +354,20 @@ async function verifyPastBookings() {
         );
       });
 
+      logger.log(`- Payment transactions found for Booking ID ${existingBooking.id}: ${paymentTransactions.length}`);
+
+      for (const tx of paymentTransactions) {
+        const txAmountDisplay = tx.totalAmountReceived ?? (Number(tx.amount) / 100);
+        logger.log(`  - Payment ID: ${tx.id}, Type: ${tx.type}, Status: ${tx.status}, Total Amount Received: ₹${txAmountDisplay}, Amount: ${tx.amount ?? "N/A"}, Mode: ${tx.paymentMode || "N/A"}`);
+      }
+
       if (matchingTx) {
         paymentMatchedRows.push(rowNumber);
         const amountDisplay = matchingTx.totalAmountReceived ?? (matchingTx.amount / 100);
-        logger.log(`- Payment row with matching total amount: Found (Payment ID: ${matchingTx.id}, Type: ${matchingTx.type}, Status: ${matchingTx.status}, Total Amount Received: ₹${amountDisplay}, Mode: ${matchingTx.paymentMode || "N/A"})\n`);
+        logger.log(`- Payment matching Excel total: Found (Payment ID: ${matchingTx.id}, Total Amount Received: ₹${amountDisplay})`);
       } else {
         paymentNotMatchedRows.push(rowNumber);
-        logger.log(`- Payment row with matching total amount: No (Checked ${paymentTransactions.length} payment row(s) for Booking ID ${existingBooking.id}, none matched total ₹${totalAmountReceived})\n`);
+        logger.log(`- Payment matching Excel total: Not Found (Expected: ₹${totalAmountReceived})`);
       }
       let classification;
 
@@ -354,6 +401,14 @@ async function verifyPastBookings() {
             ? "NOT_FOUND"
             : "AMOUNT_NOT_MATCHED",
         paymentId: matchingTx ? matchingTx.id : null,
+        paymentTransactions: paymentTransactions.map((tx) => ({
+          id: tx.id,
+          type: tx.type,
+          status: tx.status,
+          totalAmountReceived: tx.totalAmountReceived,
+          amount: tx.amount,
+          paymentMode: tx.paymentMode,
+        })),
       });
 
       logger.log(`- Final classification: ${classification}\n`);
@@ -392,7 +447,7 @@ async function verifyPastBookings() {
 
       for (const r of rows) {
         logger.log(
-          `Row=${r.rowNumber} | Resident="${r.residentName}" | Room=${r.roomNumber} | UserID=${r.userId ?? "N/A"} | DBName="${r.dbUserName ?? "N/A"}" | BookingID=${r.bookingId ?? "N/A"} | Status=${r.bookingStatus ?? "N/A"} | Deposit=${r.securityDepositType ?? "N/A"} | Received=${r.totalAmountReceived ?? "N/A"} | Calculated=${r.calculatedAmount ?? "N/A"} | Difference=${r.difference ?? "N/A"} | Calculation=${r.calculation} | Payment=${r.payment} | PaymentID=${r.paymentId ?? "N/A"}`
+          `Row=${r.rowNumber} | Resident="${r.residentName}" | Room=${r.roomNumber} | UserID=${r.userId ?? "N/A"} | DBName="${r.dbUserName ?? "N/A"}" | BookingID=${r.bookingId ?? "N/A"} | Status=${r.bookingStatus ?? "N/A"} | Received=${r.totalAmountReceived ?? "N/A"} | Calculated=${r.calculatedAmount ?? "N/A"} | Difference=${r.difference ?? "N/A"} | Calculation=${r.calculation} | Payment=${r.payment} | PaymentID=${r.paymentId ?? "N/A"} | Payments=${r.paymentTransactions ? r.paymentTransactions.map((p) => `ID:${p.id},Total:${p.totalAmountReceived ?? "N/A"},Amount:${p.amount ?? "N/A"},Status:${p.status ?? "N/A"},Type:${p.type ?? "N/A"},Mode:${p.paymentMode ?? "N/A"}`).join(" || ") : "NOT_CHECKED"}`
         );
       }
 
@@ -541,8 +596,51 @@ async function verifyPastBookings() {
 
         if (classification === "BOOKING_NOT_FOUND") {
           skippedBookingRows.push(rowNumber);
+
+          finalClassificationRows.push({
+            rowNumber,
+            residentName,
+            roomNumber,
+            userId: dbUser.id,
+            dbUserName: dbUser.fullName,
+            bookingId: null,
+            bookingStatus: null,
+            classification,
+            calculation: "NOT_CHECKED",
+            payment: "NOT_CHECKED",
+          });
+
+          logger.log(`- User bookings found for Property ID ${TARGET_PROPERTY_ID}: 0`);
+          logger.log(`- Real approved booking in DB for Excel Room ID ${dbRoom.id}: No`);
+          logger.log(`- Final classification: ${classification}\n`);
+          continue;
+        }
+
+        bookingDataMismatchRows.push(rowNumber);
+
+        logger.log(`- User bookings found for Property ID ${TARGET_PROPERTY_ID}: ${userBookings.length}`);
+
+        for (const booking of userBookings) {
+          const actualRoom = await Rooms.findByPk(booking.roomId);
+          logger.log(`  - Booking ID: ${booking.id}, Room ID: ${booking.roomId}, Room Number: ${actualRoom?.roomNumber ?? "N/A"}, Status: ${booking.status}, Total Amount: ${booking.totalAmount ?? "N/A"}`);
+        }
+
+        const totalAmountReceived = parseAmount(rowData["Total Amount Received"]);
+        const waiveRent = parseAmount(rowData["Waive Current Month Rent"]);
+        const secDepositAmt = parseAmount(rowData["Security Deposit Amount"]);
+        const advRentAmt = parseAmount(rowData["Advance Rent Amount"]);
+        const mealSubscriptionAmt = parseAmount(rowData["Meal Subscription Amount"]);
+        const amcCharges = parseAmount(rowData["AMC Charges Amount"]);
+
+        const expectedTotalAmount = waiveRent + secDepositAmt + advRentAmt + mealSubscriptionAmt + amcCharges;
+        const isCalcMatch = Math.round(totalAmountReceived) === Math.round(expectedTotalAmount);
+
+        if (isCalcMatch) {
+          calcMatchRows.push(rowNumber);
+          logger.log(`- Total amount calculation: MATCH (${totalAmountReceived} == ${waiveRent} + ${secDepositAmt} + ${advRentAmt} + ${mealSubscriptionAmt} + ${amcCharges})`);
         } else {
-          bookingDataMismatchRows.push(rowNumber);
+          calcMismatchRows.push(rowNumber);
+          logger.log(`- Total amount calculation: MISMATCH (Received: ${totalAmountReceived}, Calculated: ${expectedTotalAmount}, Difference: ${totalAmountReceived - expectedTotalAmount})`);
         }
 
         finalClassificationRows.push({
@@ -554,17 +652,14 @@ async function verifyPastBookings() {
           bookingId: null,
           bookingStatus: null,
           classification,
-          calculation: "NOT_CHECKED",
+          calculation: isCalcMatch ? "MATCH" : "MISMATCH",
+          totalAmountReceived,
+          calculatedAmount: expectedTotalAmount,
+          difference: totalAmountReceived - expectedTotalAmount,
           payment: "NOT_CHECKED",
         });
 
-        logger.log(`- User bookings found for Property ID ${TARGET_PROPERTY_ID}: ${userBookings.length}`);
-
-        for (const booking of userBookings) {
-          logger.log(`  - Booking ID: ${booking.id}, Room ID: ${booking.roomId}, Status: ${booking.status}, Total Amount: ${booking.totalAmount ?? "N/A"}`);
-        }
-
-        logger.log(`- Real approved booking in DB for Excel Room ID ${dbRoom.id}: No`);
+        logger.log(`- Payment check: NOT_CHECKED (Booking data mismatch - payment lookup not performed)`);
         logger.log(`- Final classification: ${classification}\n`);
         continue;
       }
@@ -607,13 +702,20 @@ async function verifyPastBookings() {
         );
       });
 
+      logger.log(`- Payment transactions found for Booking ID ${existingBooking.id}: ${paymentTransactions.length}`);
+
+      for (const tx of paymentTransactions) {
+        const txAmountDisplay = tx.totalAmountReceived ?? (Number(tx.amount) / 100);
+        logger.log(`  - Payment ID: ${tx.id}, Type: ${tx.type}, Status: ${tx.status}, Total Amount Received: ₹${txAmountDisplay}, Amount: ${tx.amount ?? "N/A"}, Mode: ${tx.paymentMode || "N/A"}`);
+      }
+
       if (matchingTx) {
         paymentMatchedRows.push(rowNumber);
         const amountDisplay = matchingTx.totalAmountReceived ?? (matchingTx.amount / 100);
-        logger.log(`- Payment row with matching total amount: Found (Payment ID: ${matchingTx.id}, Type: ${matchingTx.type}, Status: ${matchingTx.status}, Total Amount Received: ₹${amountDisplay}, Mode: ${matchingTx.paymentMode || "N/A"})\n`);
+        logger.log(`- Payment matching Excel total: Found (Payment ID: ${matchingTx.id}, Total Amount Received: ₹${amountDisplay})`);
       } else {
         paymentNotMatchedRows.push(rowNumber);
-        logger.log(`- Payment row with matching total amount: No (Checked ${paymentTransactions.length} payment row(s) for Booking ID ${existingBooking.id}, none matched total ₹${totalAmountReceived})\n`);
+        logger.log(`- Payment matching Excel total: Not Found (Expected: ₹${totalAmountReceived})`);
       }
       let classification;
 
@@ -646,6 +748,14 @@ async function verifyPastBookings() {
             ? "NOT_FOUND"
             : "AMOUNT_NOT_MATCHED",
         paymentId: matchingTx ? matchingTx.id : null,
+        paymentTransactions: paymentTransactions.map((tx) => ({
+          id: tx.id,
+          type: tx.type,
+          status: tx.status,
+          totalAmountReceived: tx.totalAmountReceived,
+          amount: tx.amount,
+          paymentMode: tx.paymentMode,
+        })),
       });
 
       logger.log(`- Final classification: ${classification}\n`);
@@ -683,7 +793,7 @@ async function verifyPastBookings() {
 
       for (const r of rows) {
         logger.log(
-          `Row=${r.rowNumber} | Resident="${r.residentName}" | Room=${r.roomNumber} | UserID=${r.userId ?? "N/A"} | DBName="${r.dbUserName ?? "N/A"}" | BookingID=${r.bookingId ?? "N/A"} | Status=${r.bookingStatus ?? "N/A"} | Received=${r.totalAmountReceived ?? "N/A"} | Calculated=${r.calculatedAmount ?? "N/A"} | Difference=${r.difference ?? "N/A"} | Calculation=${r.calculation} | Payment=${r.payment} | PaymentID=${r.paymentId ?? "N/A"}`
+          `Row=${r.rowNumber} | Resident="${r.residentName}" | Room=${r.roomNumber} | UserID=${r.userId ?? "N/A"} | DBName="${r.dbUserName ?? "N/A"}" | BookingID=${r.bookingId ?? "N/A"} | Status=${r.bookingStatus ?? "N/A"} | Received=${r.totalAmountReceived ?? "N/A"} | Calculated=${r.calculatedAmount ?? "N/A"} | Difference=${r.difference ?? "N/A"} | Calculation=${r.calculation} | Payment=${r.payment} | PaymentID=${r.paymentId ?? "N/A"} | Payments=${r.paymentTransactions ? r.paymentTransactions.map((p) => `ID:${p.id},Total:${p.totalAmountReceived ?? "N/A"},Amount:${p.amount ?? "N/A"},Status:${p.status ?? "N/A"},Type:${p.type ?? "N/A"},Mode:${p.paymentMode ?? "N/A"}`).join(" || ") : "NOT_CHECKED"}`
         );
       }
 
