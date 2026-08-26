@@ -84,7 +84,7 @@ class SheetLogger {
 async function verifyPastBookings() {
   const excelFilePath = path.join(
     projectRoot,
-    "scripts/files/CoCo_Past_Bookings_Aug26.xlsx"
+    "scripts/files/CoCo Past Bookings Aug26 v1.1.xlsx"
   );
   const logsDir = path.join(projectRoot, "scripts/logs");
 
@@ -115,6 +115,7 @@ async function verifyPastBookings() {
     const skippedRoomRows = [];
     const skippedUserRows = [];
     const skippedBookingRows = [];
+    const bookingDataMismatchRows = [];
     const nameMismatchRows = [];
     const approvedBookingFoundRows = [];
     const deposit1Plus1Rows = [];
@@ -122,6 +123,7 @@ async function verifyPastBookings() {
     const calcMismatchRows = [];
     const paymentMatchedRows = [];
     const paymentNotMatchedRows = [];
+    const finalClassificationRows = [];
 
     for (let rowNumber = 2; rowNumber <= nonCeptSheet.rowCount; rowNumber++) {
       const row = nonCeptSheet.getRow(rowNumber);
@@ -157,7 +159,20 @@ async function verifyPastBookings() {
 
       if (!dbRoom) {
         skippedRoomRows.push(rowNumber);
-        logger.log(`- Room in DB (Property ID ${TARGET_PROPERTY_ID}): No (Room ${roomNumber} not found - Skipping row)\n`);
+        finalClassificationRows.push({
+          rowNumber,
+          residentName,
+          roomNumber,
+          userId: null,
+          dbUserName: null,
+          bookingId: null,
+          bookingStatus: null,
+          classification: "ROOM_NOT_FOUND",
+          calculation: "NOT_CHECKED",
+          payment: "NOT_CHECKED",
+        });
+        logger.log(`- Room in DB (Property ID ${TARGET_PROPERTY_ID}): No (Room ${roomNumber} not found)`);
+        logger.log(`- Final classification: ROOM_NOT_FOUND\n`);
         continue;
       }
       logger.log(`- Room in DB (Property ID ${TARGET_PROPERTY_ID}): Yes (Room ID: ${dbRoom.id})`);
@@ -174,7 +189,20 @@ async function verifyPastBookings() {
 
       if (!dbUser) {
         skippedUserRows.push(rowNumber);
-        logger.log(`- User in DB: No (Email: ${email || "N/A"}, Phone: ${phone || "N/A"} - Skipping row)\n`);
+        finalClassificationRows.push({
+          rowNumber,
+          residentName,
+          roomNumber,
+          userId: null,
+          dbUserName: null,
+          bookingId: null,
+          bookingStatus: null,
+          classification: "USER_NOT_FOUND",
+          calculation: "NOT_CHECKED",
+          payment: "NOT_CHECKED",
+        });
+        logger.log(`- User in DB: No (Email: ${email || "N/A"}, Phone: ${phone || "N/A"})`);
+        logger.log(`- Final classification: USER_NOT_FOUND\n`);
         continue;
       }
       logger.log(`- User in DB: Yes (User ID: ${dbUser.id}, Name: "${dbUser.fullName}")`);
@@ -190,18 +218,52 @@ async function verifyPastBookings() {
       }
 
       // 4. Check real booking in DB with status: 'approved'
-      const existingBooking = await Booking.findOne({
+      const userBookings = await Booking.findAll({
         where: {
           userId: dbUser.id,
-          roomId: dbRoom.id,
           propertyId: TARGET_PROPERTY_ID,
-          status: { [Op.iLike]: "approved" },
         },
       });
 
+      const existingBooking = userBookings.find(
+        (booking) =>
+          Number(booking.roomId) === Number(dbRoom.id) &&
+          String(booking.status || "").toLowerCase() === "approved"
+      );
+
       if (!existingBooking) {
-        skippedBookingRows.push(rowNumber);
-        logger.log(`- Real approved booking in DB: No (No approved booking found for User ID ${dbUser.id} and Room ID ${dbRoom.id} - Skipping row)\n`);
+        const classification =
+          userBookings.length === 0
+            ? "BOOKING_NOT_FOUND"
+            : "BOOKING_DATA_MISMATCH";
+
+        if (classification === "BOOKING_NOT_FOUND") {
+          skippedBookingRows.push(rowNumber);
+        } else {
+          bookingDataMismatchRows.push(rowNumber);
+        }
+
+        finalClassificationRows.push({
+          rowNumber,
+          residentName,
+          roomNumber,
+          userId: dbUser.id,
+          dbUserName: dbUser.fullName,
+          bookingId: null,
+          bookingStatus: null,
+          classification,
+          calculation: "NOT_CHECKED",
+          payment: "NOT_CHECKED",
+        });
+
+        logger.log(`- User bookings in DB for Property ID ${TARGET_PROPERTY_ID}: ${userBookings.length}`);
+
+        for (const booking of userBookings) {
+          logger.log(`  - Booking ID: ${booking.id}, Room ID: ${booking.roomId}, Status: ${booking.status}, Total Amount: ${booking.totalAmount ?? "N/A"}`);
+        }
+
+        logger.log(`- Real approved booking in DB for Excel Room ID ${dbRoom.id}: No`);
+        logger.log(`- Final classification: ${classification}\n`);
         continue;
       }
 
@@ -260,21 +322,82 @@ async function verifyPastBookings() {
         paymentNotMatchedRows.push(rowNumber);
         logger.log(`- Payment row with matching total amount: No (Checked ${paymentTransactions.length} payment row(s) for Booking ID ${existingBooking.id}, none matched total ₹${totalAmountReceived})\n`);
       }
+      let classification;
+
+      if (!isCalcMatch) {
+        classification = "CALCULATION_MISMATCH";
+      } else if (paymentTransactions.length === 0) {
+        classification = "PAYMENT_NOT_FOUND";
+      } else if (!matchingTx) {
+        classification = "PAYMENT_AMOUNT_MISMATCH";
+      } else {
+        classification = "VERIFIED";
+      }
+
+      finalClassificationRows.push({
+        rowNumber,
+        residentName,
+        roomNumber,
+        userId: dbUser.id,
+        dbUserName: dbUser.fullName,
+        bookingId: existingBooking.id,
+        bookingStatus: existingBooking.status,
+        securityDepositType: secDepositType,
+        totalAmountReceived,
+        calculatedAmount: expectedTotalAmount,
+        difference: totalAmountReceived - expectedTotalAmount,
+        classification,
+        calculation: isCalcMatch ? "MATCH" : "MISMATCH",
+        payment: matchingTx
+          ? "FOUND"
+          : paymentTransactions.length === 0
+            ? "NOT_FOUND"
+            : "AMOUNT_NOT_MATCHED",
+        paymentId: matchingTx ? matchingTx.id : null,
+      });
+
+      logger.log(`- Final classification: ${classification}\n`);
     }
 
     logger.log(`--- Summary ---`);
     logger.log(`Total Rows Processed: ${totalProcessed}`);
-    logger.log(formatSummaryLine(`Skipped - Room not found`, skippedRoomRows));
-    logger.log(formatSummaryLine(`Skipped - User not found`, skippedUserRows));
-    logger.log(formatSummaryLine(`Skipped - Approved Booking not found`, skippedBookingRows));
-    logger.log(formatSummaryLine(`Name Mismatches`, nameMismatchRows));
-    logger.log(`Real Approved Bookings Found: ${approvedBookingFoundRows.length}`);
+    logger.log(formatSummaryLine(`User Not Found`, finalClassificationRows.filter((r) => r.classification === "USER_NOT_FOUND").map((r) => r.rowNumber)));
+    logger.log(formatSummaryLine(`Booking Not Found`, finalClassificationRows.filter((r) => r.classification === "BOOKING_NOT_FOUND").map((r) => r.rowNumber)));
+    logger.log(formatSummaryLine(`Booking Data Mismatch`, finalClassificationRows.filter((r) => r.classification === "BOOKING_DATA_MISMATCH").map((r) => r.rowNumber)));
+    logger.log(formatSummaryLine(`Calculation Mismatch`, finalClassificationRows.filter((r) => r.classification === "CALCULATION_MISMATCH").map((r) => r.rowNumber)));
+    logger.log(formatSummaryLine(`Payment Not Found`, finalClassificationRows.filter((r) => r.classification === "PAYMENT_NOT_FOUND").map((r) => r.rowNumber)));
+    logger.log(formatSummaryLine(`Payment Amount Mismatch`, finalClassificationRows.filter((r) => r.classification === "PAYMENT_AMOUNT_MISMATCH").map((r) => r.rowNumber)));
+    logger.log(formatSummaryLine(`Verified`, finalClassificationRows.filter((r) => r.classification === "VERIFIED").map((r) => r.rowNumber)));
+    logger.log(formatSummaryLine(`Room Not Found`, finalClassificationRows.filter((r) => r.classification === "ROOM_NOT_FOUND").map((r) => r.rowNumber)));
+    logger.log(`Name Mismatches: ${nameMismatchRows.length}`);
     logger.log(formatSummaryLine(`Security Deposit 1+1 Flagged`, deposit1Plus1Rows));
-    logger.log(`Calculation Matches: ${calcMatchRows.length}`);
-    logger.log(formatSummaryLine(`Calculation Mismatches`, calcMismatchRows));
-    logger.log(`Payment Row with Matching Total Amount Found: ${paymentMatchedRows.length}`);
-    logger.log(formatSummaryLine(`Payment Row with Matching Total Amount Not Found`, paymentNotMatchedRows));
     logger.log("");
+    logger.log(`--- Classified Data ---`);
+
+    for (const classification of [
+      "USER_NOT_FOUND",
+      "BOOKING_NOT_FOUND",
+      "BOOKING_DATA_MISMATCH",
+      "CALCULATION_MISMATCH",
+      "PAYMENT_NOT_FOUND",
+      "PAYMENT_AMOUNT_MISMATCH",
+      "VERIFIED",
+      "ROOM_NOT_FOUND",
+    ]) {
+      const rows = finalClassificationRows.filter(
+        (r) => r.classification === classification
+      );
+
+      logger.log(`### ${classification} (${rows.length})`);
+
+      for (const r of rows) {
+        logger.log(
+          `Row=${r.rowNumber} | Resident="${r.residentName}" | Room=${r.roomNumber} | UserID=${r.userId ?? "N/A"} | DBName="${r.dbUserName ?? "N/A"}" | BookingID=${r.bookingId ?? "N/A"} | Status=${r.bookingStatus ?? "N/A"} | Deposit=${r.securityDepositType ?? "N/A"} | Received=${r.totalAmountReceived ?? "N/A"} | Calculated=${r.calculatedAmount ?? "N/A"} | Difference=${r.difference ?? "N/A"} | Calculation=${r.calculation} | Payment=${r.payment} | PaymentID=${r.paymentId ?? "N/A"}`
+        );
+      }
+
+      logger.log("");
+    }
   }
 
   // ============================================================================
@@ -294,12 +417,14 @@ async function verifyPastBookings() {
     const skippedRoomRows = [];
     const skippedUserRows = [];
     const skippedBookingRows = [];
+    const bookingDataMismatchRows = [];
     const nameMismatchRows = [];
     const approvedBookingFoundRows = [];
     const calcMatchRows = [];
     const calcMismatchRows = [];
     const paymentMatchedRows = [];
     const paymentNotMatchedRows = [];
+    const finalClassificationRows = [];
 
     for (let rowNumber = 2; rowNumber <= ceptSheet.rowCount; rowNumber++) {
       const row = ceptSheet.getRow(rowNumber);
@@ -335,7 +460,20 @@ async function verifyPastBookings() {
 
       if (!dbRoom) {
         skippedRoomRows.push(rowNumber);
-        logger.log(`- Room in DB (Property ID ${TARGET_PROPERTY_ID}): No (Room ${roomNumber} not found - Skipping row)\n`);
+        finalClassificationRows.push({
+          rowNumber,
+          residentName,
+          roomNumber,
+          userId: null,
+          dbUserName: null,
+          bookingId: null,
+          bookingStatus: null,
+          classification: "ROOM_NOT_FOUND",
+          calculation: "NOT_CHECKED",
+          payment: "NOT_CHECKED",
+        });
+        logger.log(`- Room in DB (Property ID ${TARGET_PROPERTY_ID}): No (Room ${roomNumber} not found)`);
+        logger.log(`- Final classification: ROOM_NOT_FOUND\n`);
         continue;
       }
       logger.log(`- Room in DB (Property ID ${TARGET_PROPERTY_ID}): Yes (Room ID: ${dbRoom.id})`);
@@ -352,7 +490,20 @@ async function verifyPastBookings() {
 
       if (!dbUser) {
         skippedUserRows.push(rowNumber);
-        logger.log(`- User in DB: No (Email: ${email || "N/A"}, Phone: ${phone || "N/A"} - Skipping row)\n`);
+        finalClassificationRows.push({
+          rowNumber,
+          residentName,
+          roomNumber,
+          userId: null,
+          dbUserName: null,
+          bookingId: null,
+          bookingStatus: null,
+          classification: "USER_NOT_FOUND",
+          calculation: "NOT_CHECKED",
+          payment: "NOT_CHECKED",
+        });
+        logger.log(`- User in DB: No (Email: ${email || "N/A"}, Phone: ${phone || "N/A"})`);
+        logger.log(`- Final classification: USER_NOT_FOUND\n`);
         continue;
       }
       logger.log(`- User in DB: Yes (User ID: ${dbUser.id}, Name: "${dbUser.fullName}")`);
@@ -368,18 +519,53 @@ async function verifyPastBookings() {
       }
 
       // 4. Check real booking in DB with status: 'approved'
-      const existingBooking = await Booking.findOne({
+      // 4. Check real booking in DB with status: 'approved'
+      const userBookings = await Booking.findAll({
         where: {
           userId: dbUser.id,
-          roomId: dbRoom.id,
           propertyId: TARGET_PROPERTY_ID,
-          status: { [Op.iLike]: "approved" },
         },
       });
 
+      const existingBooking = userBookings.find(
+        (booking) =>
+          Number(booking.roomId) === Number(dbRoom.id) &&
+          String(booking.status || "").toLowerCase() === "approved"
+      );
+
       if (!existingBooking) {
-        skippedBookingRows.push(rowNumber);
-        logger.log(`- Real approved booking in DB: No (No approved booking found for User ID ${dbUser.id} and Room ID ${dbRoom.id} - Skipping row)\n`);
+        const classification =
+          userBookings.length === 0
+            ? "BOOKING_NOT_FOUND"
+            : "BOOKING_DATA_MISMATCH";
+
+        if (classification === "BOOKING_NOT_FOUND") {
+          skippedBookingRows.push(rowNumber);
+        } else {
+          bookingDataMismatchRows.push(rowNumber);
+        }
+
+        finalClassificationRows.push({
+          rowNumber,
+          residentName,
+          roomNumber,
+          userId: dbUser.id,
+          dbUserName: dbUser.fullName,
+          bookingId: null,
+          bookingStatus: null,
+          classification,
+          calculation: "NOT_CHECKED",
+          payment: "NOT_CHECKED",
+        });
+
+        logger.log(`- User bookings found for Property ID ${TARGET_PROPERTY_ID}: ${userBookings.length}`);
+
+        for (const booking of userBookings) {
+          logger.log(`  - Booking ID: ${booking.id}, Room ID: ${booking.roomId}, Status: ${booking.status}, Total Amount: ${booking.totalAmount ?? "N/A"}`);
+        }
+
+        logger.log(`- Real approved booking in DB for Excel Room ID ${dbRoom.id}: No`);
+        logger.log(`- Final classification: ${classification}\n`);
         continue;
       }
 
@@ -429,20 +615,80 @@ async function verifyPastBookings() {
         paymentNotMatchedRows.push(rowNumber);
         logger.log(`- Payment row with matching total amount: No (Checked ${paymentTransactions.length} payment row(s) for Booking ID ${existingBooking.id}, none matched total ₹${totalAmountReceived})\n`);
       }
+      let classification;
+
+      if (!isCalcMatch) {
+        classification = "CALCULATION_MISMATCH";
+      } else if (paymentTransactions.length === 0) {
+        classification = "PAYMENT_NOT_FOUND";
+      } else if (!matchingTx) {
+        classification = "PAYMENT_AMOUNT_MISMATCH";
+      } else {
+        classification = "VERIFIED";
+      }
+
+      finalClassificationRows.push({
+        rowNumber,
+        residentName,
+        roomNumber,
+        userId: dbUser.id,
+        dbUserName: dbUser.fullName,
+        bookingId: existingBooking.id,
+        bookingStatus: existingBooking.status,
+        totalAmountReceived,
+        calculatedAmount: expectedTotalAmount,
+        difference: totalAmountReceived - expectedTotalAmount,
+        classification,
+        calculation: isCalcMatch ? "MATCH" : "MISMATCH",
+        payment: matchingTx
+          ? "FOUND"
+          : paymentTransactions.length === 0
+            ? "NOT_FOUND"
+            : "AMOUNT_NOT_MATCHED",
+        paymentId: matchingTx ? matchingTx.id : null,
+      });
+
+      logger.log(`- Final classification: ${classification}\n`);
     }
 
     logger.log(`--- Summary ---`);
     logger.log(`Total Rows Processed: ${totalProcessed}`);
-    logger.log(formatSummaryLine(`Skipped - Room not found`, skippedRoomRows));
-    logger.log(formatSummaryLine(`Skipped - User not found`, skippedUserRows));
-    logger.log(formatSummaryLine(`Skipped - Approved Booking not found`, skippedBookingRows));
-    logger.log(formatSummaryLine(`Name Mismatches`, nameMismatchRows));
-    logger.log(`Real Approved Bookings Found: ${approvedBookingFoundRows.length}`);
-    logger.log(`Calculation Matches: ${calcMatchRows.length}`);
-    logger.log(formatSummaryLine(`Calculation Mismatches`, calcMismatchRows));
-    logger.log(`Payment Row with Matching Total Amount Found: ${paymentMatchedRows.length}`);
-    logger.log(formatSummaryLine(`Payment Row with Matching Total Amount Not Found`, paymentNotMatchedRows));
+    logger.log(formatSummaryLine(`User Not Found`, finalClassificationRows.filter((r) => r.classification === "USER_NOT_FOUND").map((r) => r.rowNumber)));
+    logger.log(formatSummaryLine(`Booking Not Found`, finalClassificationRows.filter((r) => r.classification === "BOOKING_NOT_FOUND").map((r) => r.rowNumber)));
+    logger.log(formatSummaryLine(`Booking Data Mismatch`, finalClassificationRows.filter((r) => r.classification === "BOOKING_DATA_MISMATCH").map((r) => r.rowNumber)));
+    logger.log(formatSummaryLine(`Calculation Mismatch`, finalClassificationRows.filter((r) => r.classification === "CALCULATION_MISMATCH").map((r) => r.rowNumber)));
+    logger.log(formatSummaryLine(`Payment Not Found`, finalClassificationRows.filter((r) => r.classification === "PAYMENT_NOT_FOUND").map((r) => r.rowNumber)));
+    logger.log(formatSummaryLine(`Payment Amount Mismatch`, finalClassificationRows.filter((r) => r.classification === "PAYMENT_AMOUNT_MISMATCH").map((r) => r.rowNumber)));
+    logger.log(formatSummaryLine(`Verified`, finalClassificationRows.filter((r) => r.classification === "VERIFIED").map((r) => r.rowNumber)));
+    logger.log(formatSummaryLine(`Room Not Found`, finalClassificationRows.filter((r) => r.classification === "ROOM_NOT_FOUND").map((r) => r.rowNumber)));
+    logger.log(`Name Mismatches: ${nameMismatchRows.length}`);
     logger.log("");
+    logger.log(`--- Classified Data ---`);
+
+    for (const classification of [
+      "USER_NOT_FOUND",
+      "BOOKING_NOT_FOUND",
+      "BOOKING_DATA_MISMATCH",
+      "CALCULATION_MISMATCH",
+      "PAYMENT_NOT_FOUND",
+      "PAYMENT_AMOUNT_MISMATCH",
+      "VERIFIED",
+      "ROOM_NOT_FOUND",
+    ]) {
+      const rows = finalClassificationRows.filter(
+        (r) => r.classification === classification
+      );
+
+      logger.log(`### ${classification} (${rows.length})`);
+
+      for (const r of rows) {
+        logger.log(
+          `Row=${r.rowNumber} | Resident="${r.residentName}" | Room=${r.roomNumber} | UserID=${r.userId ?? "N/A"} | DBName="${r.dbUserName ?? "N/A"}" | BookingID=${r.bookingId ?? "N/A"} | Status=${r.bookingStatus ?? "N/A"} | Received=${r.totalAmountReceived ?? "N/A"} | Calculated=${r.calculatedAmount ?? "N/A"} | Difference=${r.difference ?? "N/A"} | Calculation=${r.calculation} | Payment=${r.payment} | PaymentID=${r.paymentId ?? "N/A"}`
+        );
+      }
+
+      logger.log("");
+    }
   }
 
   await sequelize.close();
