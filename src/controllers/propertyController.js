@@ -330,7 +330,7 @@ exports.editProperties = async (req, res) => {
         const filePath = path.join(__dirname, '..', imgUrl.replace(/^\//, ''));
         if (fs.existsSync(filePath)) await fs.promises.unlink(filePath);
       } catch (err) {
-        console.error(`Failed to delete file ${imgUrl}:`, err);
+        console.error("Failed to delete file:", imgUrl, err);
       }
     }
 
@@ -393,7 +393,7 @@ exports.editProperties = async (req, res) => {
                 const filePath = path.join(__dirname, '..', imgUrl.replace(/^\//, ''));
                 if (fs.existsSync(filePath)) await fs.promises.unlink(filePath);
               } catch (err) {
-                console.error(`Failed to delete room image ${imgUrl}:`, err);
+                console.error("Failed to delete room image:", imgUrl, err);
               }
             }
 
@@ -797,7 +797,7 @@ exports.deleteProperty = async (req, res) => {
       const fullPath = path.join(__dirname, '..', imgPath.replace(/^\//, ''));
       if (fs.existsSync(fullPath)) {
         fs.unlink(fullPath, err => {
-          if (err) console.error(`Failed to delete file ${fullPath}:`, err);
+          if (err) console.error("Failed to delete file:", fullPath, err);
         });
       }
     }
@@ -863,7 +863,7 @@ exports.deleteRateCard = async (req, res) => {
           const filePath = path.join(__dirname, '..', imgUrl.replace(/^\//, ''));
           if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
         } catch (err) {
-          console.error(`Failed to delete room image ${imgUrl}:`, err);
+          console.error("Failed to delete room image:", imgUrl, err);
         }
       }
     }
@@ -909,7 +909,7 @@ exports.deleteFloorLayout = async (req, res) => {
           const filePath = path.join(__dirname, '..', imgUrl.replace(/^\//, ''));
           if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
         } catch (err) {
-          console.error(`Failed to delete floor image ${imgUrl}:`, err);
+          console.error("Failed to delete floor image:", imgUrl, err);
         }
       }
     }
@@ -931,6 +931,7 @@ exports.deleteFloorLayout = async (req, res) => {
     res.status(500).json({ message: "Failed to delete floor layout." });
   }
 };
+
 exports.integrateElectricityProvider = async (req, res) => {
   try {
     console.log(

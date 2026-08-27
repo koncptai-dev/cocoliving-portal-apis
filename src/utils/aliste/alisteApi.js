@@ -1,9 +1,20 @@
 const fetch = require('node-fetch');
 
-const BASE_URL = process.env.ALISTE_BASE_URL;
+const ALISTE_ENV_PREFIX = process.env.ALISTE_ENV_PREFIX;
+
+const ALISTE_BASE_URL =
+  ALISTE_ENV_PREFIX === "prod"
+    ? "https://smartmeter.aliste.io"
+    : ALISTE_ENV_PREFIX === "staging"
+      ? "https://test.alistetechnologies.com"
+      : null;
+
+if (!ALISTE_BASE_URL) {
+  throw new Error("Invalid ALISTE_ENV_PREFIX");
+}
 
 async function alisteRequest(endpoint, method = 'POST', body = {}) {
-  const url = `${process.env.ALISTE_BASE_URL}${endpoint}`;
+  const url = `${ALISTE_BASE_URL}${endpoint}`;
 
   try {
     const response = await fetch(url, {
