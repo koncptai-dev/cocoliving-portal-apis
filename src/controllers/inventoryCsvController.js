@@ -148,7 +148,7 @@ exports.importInventory = async (req, res) => {
 
         fs.unlinkSync(filePath);
 
-        await logApiCall(req, res, 200, `Imported inventory from CSV (Inserted: ${inserted}, Skipped: ${skippedRows.length})`, "inventory");
+        await logApiCall(req, res, 200,"Imported inventory from CSV","inventory");
         return res.json({
           message: "CSV Import Summary",
           totalRows: importedRows.length,
