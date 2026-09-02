@@ -193,12 +193,18 @@ exports.getAllRooms = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
-    const { propertyId } = req.query;
+    const { propertyId, roomNumber } = req.query;
 
     let whereCondition = {};
 
     if (propertyId) {
-      whereCondition.propertyId = propertyId;  
+      whereCondition.propertyId = propertyId;
+    }
+
+    if (roomNumber) {
+      whereCondition.roomNumber = {
+        [Op.iLike]: `%${roomNumber}%`
+      };
     }
     const { rows: rooms, count } = await Rooms.findAndCountAll(
       {
