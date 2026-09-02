@@ -1274,6 +1274,10 @@ ${FOOTER}
 }
 
 function guestQrEmail({ guestName, visitDate }) {
+
+  const date = new Date(visitDate);
+  const formattedDate = `${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${date.getFullYear()}`;
+
   return {
     attachments: [
       ...FOOTER_ATTACHMENTS
@@ -1283,7 +1287,7 @@ function guestQrEmail({ guestName, visitDate }) {
     <tr><td>
 <p>Hello <b>${guestName}</b>,</p>
 
-<p>Your visit is scheduled on <b>${visitDate}</b>.</p>
+<p>Your visit is scheduled on <b>${formattedDate}</b>.</p>
 
 <p>Please present the QR code below at the entrance.</p>
 
