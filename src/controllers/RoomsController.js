@@ -202,9 +202,14 @@ exports.getAllRooms = async (req, res) => {
     }
 
     if (roomNumber) {
-      whereCondition.roomNumber = {
-        [Op.iLike]: `%${roomNumber}%`
-      };
+      whereCondition[Op.and] = [
+        sequelize.where(
+          sequelize.cast(sequelize.col('roomNumber'), 'TEXT'),
+          {
+            [Op.iLike]: `%${roomNumber}%`
+          }
+        )
+      ];
     }
     const { rows: rooms, count } = await Rooms.findAndCountAll(
       {
