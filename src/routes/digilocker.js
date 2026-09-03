@@ -7,6 +7,7 @@ const authMiddleware = require('../middleware/auth');
 const User = require("../models/user");
 const { nameMatchService } = require("../helpers/nameMatchfunction");
 const upload = require("../middleware/upload");
+const parentNotAllowed = require("../middleware/parentNotAllowed");
 
 const router = express.Router();
 
@@ -81,7 +82,7 @@ const makeIdtoRequest = async (
   }
 };
 
-router.post("/verify-account", authMiddleware, validateConfig, async (req, res) => {
+router.post("/verify-account", authMiddleware, parentNotAllowed, validateConfig, async (req, res) => {
   try {
     const { mobile_number } = req.body;
 
@@ -110,7 +111,7 @@ router.post("/verify-account", authMiddleware, validateConfig, async (req, res) 
   }
 });
 
-router.post("/initiate-session", authMiddleware, upload.fields([ { name: "aadhaar_front", maxCount: 1 }, { name: "aadhaar_back", maxCount: 1 }, ]), validateConfig, async (req, res) => {
+router.post("/initiate-session", authMiddleware, parentNotAllowed, upload.fields([ { name: "aadhaar_front", maxCount: 1 }, { name: "aadhaar_back", maxCount: 1 }, ]), validateConfig, async (req, res) => {
   try {
     const userId = req.user.id;
     const role = req.user.role; 
@@ -190,7 +191,7 @@ router.post("/initiate-session", authMiddleware, upload.fields([ { name: "aadhaa
   }
 });
 
-router.post("/get-reference", validateConfig, async (req, res) => {
+router.post("/get-reference", authMiddleware, parentNotAllowed, validateConfig, async (req, res) => {
   try {
     const { code, code_verifier } = req.body;
 
@@ -219,7 +220,7 @@ router.post("/get-reference", validateConfig, async (req, res) => {
   }
 });
 
-router.post("/fetch-aadhaar", validateConfig, authMiddleware, async (req, res) => {
+router.post("/fetch-aadhaar", authMiddleware, parentNotAllowed, validateConfig, async (req, res) => {
   try {
     const { reference_key } = req.body;
     const userId = req.user.id;

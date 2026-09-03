@@ -6,9 +6,10 @@ const {supportTickValidate}=require('../middleware/validation');
 const validate = require('../middleware/validateResult');
 const upload = require('../middleware/upload');
 const authorizeRole = require("../middleware/authorizeRole");
+const parentNotAllowed = require("../middleware/parentNotAllowed");
 
 // create Route user
-router.post("/create",upload.fields([{ name: 'ticketImage', maxCount: 10 },{ name: 'ticketVideo', maxCount: 3 }]),supportTickValidate, validate,authMiddleware, SupportTicketController.createTicket);
+router.post("/create", authMiddleware, parentNotAllowed, upload.fields([{ name: 'ticketImage', maxCount: 10 }, { name: 'ticketVideo', maxCount: 3 }]), supportTickValidate, validate, SupportTicketController.createTicket );
 router.get("/get-user-tickets", authMiddleware, SupportTicketController.getUserTickets);
 
 // admin

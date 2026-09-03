@@ -33,6 +33,7 @@ const authenticateToken = (req, res, next) => {
         }
 
         req.user = dbUser;
+        req.user.loginAs = user.loginAs;
         next();
     });
 }

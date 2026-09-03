@@ -7,6 +7,7 @@ const authenticateToken =  require('../middleware/auth');
 const upload = require('../middleware/upload');
 const authorizeRole = require("../middleware/authorizeRole");
 const authorizePage = require("../middleware/authorizePage");
+const parentNotAllowed = require("../middleware/parentNotAllowed");
 
 router.post('/register',upload.single('profileImage'), validateSignup,validate,UserController.registerUser);
 
@@ -17,7 +18,7 @@ router.get('/getUser/:id', authenticateToken,authorizeRole(1,2,3), UserControlle
 router.post('/send-otp',UserController.sendOTP);
 
 // Send OTP to phone
-router.post('/profile/verify/send-otp', authenticateToken, UserController.sendProfileOTP);
+router.post('/profile/verify/send-otp', parentNotAllowed, authenticateToken, UserController.sendProfileOTP);
 
 // Verify OTP from phone
 router.post('/profile/verify/verify-otp', authenticateToken, UserController.verifyProfileOTP);

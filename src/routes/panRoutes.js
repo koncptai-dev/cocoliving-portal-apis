@@ -6,10 +6,12 @@ const panLimiter = require('../utils/ratelimiter');
 const UserKYC = require("../models/userKYC");
 const authenticateToken = require("../middleware/auth");
 const upload = require("../middleware/upload");
+const parentNotAllowed = require("../middleware/parentNotAllowed");
 
 router.post(
     '/verify-pan',
     authenticateToken,
+    parentNotAllowed,
     panLimiter,
     upload.single("pan_image"),
     (req,res,next)=>{
