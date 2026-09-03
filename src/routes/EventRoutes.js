@@ -8,6 +8,7 @@ const { joinEvent, getEvents } = require("../controllers/participationController
 const upload = require('../middleware/upload');
 const authorizeRole = require("../middleware/authorizeRole");
 const authorizePage = require("../middleware/authorizePage");
+const parentNotAllowed = require("../middleware/parentNotAllowed");
 
 //add event by admin
 router.post('/add',upload.single('eventImage'),validateEvent, validate, authMiddleware, authorizeRole(1,3), authorizePage("Event Management", "write"), EventController.createEvent);
@@ -16,7 +17,7 @@ router.post('/add',upload.single('eventImage'),validateEvent, validate, authMidd
 router.put('/edit/:eventId',upload.single('eventImage'), authMiddleware,authorizeRole(1,3), authorizePage("Event Management", "write"), EventController.updateEvents);
 
 //patch request to update event status
-router.patch('/:id/toggle-status', EventController.toggleEventStatus);
+router.patch('/:id/toggle-status', authMiddleware, authorizeRole(1,3), authorizePage("Event Management", "write"), EventController.toggleEventStatus);
 
 //get Events by admin
 router.get('/admin/getAllEvents', authMiddleware, authorizeRole(1,3), authorizePage("Event Management", "read"), EventController.getAllEvents);
@@ -27,7 +28,7 @@ router.delete('/delete/:eventId', authMiddleware, authorizeRole(1,3), authorizeP
 router.get( "/:eventId/participants", authMiddleware, authorizeRole(1, 3), authorizePage("Event Management", "read"), EventController.getEventParticipants );
 
 // user join karega
-router.post("/:eventId/join", authMiddleware, authorizeRole(2), joinEvent);
+router.post("/:eventId/join", authMiddleware, parentNotAllowed, authorizeRole(2), joinEvent);
 
 // Get all events user
 router.get("/allevents",authMiddleware,authorizeRole(2), getEvents);

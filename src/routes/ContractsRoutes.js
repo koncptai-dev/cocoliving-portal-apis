@@ -3,10 +3,11 @@ const router = express.Router();
 const authenticateToken = require("../middleware/auth");
 const upload = require("../middleware/upload");
 const ContractController = require("../controllers/ContractController");
+const parentNotAllowed = require("../middleware/parentNotAllowed");
 
 router.get("/:bookingId", authenticateToken, ContractController.getContract);
 
-router.post( "/:bookingId/initiate-esign", authenticateToken, ContractController.initiateEsign);
+router.post( "/:bookingId/initiate-esign", authenticateToken, parentNotAllowed,ContractController.initiateEsign);
 
 router.post(
   "/:bookingId/admin-sign",
