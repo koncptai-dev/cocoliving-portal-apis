@@ -16,7 +16,19 @@ let isCronRunning = false;
  */
 async function sendFailureAlertEmails(contract, docketId, documentId, signingStatus) {
   try {
-    const idtoTemplate = idtoEsignAlertEmail({
+    const alertRecipients = (process.env.ESIGN_ALERT_EMAIL || "")
+      .split(",")
+      .map((email) => email.trim())
+      .filter(Boolean);
+
+    if (!alertRecipients.length) {
+      console.warn(
+        "[esignStatusCron] ESIGN_ALERT_EMAIL is not configured. Skipping alert email."
+      );
+      return;
+    }
+
+    const template = idtoEsignAlertEmail({
       contractId: contract.id,
       bookingId: contract.bookingId,
       docketId,
@@ -25,35 +37,18 @@ async function sendFailureAlertEmails(contract, docketId, documentId, signingSta
       fetchAttemptCount: contract.fetchAttemptCount,
     });
 
-    const devTemplate = devEsignAlertEmail({
-      contractId: contract.id,
-      bookingId: contract.bookingId,
-      docketId,
-      documentId,
-      signingStatus,
-      fetchAttemptCount: contract.fetchAttemptCount,
-    });
+    await mailsender(
+      alertRecipients.join(","),
+      "eSign Document Status Alert - Coco Living",
+      template.html,
+      template.attachments
+    );
 
-    await Promise.allSettled([
-      mailsender(
-        "info@idto.ai",
-        "eSign Document Status Alert - IDTO",
-        idtoTemplate.html,
-        idtoTemplate.attachments
-      ),
-      mailsender(
-        "dev@cocoliving.in",
-        "eSign Document Status Alert - Coco Living",
-        devTemplate.html,
-        devTemplate.attachments
-      ),
-    ]);
-
-    console.info("esignCron: consecutive failure alert emails sent", {
+    console.info("esignCron: consecutive failure alert email sent", {
       contractId: contract.id,
       bookingId: contract.bookingId,
       fetchAttemptCount: contract.fetchAttemptCount,
-      recipients: ["info@idto.ai", "dev@cocoliving.in"],
+      recipients: alertRecipients,
     });
   } catch (emailErr) {
     console.error("[esignStatusCron] Failed to send failure alert emails:", emailErr.message);
