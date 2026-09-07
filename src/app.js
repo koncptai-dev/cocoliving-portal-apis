@@ -61,7 +61,6 @@ require('./utils/cronJobs/rentDueUserCron');
 require('./utils/cronJobs/tenureEndingCron');
 require('./utils/cronJobs/aliste/checkoutRemovalCron');
 require('./utils/cronJobs/aliste/lowBalanceNotificationCron');
-require('./utils/cronJobs/esignStatusCron');
 
 app.use(
   cors({
