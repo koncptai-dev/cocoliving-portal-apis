@@ -235,6 +235,32 @@ function calculateWaiveOffForRemainingDays(checkInDate, monthlyRent, waiveEnable
     };
 }
 
+function calculateAdvanceRent(checkInDate, monthlyRent, advanceMonths) {
+    if (!advanceMonths || advanceMonths <= 0) {
+        return 0;
+    }
+
+    const parsedCheckIn = moment(checkInDate, "YYYY-MM-DD", true);
+
+    if (!parsedCheckIn.isValid()) {
+        return 0;
+    }
+
+    const rent = Number(monthlyRent || 0);
+
+    const daysInCheckInMonth = parsedCheckIn.daysInMonth();
+    const checkInDay = parsedCheckIn.date();
+
+    const remainingDays = daysInCheckInMonth - checkInDay + 1;
+
+    const dailyRent = rent / daysInCheckInMonth;
+    const firstMonthRent = dailyRent * remainingDays;
+
+    const fullMonths = advanceMonths - 1;
+
+    return Math.round(firstMonthRent + (rent * fullMonths));
+}
+
 async function getRoomReservedCount(roomId, transaction = null) {
     const [liveCount, draftCount] = await Promise.all([
         RealBooking.count({
@@ -618,7 +644,13 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
     }
 
     const expectedAdvanceRentAmount =
-        advanceMonths === null ? null : Math.round(baseMonthlyRent * advanceMonths);
+        advanceMonths === null
+            ? null
+            : calculateAdvanceRent(
+                booking.checkInDate,
+                baseMonthlyRent,
+                advanceMonths
+            );
 
     if (advanceMonths === null && Math.round(advance) > 0) {
         errors.push("advanceRentDurationMonths is required when advanceRent is greater than 0");
