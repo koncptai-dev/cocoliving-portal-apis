@@ -63,11 +63,6 @@ const Contract = sequelize.define("Contract", {
     type: DataTypes.DATE,
     allowNull: true,
   },
-  fetchAttemptCount: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    defaultValue: 0,
-  },
 }, {
   tableName: "contracts",
 });
