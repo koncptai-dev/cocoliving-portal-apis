@@ -462,6 +462,16 @@ exports.createInitialOfflinePayment = async (req, res) => {
       }
       formattedPaymentDate = paymentDate;
     }
+    const lockedBooking = await Booking.findOne({
+      where: { id: bookingId },
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+
+    if (!lockedBooking) {
+      await transaction.rollback();
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
 
     const booking = await Booking.findOne({
       where: { id: bookingId },
@@ -470,14 +480,9 @@ exports.createInitialOfflinePayment = async (req, res) => {
         { model: Rooms, as: 'room', attributes: ['id', 'roomNumber', 'roomType', 'monthlyRent', 'depositAmount'] },
         { model: Property, as: 'property', attributes: ['id', 'name', 'address', 'mealSubscriptionAmountTwoTimes', 'mealSubscriptionAmountFourTimes'] }
       ],
-      transaction,
-      lock: transaction.LOCK.UPDATE
+      transaction
     });
 
-    if (!booking) {
-      await transaction.rollback();
-      return res.status(404).json({ success: false, message: 'Booking not found' });
-    }
     const existingPayment = await PaymentTransaction.findOne({
       where: {
         bookingId: booking.id,
