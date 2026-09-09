@@ -2,19 +2,27 @@ const sequelize = require('../config/database');
 const PaymentTransaction = require('../models/paymentTransaction');
 const Booking = require('../models/bookRoom');
 const User = require('../models/user');
-const { getOrderStatus } = require('../utils/phonepe/phonepeApi');
+const {
+  fetchOrder,
+  fetchPayment,
+} = require('../utils/razorpay/razorpayApi');
 const { Op } = require('sequelize');
 const { logApiCall } = require("../helpers/auditLog");
 const { calculateBookingFinancials, validateOfflinePaymentPayload } = require('../helpers/bookingEditUtils');
 // const { generateAndSendInvoice } = require('../utils/invoiceService');
 const { generateAndSendAcknowledgementReceipt } = require('../utils/acknowledgementReceiptService');
+
 exports.checkOrderStatus = async (req, res) => {
   try {
     const { merchantOrderId } = req.params;
+
     if (!merchantOrderId) {
       await logApiCall(req, res, 400, "Checked order status - merchantOrderId required", "payment");
-      return res.status(400).json({ message: "merchantOrderId required" });
+      return res.status(400).json({
+        message: "merchantOrderId required"
+      });
     }
+
     const tx = await PaymentTransaction.findOne({
       where: { merchantOrderId },
     });
@@ -24,49 +32,102 @@ exports.checkOrderStatus = async (req, res) => {
         message: "Payment transaction not found",
       });
     }
-    const phonepeResp = await getOrderStatus(merchantOrderId);
 
-    
-    tx.rawResponse = Object.assign({}, tx.rawResponse || {}, {
-      orderStatusCheck: phonepeResp,
-      lastPolledAt: new Date().toISOString(),
-    });
+    if (!tx.providerOrderId) {
+      return res.status(400).json({
+        message: "Payment provider order ID not found",
+      });
+    }
+
+    const razorpayOrder = await fetchOrder(
+      tx.providerOrderId
+    );
+
+    let razorpayPayment = null;
+
+    if (tx.providerPaymentId) {
+      try {
+        razorpayPayment = await fetchPayment(
+          tx.providerPaymentId
+        );
+      } catch (paymentErr) {
+        console.warn(
+          '[PaymentController] Unable to fetch Razorpay payment',
+          paymentErr.message
+        );
+      }
+    }
+
+    tx.rawResponse = Object.assign(
+      {},
+      tx.rawResponse || {},
+      {
+        orderStatusCheck: {
+          order: razorpayOrder,
+          payment: razorpayPayment,
+        },
+        lastPolledAt:
+          new Date().toISOString(),
+      }
+    );
 
     await tx.save();
 
-    // 3. Derive state without modifying DB
-    const mappedState =
-      (phonepeResp &&
-        phonepeResp.body &&
-        (phonepeResp.body.state ||
-          phonepeResp.body.status ||
-          phonepeResp.body.transactionStatus)) ||
-      "";
+    const orderState = String(
+      razorpayOrder?.status || ''
+    ).toLowerCase();
 
-    const stateUpper = String(mappedState).toUpperCase();
+    const paymentState = String(
+      razorpayPayment?.status || ''
+    ).toLowerCase();
 
     let derivedStatus = "PENDING";
-    if (stateUpper.includes("SUCCESS") || stateUpper === "COMPLETED")
-      derivedStatus = "SUCCESS";
-    else if (
-      stateUpper.includes("FAILED") ||
-      stateUpper === "FAILED" ||
-      stateUpper === "DECLINED"
-    )
-      derivedStatus = "FAILED";
 
-    await logApiCall(req, res, 200, `Checked order status: ${merchantOrderId} (Status: ${derivedStatus})`, "payment");
+    if (
+      orderState === 'paid' ||
+      paymentState === 'captured'
+    ) {
+      derivedStatus = "SUCCESS";
+    } else if (
+      paymentState === 'failed'
+    ) {
+      derivedStatus = "FAILED";
+    }
+
+    await logApiCall(
+      req,
+      res,
+      200,
+      `Checked order status: ${merchantOrderId} (Status: ${derivedStatus})`,
+      "payment"
+    );
+
     return res.status(200).json({
       status: derivedStatus,
-      phonepe: phonepeResp,
-      transaction: tx || null,
+      razorpay: {
+        order: razorpayOrder,
+        payment: razorpayPayment,
+      },
+      transaction: tx,
     });
   } catch (err) {
-    console.error("[PaymentController] checkOrderStatus error", err);
-    await logApiCall(req, res, 500, "Error occurred while checking order status", "payment");
-    return res
-      .status(500)
-      .json({ message: "Server error", error: err.message });
+    console.error(
+      "[PaymentController] checkOrderStatus error",
+      err
+    );
+
+    await logApiCall(
+      req,
+      res,
+      500,
+      "Error occurred while checking order status",
+      "payment"
+    );
+
+    return res.status(500).json({
+      message: "Server error",
+      error: err.message
+    });
   }
 };
 
@@ -95,7 +156,7 @@ exports.getUserTransactions = async (req, res) => {
       const Op = require('sequelize').Op;
       where[Op.or] = [
         { merchantOrderId: { [Op.iLike]: `%${q}%` } },
-        { phonepeOrderId: { [Op.iLike]: `%${q}%` } },
+        { providerOrderId: { [Op.iLike]: `%${q}%` } },
         { merchantRefundId: { [Op.iLike]: `%${q}%` } },
       ];
     }
@@ -113,7 +174,10 @@ exports.getUserTransactions = async (req, res) => {
         id: r.id,
         merchantOrderId: r.merchantOrderId,
         merchantRefundId: r.merchantRefundId || null,
-        phonepeOrderId: r.phonepeOrderId || (r.rawResponse && r.rawResponse.phonepeCreateResponse && r.rawResponse.phonepeCreateResponse.body && r.rawResponse.phonepeCreateResponse.body.orderId) || null,
+        provider: r.provider || null,
+        providerOrderId: r.providerOrderId || null,
+        providerPaymentId: r.providerPaymentId || null,
+        providerRefundId: r.providerRefundId || null,
         bookingId: r.bookingId || null,
         amountPaise,
         amountRupees: Math.round(amountPaise / 100),
@@ -176,7 +240,7 @@ exports.getTransactions = async (req, res) => {
     if (query) {
       where[Op.or] = [
         { merchantOrderId: { [Op.iLike]: `%${query}%` } },
-        { phonepeOrderId: { [Op.iLike]: `%${query}%` } },
+        { providerOrderId: { [Op.iLike]: `%${query}%` } },
         { merchantRefundId: { [Op.iLike]: `%${query}%` } },
         { '$user.fullName$': { [Op.iLike]: `%${query}%` } },
         { '$user.email$': { [Op.iLike]: `%${query}%` } },
