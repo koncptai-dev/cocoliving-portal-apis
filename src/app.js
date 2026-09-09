@@ -75,7 +75,7 @@ app.use(
 app.post(
   "/api/payments-webhook",
   require("./middleware/rawBody"),
-  require("./controllers/PhonePeWebhookController").phonePeWebhook
+  require("./controllers/RazorpayWebhookController").razorpayWebhook
 );
 
 app.use("/api/contracts/esign", (req, res, next) => {

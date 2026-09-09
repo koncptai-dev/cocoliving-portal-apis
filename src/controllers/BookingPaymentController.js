@@ -1,8 +1,11 @@
 const { Op } = require('sequelize');
 const moment = require('moment');
 
-const { createPayment, initiateRefund, refundStatus, createMobileOrder } = require('../utils/phonepe/phonepeApi');
-const phonepeConfig = require('../utils/phonepe/phonepeConfig');
+const {
+  createOrder,
+  createRefund,
+  fetchRefund,
+} = require('../utils/razorpay/razorpayApi');
 const { refundInitiatedEmail } = require('../utils/emailTemplates/emailTemplates');
 const { mailsender } = require('../utils/emailService');
 
@@ -133,6 +136,38 @@ async function checkOverlappingBooking(userId, checkInDate, checkOutDate) {
   return overlappingBooking;
 }
 
+async function createRazorpayOrderForTransaction({
+  transaction,
+  userId,
+  metadata = {},
+}) {
+  const order = await createOrder({
+    amount: transaction.amount,
+    currency: 'INR',
+    receipt: `tx_${transaction.id}`,
+    notes: {
+      transactionId: String(transaction.id),
+      merchantOrderId: transaction.merchantOrderId,
+      userId: String(userId),
+      type: transaction.type,
+      ...metadata,
+    },
+  });
+
+  transaction.provider = 'RAZORPAY';
+  transaction.providerOrderId = order.id;
+
+  transaction.rawResponse = {
+    ...(transaction.rawResponse || {}),
+    provider: 'RAZORPAY',
+    razorpayOrderResponse: order,
+  };
+
+  await transaction.save();
+
+  return order;
+}
+
 exports.initiate = async (req, res) => {
   try {
 
@@ -142,8 +177,6 @@ exports.initiate = async (req, res) => {
     // });
 
     const userId = req.user?.id;
-
-    const isMobile = req.headers['x-client'] === 'mobile';
     if (!userId) {
       await logApiCall(req, res, 400, "Initiated booking payment - unauthorized access", "payment");
       return res.status(400).json({ success: false, message: 'Unauthorized Access' });
@@ -406,86 +439,40 @@ exports.initiate = async (req, res) => {
       calculated: { totalAmountRupees, payableAmountRupees }
     });
 
-    const phonepePayload = {
-      merchantOrderId: tx.merchantOrderId,
-      metaInfo: {
-        udf1: tx.type,
-        udf2: String(rebuiltMeta.rateCardId),
-        udf3: String(rebuiltMeta.propertyId),
-        udf4: rebuiltMeta.roomType,
-        udf5: String(userId),
-        udf6: isMobile ? "mobile-app" : "web-app",
-        udf7: tx.merchantOrderId,
-        udf8: rebuiltMeta.checkInDate,
-        udf9: String(rebuiltMeta.duration)
+    const order = await createRazorpayOrderForTransaction({
+      transaction: tx,
+      userId,
+      metadata: {
+        bookingType: rebuiltMeta.bookingType,
+        rateCardId: String(rebuiltMeta.rateCardId),
+        propertyId: String(rebuiltMeta.propertyId),
+        roomType: rebuiltMeta.roomType,
+        checkInDate: rebuiltMeta.checkInDate,
+        duration: String(rebuiltMeta.duration),
+        client: 'mobile-app',
       },
-      amount: amountPaise,
-      paymentFlow: isMobile
-        ? { type: 'PG_CHECKOUT' }
-        : {
-          type: 'PG_CHECKOUT',
-          message: `Coco Living - ${rebuiltMeta.roomType} Booking (Do Not Refresh)`,
-          merchantUrls: {
-            redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${merchantOrderId}`,
-          },
-        },
-    };
-    if (isMobile) {
-      const mobResp = await createMobileOrder({
-        merchantOrderId: tx.merchantOrderId,
-        amount: amountPaise,
-        userId,
-      });
+    });
 
-      tx.phonepeOrderId = mobResp.orderId || null;
-      tx.rawResponse = {
-        ...(tx.rawResponse || {}),
-        client: 'mobile',
-        phonepeCreateResponse: mobResp,
-      };
-      await tx.save();
+    tx.rawResponse = Object.assign({}, tx.rawResponse || {}, {
+      client: 'mobile',
+    });
 
-      return res.json({
-        message: 'Payment initiated',
-        success: true,
-        merchantOrderId: tx.merchantOrderId,
-        phonepe: {
-          orderId: mobResp.orderId,
-          token: mobResp.token,
-          paymentMode: 'SDK',
-        },
-        transactionId: tx.id,
-      });
+    await tx.save();
 
-    } else {
-      const phonepeResp = await createPayment(phonepePayload);
+    await logApiCall(req, res, 200, `Initiated booking payment (Transaction ID: ${tx.id}, Type: ${tx.type})`, "payment", userId);
 
-      tx.rawResponse = Object.assign({}, tx.rawResponse || {}, {
-        client: 'web',
-        phonepeCreateResponse: phonepeResp,
-      });
-
-      if (phonepeResp && phonepeResp.success && phonepeResp.body) {
-        tx.phonepeOrderId = phonepeResp.body.orderId || tx.phonepeOrderId || null;
-        tx.redirectUrl =
-          phonepeResp.body.redirectUrl ||
-          phonepeResp.body.checkoutUrl ||
-          tx.redirectUrl ||
-          null;
-      } else {
-        tx.status = 'FAILED';
-      }
-
-      await tx.save();
-
-      await logApiCall(req, res, 200, `Initiated booking payment (Transaction ID: ${tx.id}, Type: ${tx.type})`, "payment", userId);
-      return res.json({
-        message: 'Payment initiated',
-        success: true,
-        redirectUrl: tx.redirectUrl,
-        transaction: tx,
-      });
-    }
+    return res.json({
+      message: 'Payment initiated',
+      success: true,
+      merchantOrderId: tx.merchantOrderId,
+      razorpay: {
+        orderId: order.id,
+        amount: order.amount,
+        currency: order.currency,
+        paymentMode: 'SDK',
+      },
+      transactionId: tx.id,
+    });
   } catch (err) {
     if (
       err.code === 'KYC_REQUIRED' ||
@@ -508,7 +495,6 @@ exports.initiate = async (req, res) => {
 exports.initiateRemaining = async (req, res) => {
   try {
     const userId = req.user?.id;
-    const isMobile = req.headers['x-client'] === 'mobile';
     const { bookingId, paymentMode } = req.body;
 
     if (!userId || !bookingId) {
@@ -586,104 +572,56 @@ exports.initiateRemaining = async (req, res) => {
 
     await draftTx.save();
 
-
-    const phonepePayload = {
-      merchantOrderId: finalOrderId,
-      amount: remainingPaise,
-      metaInfo: {
-        udf1: 'REMAINING',
-        udf2: String(booking.rateCardId),
-        udf3: String(booking.propertyId),
-        udf4: booking.roomType,
-        udf5: String(userId),
-        udf6: "web-app",
-        udf7: finalOrderId,
-        udf8: booking.checkInDate,
-        udf9: String(booking.duration)
+    const order = await createRazorpayOrderForTransaction({
+      transaction: draftTx,
+      userId,
+      metadata: {
+        bookingId: String(bookingId),
+        rateCardId: String(booking.rateCardId),
+        propertyId: String(booking.propertyId),
+        roomType: booking.roomType,
+        checkInDate: booking.checkInDate,
+        duration: String(booking.duration),
+        client: 'mobile-app',
       },
-      paymentFlow: isMobile
-        ? { type: 'PG_CHECKOUT' }
-        : {
-          type: 'PG_CHECKOUT',
-          message: `Coco Living - Remaining Payment`,
-          merchantUrls: {
-            redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${finalOrderId}`,
-          },
-        },
+    });
+
+    draftTx.rawResponse = {
+      ...(draftTx.rawResponse || {}),
+      client: 'mobile',
     };
 
-    if (isMobile) {
-      const mobResp = await createMobileOrder({
-        merchantOrderId: finalOrderId,
-        amount: remainingPaise,
-        userId,
-      });
+    await draftTx.save();
 
-      draftTx.phonepeOrderId = mobResp.orderId || null;
-      draftTx.rawResponse = {
-        ...(draftTx.rawResponse || {}),
-        client: 'mobile',
-        phonepeCreateResponse: mobResp,
-      };
+    await logApiCall(req, res, 200, `Initiated remaining payment (Transaction ID: ${draftTx.id}, Booking ID: ${bookingId})`, "payment", userId);
 
-      await draftTx.save();
-
-      return res.json({
-        success: true,
-        merchantOrderId: finalOrderId,
-        phonepe: {
-          orderId: mobResp.orderId,
-          token: mobResp.token,
-          paymentMode: 'SDK',
-        },
-        transactionId: draftTx.id,
-      });
-
-    } else {
-      const phonepeResp = await createPayment(phonepePayload);
-
-      draftTx.rawResponse = {
-        ...(draftTx.rawResponse || {}),
-        client: 'web',
-        phonepeCreateResponse: phonepeResp,
-      };
-
-      if (phonepeResp.success && phonepeResp.body) {
-        draftTx.phonepeOrderId = phonepeResp.body.orderId;
-        draftTx.redirectUrl =
-          phonepeResp.body.redirectUrl ||
-          phonepeResp.body.checkoutUrl ||
-          null;
-      } else {
-        draftTx.status = 'FAILED';
-      }
-
-      await draftTx.save();
-
-      await logApiCall(req, res, 200, `Initiated remaining payment (Transaction ID: ${draftTx.id}, Booking ID: ${bookingId})`, "payment", userId);
-      return res.json({
-        success: true,
-        redirectUrl: draftTx.redirectUrl,
-        transaction: draftTx,
-      });
-    }
+    return res.json({
+      success: true,
+      merchantOrderId: finalOrderId,
+      razorpay: {
+        orderId: order.id,
+        amount: order.amount,
+        currency: order.currency,
+        paymentMode: 'SDK',
+      },
+      transactionId: draftTx.id,
+    });
   } catch (err) {
     console.error('[initiateRemaining] error', err);
     await logApiCall(req, res, 500, "Error occurred while initiating remaining payment", "payment", req.user?.id || 0);
     return res.status(500).json({ success: false, message: err.message });
   }
 };
+
 exports.initiateSecurityDeposit = async (req, res) => {
   try {
 
     const userId = req.user?.id;
     const { bookingId } = req.body;
-    const isMobile = req.headers['x-client'] === 'mobile';
 
     console.log('[SECURITY_DEPOSIT][REQ]', {
       bookingId,
       userId,
-      isMobile,
       env: process.env.NODE_ENV,
     });
 
@@ -764,70 +702,34 @@ exports.initiateSecurityDeposit = async (req, res) => {
     draftTx.merchantOrderId = finalOrderId;
     await draftTx.save();
 
-    if (isMobile) {
-      const mobResp = await createMobileOrder({
-        merchantOrderId: finalOrderId,
-        amount: amountPaise,
-        userId,
-      });
+    const order = await createRazorpayOrderForTransaction({
+      transaction: draftTx,
+      userId,
+      metadata: {
+        bookingId: String(bookingId),
+        bookingType: booking.bookingType,
+        client: 'mobile-app',
+      },
+    });
 
-      draftTx.phonepeOrderId = mobResp.orderId || null;
-      draftTx.rawResponse = {
-        ...(draftTx.rawResponse || {}),
-        client: 'mobile',
-        phonepeCreateResponse: mobResp,
-      };
+    draftTx.rawResponse = {
+      ...(draftTx.rawResponse || {}),
+      client: 'mobile',
+    };
 
-      await draftTx.save();
+    await draftTx.save();
 
-      return res.json({
-        success: true,
-        merchantOrderId: finalOrderId,
-        phonepe: {
-          orderId: mobResp.orderId,
-          token: mobResp.token,
-          paymentMode: 'SDK',
-        },
-        transactionId: draftTx.id,
-      });
-
-    } else {
-      const phonepeResp = await createPayment({
-        merchantOrderId: finalOrderId,
-        amount: amountPaise,
-        paymentFlow: {
-          type: 'PG_CHECKOUT',
-          message: 'Security Deposit Payment',
-          merchantUrls: {
-            redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${finalOrderId}`
-          }
-        }
-      });
-
-      draftTx.rawResponse = {
-        ...(draftTx.rawResponse || {}),
-        client: 'web',
-        phonepeCreateResponse: phonepeResp,
-      };
-
-      if (phonepeResp?.success && phonepeResp?.body) {
-        draftTx.phonepeOrderId = phonepeResp.body.orderId;
-        draftTx.redirectUrl =
-          phonepeResp.body.redirectUrl ||
-          phonepeResp.body.checkoutUrl ||
-          null;
-      } else {
-        draftTx.status = 'FAILED';
-      }
-
-      await draftTx.save();
-
-      return res.json({
-        success: true,
-        redirectUrl: draftTx.redirectUrl,
-        transaction: draftTx,
-      });
-    }
+    return res.json({
+      success: true,
+      merchantOrderId: finalOrderId,
+      razorpay: {
+        orderId: order.id,
+        amount: order.amount,
+        currency: order.currency,
+        paymentMode: 'SDK',
+      },
+      transactionId: draftTx.id,
+    });
   } catch (err) {
     console.log('[SECURITY_DEPOSIT][ERROR]', err);
     return res.status(500).json({ success: false, message: err.message });
@@ -1112,70 +1014,36 @@ exports.initiateMonthlyRent = async (req, res) => {
 
     console.log("===== INITIATE MONTHLY RENT END =====");
 
-    if (isMobile) {
-      const mobResp = await createMobileOrder({
-        merchantOrderId: finalOrderId,
-        amount: amountPaise,
-        userId,
-      });
+    const order = await createRazorpayOrderForTransaction({
+      transaction: draftTx,
+      userId,
+      metadata: {
+        bookingId: String(bookingId),
+        installments: String(installments),
+        unpaidMonths: String(unpaidMonths),
+        lateFee: String(lateFee),
+        client: 'mobile-app',
+      },
+    });
 
-      draftTx.phonepeOrderId = mobResp.orderId || null;
-      draftTx.rawResponse = {
-        ...(draftTx.rawResponse || {}),
-        client: 'mobile',
-        phonepeCreateResponse: mobResp,
-      };
+    draftTx.rawResponse = {
+      ...(draftTx.rawResponse || {}),
+      client: 'mobile',
+    };
 
-      await draftTx.save();
+    await draftTx.save();
 
-      return res.json({
-        success: true,
-        merchantOrderId: finalOrderId,
-        phonepe: {
-          orderId: mobResp.orderId,
-          token: mobResp.token,
-          paymentMode: 'SDK',
-        },
-        transactionId: draftTx.id,
-      });
-
-    } else {
-      const phonepeResp = await createPayment({
-        merchantOrderId: finalOrderId,
-        amount: amountPaise,
-        paymentFlow: {
-          type: 'PG_CHECKOUT',
-          message: 'Monthly Rent Payment',
-          merchantUrls: {
-            redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${finalOrderId}`
-          }
-        }
-      });
-
-      draftTx.rawResponse = {
-        ...(draftTx.rawResponse || {}),
-        client: 'web',
-        phonepeCreateResponse: phonepeResp,
-      };
-
-      if (phonepeResp?.success && phonepeResp?.body) {
-        draftTx.phonepeOrderId = phonepeResp.body.orderId;
-        draftTx.redirectUrl =
-          phonepeResp.body.redirectUrl ||
-          phonepeResp.body.checkoutUrl ||
-          null;
-      } else {
-        draftTx.status = 'FAILED';
-      }
-
-      await draftTx.save();
-
-      return res.json({
-        success: true,
-        redirectUrl: draftTx.redirectUrl,
-        transaction: draftTx,
-      });
-    }
+    return res.json({
+      success: true,
+      merchantOrderId: finalOrderId,
+      razorpay: {
+        orderId: order.id,
+        amount: order.amount,
+        currency: order.currency,
+        paymentMode: 'SDK',
+      },
+      transactionId: draftTx.id,
+    });
 
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
@@ -1186,7 +1054,6 @@ exports.initiateExtension = async (req, res) => {
   try {
     const { bookingId, months } = req.body;
     const userId = req.user?.id;
-    const isMobile = req.headers['x-client'] === 'mobile';
 
     if (!bookingId || !months || ![6, 12].includes(Number(months))) {
       return res.status(400).json({ success: false, message: 'bookingId and valid months required(Extension duration must be either 6 or 12 months only)' });
@@ -1301,71 +1168,34 @@ exports.initiateExtension = async (req, res) => {
     tx.merchantOrderId = finalOrderId;
     await tx.save();
 
-    if (isMobile) {
-      const mobResp = await createMobileOrder({
-        merchantOrderId: finalOrderId,
-        amount: amountPaise,
-        userId,
-      });
+    const order = await createRazorpayOrderForTransaction({
+      transaction: tx,
+      userId,
+      metadata: {
+        bookingId: String(bookingId),
+        requestedMonths: String(months),
+        client: 'mobile-app',
+      },
+    });
 
-      tx.phonepeOrderId = mobResp.orderId || null;
-      tx.rawResponse = {
-        ...(tx.rawResponse || {}),
-        client: 'mobile',
-        phonepeCreateResponse: mobResp,
-      };
+    tx.rawResponse = {
+      ...(tx.rawResponse || {}),
+      client: 'mobile',
+    };
 
-      await tx.save();
+    await tx.save();
 
-      return res.json({
-        success: true,
-        merchantOrderId: finalOrderId,
-        phonepe: {
-          orderId: mobResp.orderId,
-          token: mobResp.token,
-          paymentMode: 'SDK',
-        },
-        transactionId: tx.id,
-      });
-
-    } else {
-      const phonepeResp = await createPayment({
-        merchantOrderId: finalOrderId,
-        amount: amountPaise,
-        paymentFlow: {
-          type: 'PG_CHECKOUT',
-          message: 'Coco Living - Booking Extension',
-          merchantUrls: {
-            redirectUrl: `${phonepeConfig.REDIRECT_URL}?merchantOrderId=${finalOrderId}`,
-          },
-        },
-      });
-
-      tx.rawResponse = {
-        ...(tx.rawResponse || {}),
-        client: 'web',
-        phonepeCreateResponse: phonepeResp,
-      };
-
-      if (phonepeResp?.success && phonepeResp?.body) {
-        tx.phonepeOrderId = phonepeResp.body.orderId;
-        tx.redirectUrl =
-          phonepeResp.body.redirectUrl ||
-          phonepeResp.body.checkoutUrl ||
-          null;
-      } else {
-        tx.status = 'FAILED';
-      }
-
-      await tx.save();
-
-      return res.json({
-        success: true,
-        redirectUrl: tx.redirectUrl,
-        transaction: tx,
-      });
-    }
-
+    return res.json({
+      success: true,
+      merchantOrderId: finalOrderId,
+      razorpay: {
+        orderId: order.id,
+        amount: order.amount,
+        currency: order.currency,
+        paymentMode: 'SDK',
+      },
+      transactionId: tx.id,
+    });
   } catch (err) {
     console.error('[initiateExtension]', err);
     return res.status(500).json({ success: false, message: err.message });
@@ -1408,7 +1238,7 @@ exports.initiateRefund = async (req, res) => {
     let refundedPaiseSoFar = 0;
     for (const r of allRefundTxs) {
       const rr = r.rawResponse || {};
-      if (rr && (rr.originalMerchantOrderId === origMerchantOrderId || (rr.phonepeRefundResponse && rr.phonepeRefundResponse.body && rr.phonepeRefundResponse.body.originalMerchantOrderId === origMerchantOrderId))) {
+      if (rr && rr.originalMerchantOrderId === origMerchantOrderId) {
         if (r.status === 'SUCCESS') refundedPaiseSoFar += Number(r.amount || 0);
       }
     }
@@ -1435,11 +1265,18 @@ exports.initiateRefund = async (req, res) => {
     }
     if (reqAmountPaise < 100) {
       await logApiCall(req, res, 400, `Initiated refund - amount below minimum (Transaction ID: ${transactionId})`, "payment", actorId);
-      return res.status(400).json({ success: false, message: 'Minimum refund is ₹1 (100 paise) per PhonePe rules' });
+      return res.status(400).json({ success: false, message: 'Minimum refund amount is ₹1 (100 paise)' });
     }
     if (reqAmountPaise > refundablePaise) {
       await logApiCall(req, res, 400, `Initiated refund - amount exceeds refundable (Transaction ID: ${transactionId})`, "payment", actorId);
       return res.status(400).json({ success: false, message: `Refund amount exceeds refundable amount (max refundable: ₹${(refundablePaise / 100).toFixed(2)})` });
+    }
+
+    if (!originalTx.providerPaymentId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Original transaction does not have a provider payment ID'
+      });
     }
 
     const tempMerchantRefundId = `REFUND-TMP-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
@@ -1452,6 +1289,7 @@ exports.initiateRefund = async (req, res) => {
       status: 'PENDING',
       merchantOrderId: tempMerchantRefundId,
       merchantRefundId: null,
+      originalMerchantOrderId: origMerchantOrderId,
       refundReason: reason.trim(),
       rawResponse: {
         note: 'created refund draft',
@@ -1467,20 +1305,33 @@ exports.initiateRefund = async (req, res) => {
     draftRefund.rawResponse = Object.assign({}, draftRefund.rawResponse || {}, { originalMerchantOrderId: origMerchantOrderId, merchantRefundId: finalMerchantRefundId });
     await draftRefund.save();
 
-    const refundPayload = {
-      merchantRefundId: finalMerchantRefundId,
-      originalMerchantOrderId: origMerchantOrderId,
-      amount: reqAmountPaise,
-    };
+    const refundResp = await createRefund(
+      originalTx.providerPaymentId,
+      reqAmountPaise,
+      {
+        originalMerchantOrderId: origMerchantOrderId,
+        merchantRefundId: finalMerchantRefundId,
+      }
+    );
 
-    const phonepeResp = await initiateRefund(refundPayload);
+    draftRefund.provider = 'RAZORPAY';
+    draftRefund.providerRefundId = refundResp.id;
 
-    draftRefund.rawResponse = Object.assign({}, draftRefund.rawResponse || {}, { phonepeRefundResponse: phonepeResp, merchantRefundId: finalMerchantRefundId });
+    draftRefund.rawResponse = Object.assign(
+      {},
+      draftRefund.rawResponse || {},
+      {
+        razorpayRefundResponse: refundResp,
+        merchantRefundId: finalMerchantRefundId,
+      }
+    );
 
-    draftRefund.status = 'PENDING';
+    draftRefund.status =
+      refundResp.status === 'processed'
+        ? 'SUCCESS'
+        : 'PENDING';
 
     await draftRefund.save();
-
     const user = await User.findByPk(originalTx.userId);
     let propertyName = '-';
 
@@ -1527,23 +1378,57 @@ exports.getRefundStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Refund transaction not found' });
     }
 
-    const phonepeResp = await refundStatus(merchantRefundId);
+    const originalTx = await PaymentTransaction.findOne({
+      where: {
+        merchantOrderId: tx.originalMerchantOrderId,
+      },
+    });
 
-    const state = (phonepeResp?.body?.state || '').toUpperCase();
+    if (
+      !originalTx ||
+      !originalTx.providerPaymentId ||
+      !tx.providerRefundId
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Refund provider details not found'
+      });
+    }
 
-    if (state === 'COMPLETED' || state === 'CONFIRMED') {
+    const refundResp = await fetchRefund(
+      originalTx.providerPaymentId,
+      tx.providerRefundId
+    );
+
+    if (refundResp?.status === 'processed') {
       tx.status = 'SUCCESS';
-    } else if (state === 'FAILED') {
+    } else if (refundResp?.status === 'failed') {
       tx.status = 'FAILED';
     } else {
       tx.status = 'PENDING';
     }
 
-    tx.rawResponse = { ...tx.rawResponse, refundStatusResponse: phonepeResp };
+    tx.rawResponse = {
+      ...(tx.rawResponse || {}),
+      razorpayRefundStatusResponse: refundResp,
+    };
+
     await tx.save();
 
-    await logApiCall(req, res, 200, `Viewed refund status (ID: ${merchantRefundId}, Status: ${tx.status})`, "payment", req.user?.id || 0);
-    return res.json({ success: true, transaction: tx, phonepe: phonepeResp });
+    await logApiCall(
+      req,
+      res,
+      200,
+      `Viewed refund status (ID: ${merchantRefundId}, Status: ${tx.status})`,
+      "payment",
+      req.user?.id || 0
+    );
+
+    return res.json({
+      success: true,
+      transaction: tx,
+      razorpay: refundResp,
+    });
   } catch (err) {
     console.error('[refundStatus] error', err);
     await logApiCall(req, res, 500, "Error occurred while fetching refund status", "payment", req.user?.id || 0);

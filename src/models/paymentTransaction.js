@@ -39,6 +39,22 @@ const PaymentTransaction = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
     },
+    provider: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    providerOrderId: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    providerPaymentId: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    providerRefundId: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
     amount: {
       type: DataTypes.BIGINT,
       allowNull: false,
