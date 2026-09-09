@@ -9,6 +9,8 @@ const {
 const { Op } = require('sequelize');
 const { logApiCall } = require("../helpers/auditLog");
 const { calculateBookingFinancials, validateOfflinePaymentPayload } = require('../helpers/bookingEditUtils');
+const { buildBookingPaymentReview } = require('../helpers/bookingPaymentReview');
+const { Property, Rooms } = require('../models');
 // const { generateAndSendInvoice } = require('../utils/invoiceService');
 const { generateAndSendAcknowledgementReceipt } = require('../utils/acknowledgementReceiptService');
 
@@ -495,6 +497,203 @@ exports.createOfflinePayment = async (req, res) => {
   }
 };
 
+exports.createInitialOfflinePayment = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const adminId = req.user?.id;
+    const { bookingId, paymentType = 'CASH', paymentDate } = req.body;
+
+    if (!bookingId) {
+      await transaction.rollback();
+      return res.status(400).json({ success: false, message: 'bookingId is required' });
+    }
+
+    const normalizedPaymentType = String(paymentType).toUpperCase();
+    if (!['CASH', 'CHEQUE', 'UPI'].includes(normalizedPaymentType)) {
+      await transaction.rollback();
+      return res.status(400).json({ success: false, message: 'paymentType must be CASH, CHEQUE or UPI' });
+    }
+
+    let formattedPaymentDate = null;
+    if (paymentDate) {
+      if (!/^\d{2}\/\d{2}\/\d{4}$/.test(paymentDate)) {
+        await transaction.rollback();
+        return res.status(400).json({
+          success: false,
+          message: 'paymentDate must be in DD/MM/YYYY format'
+        });
+      }
+      formattedPaymentDate = paymentDate;
+    }
+
+    const booking = await Booking.findOne({
+      where: { id: bookingId },
+      include: [
+        { model: User, as: 'user', attributes: ['id', 'fullName', 'email', 'phone'] },
+        { model: Rooms, as: 'room', attributes: ['id', 'roomNumber', 'roomType', 'monthlyRent', 'depositAmount'] },
+        { model: Property, as: 'property', attributes: ['id', 'name', 'address', 'mealSubscriptionAmountTwoTimes', 'mealSubscriptionAmountFourTimes'] }
+      ],
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+
+    if (!booking) {
+      await transaction.rollback();
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+    const existingPayment = await PaymentTransaction.findOne({
+      where: {
+        bookingId: booking.id,
+        status: 'SUCCESS',
+        type: { [Op.ne]: 'REFUND' }
+      },
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+
+    if (existingPayment) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'An initial payment already exists for this booking. Use the offline payment API for subsequent payments.'
+      });
+    }
+
+    const { errors, review } = await buildBookingPaymentReview(req.body, booking, transaction);
+
+    if (errors.length > 0) {
+      await transaction.rollback();
+      await logApiCall(req, res, 400, `Created initial offline payment - validation failed (Booking ID: ${booking.id})`, 'payment', adminId || 0);
+      return res.status(400).json({
+        success: false,
+        message: 'Initial payment validation failed',
+        errors,
+        review
+      });
+    }
+
+    const amountReceived = review.calculated.totalAmountReceived;
+    const amountPaise = Math.round(amountReceived * 100);
+
+    const paymentImage = req.file
+      ? `/uploads/paymentProofs/${req.file.filename}`
+      : null;
+
+    const paymentTransaction = await PaymentTransaction.create({
+      bookingId: booking.id,
+      userId: booking.userId,
+
+      merchantOrderId: `INITIAL-${booking.id}-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+
+      amount: amountPaise,
+      type: 'INITIAL',
+      status: 'SUCCESS',
+      paymentMode: 'OFFLINE',
+      offlinePaymentType: normalizedPaymentType,
+      paymentDate: formattedPaymentDate,
+      paymentImage,
+
+      additionalDetails: true,
+
+      totalAmountReceived: review.inputs.totalAmountReceived,
+      waiveCurrentMonthRent: review.inputs.waiveCurrentMonthRent,
+      securityDepositType: review.inputs.securityDepositType,
+      securityDepositAmount: review.inputs.securityDepositAmount,
+      advanceRentAmount: review.inputs.advanceRent,
+      advanceRentDurationMonths: review.inputs.advanceRentDurationMonths,
+      mealSubscriptionAmount: review.inputs.mealSubscriptionAmount,
+      mealSubscriptionDurationMonths: review.inputs.mealSubscriptionDurationMonths,
+      amcChargesAmount: review.inputs.amcCharges,
+      panCardNumber: review.inputs.panCardNumber,
+
+      createdByAdminId: adminId,
+
+      rawResponse: {
+        manuallyCreated: true,
+        createdFrom: 'admin-initial-offline-payment',
+        createdAt: new Date().toISOString()
+      },
+
+      meta: {
+        source: 'admin-panel',
+        flow: 'initial-offline-payment'
+      }
+    }, { transaction });
+
+    await generateAndSendAcknowledgementReceipt(paymentTransaction);
+
+    booking.bookingSource = 'OFFLINE';
+
+    if (review.inputs.securityDepositAmount > 0) {
+      booking.securityDepositPaid = true;
+    }
+
+    const successfulPayments = await PaymentTransaction.findAll({
+      where: {
+        bookingId: booking.id,
+        status: 'SUCCESS',
+        type: { [Op.ne]: 'REFUND' }
+      },
+      transaction
+    });
+
+    const totalPaidPaise = successfulPayments.reduce(
+      (sum, tx) => sum + Number(tx.amount || 0),
+      0
+    );
+    const totalPaidRupees = totalPaidPaise / 100;
+
+    booking.remainingAmount = Math.max(
+      Math.round(Number(booking.totalAmount || 0) - totalPaidRupees),
+      0
+    );
+
+    booking.paymentStatus =
+      totalPaidRupees >= Number(booking.totalAmount || 0)
+        ? 'COMPLETED'
+        : totalPaidRupees > 0
+          ? 'PARTIAL'
+          : 'INITIATED';
+
+    await booking.save({ transaction });
+
+    await transaction.commit();
+
+    await logApiCall(
+      req,
+      res,
+      200,
+      `Initial offline payment created for booking ${booking.id}`,
+      'payment',
+      adminId
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: 'Initial offline payment created successfully',
+      booking,
+      transaction: paymentTransaction,
+      review
+    });
+
+  } catch (err) {
+    await transaction.rollback();
+    console.error('[createInitialOfflinePayment]', err);
+    await logApiCall(
+      req,
+      res,
+      500,
+      'Error while creating initial offline payment',
+      'payment',
+      req.user?.id || 0
+    );
+    return res.status(500).json({
+      success: false,
+      message: err.message || 'Server error'
+    });
+  }
+};
 
 exports.editOfflinePayment = async (req, res) => {
   const transaction = await sequelize.transaction();
