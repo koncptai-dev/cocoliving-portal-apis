@@ -13,24 +13,32 @@ const { sendPushNotification } = require("../helpers/notificationHelper");
 
 // Helper to send notifications for an event
 async function notifyEventUsers(event, action = 'created') {
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const activeBookingWhere = {
+    status: 'approved',
+    checkInDate: { [Op.lte]: today },
+    checkOutDate: { [Op.gte]: today }
+  };
   let users;
 
   if (event.propertyId === 'all') {
-    // All users with at least one booking
+    // All users who currently have an approved, active booking.
     users = await User.findAll({
       include: [{
         model: Booking,
         as: 'bookings',
+        where: activeBookingWhere,
         required: true
       }]
     });
   } else {
-    // Users who have a booking for the specific property
+    // Users currently staying at the event's property.
     users = await User.findAll({
       include: [{
         model: Booking,
         as: 'bookings',
-        where: { propertyId: event.propertyId },
+        where: { ...activeBookingWhere, propertyId: event.propertyId },
         required: true
       }]
     });
