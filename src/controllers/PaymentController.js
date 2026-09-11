@@ -9,7 +9,7 @@ const {
 const { Op } = require('sequelize');
 const { logApiCall } = require("../helpers/auditLog");
 const { calculateBookingFinancials, validateOfflinePaymentPayload } = require('../helpers/bookingEditUtils');
-const { buildBookingPaymentReview } = require('../helpers/bookingPaymentReview');
+const { buildBookingPaymentReview, normalizeBoolean, normalizeMealPlan } = require('../helpers/bookingPaymentReview');
 const { Property, Rooms } = require('../models');
 // const { generateAndSendInvoice } = require('../utils/invoiceService');
 const { generateAndSendAcknowledgementReceipt } = require('../utils/acknowledgementReceiptService');
@@ -526,6 +526,16 @@ exports.createInitialOfflinePayment = async (req, res) => {
       }
       formattedPaymentDate = paymentDate;
     }
+    const lockedBooking = await Booking.findOne({
+      where: { id: bookingId },
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+
+    if (!lockedBooking) {
+      await transaction.rollback();
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
 
     const booking = await Booking.findOne({
       where: { id: bookingId },
@@ -534,14 +544,9 @@ exports.createInitialOfflinePayment = async (req, res) => {
         { model: Rooms, as: 'room', attributes: ['id', 'roomNumber', 'roomType', 'monthlyRent', 'depositAmount'] },
         { model: Property, as: 'property', attributes: ['id', 'name', 'address', 'mealSubscriptionAmountTwoTimes', 'mealSubscriptionAmountFourTimes'] }
       ],
-      transaction,
-      lock: transaction.LOCK.UPDATE
+      transaction
     });
 
-    if (!booking) {
-      await transaction.rollback();
-      return res.status(404).json({ success: false, message: 'Booking not found' });
-    }
     const existingPayment = await PaymentTransaction.findOne({
       where: {
         bookingId: booking.id,
@@ -559,6 +564,34 @@ exports.createInitialOfflinePayment = async (req, res) => {
         message: 'An initial payment already exists for this booking. Use the offline payment API for subsequent payments.'
       });
     }
+
+    const { mealPlan, isRentIncludingMeals } = req.body;
+
+    const mealPlanProvided = mealPlan !== undefined && mealPlan !== null && mealPlan !== '';
+    const isRentIncludingMealsProvided = isRentIncludingMeals !== undefined && isRentIncludingMeals !== null && isRentIncludingMeals !== '';
+
+    const effectiveMealPlanRaw = mealPlanProvided ? mealPlan : booking.mealPlan;
+    const effectiveIsRentIncludingMealsRaw = isRentIncludingMealsProvided ? isRentIncludingMeals : booking.isRentIncludingMeals;
+
+    const normalizedMealPlan = normalizeMealPlan(effectiveMealPlanRaw || 'NONE');
+    if (!normalizedMealPlan) {
+      await transaction.rollback();
+      return res.status(400).json({ success: false, message: 'mealPlan must be NONE, 2_TIMES or 4_TIMES' });
+    }
+
+    const rentIncludesMeals = normalizeBoolean(effectiveIsRentIncludingMealsRaw ?? false);
+    if (rentIncludesMeals === null) {
+      await transaction.rollback();
+      return res.status(400).json({ success: false, message: 'isRentIncludingMeals must be true or false' });
+    }
+
+    if (rentIncludesMeals && normalizedMealPlan === 'NONE') {
+      await transaction.rollback();
+      return res.status(400).json({ success: false, message: 'mealPlan must be 2_TIMES or 4_TIMES when rent includes meals' });
+    }
+
+    booking.mealPlan = normalizedMealPlan;
+    booking.isRentIncludingMeals = rentIncludesMeals;
 
     const { errors, review } = await buildBookingPaymentReview(req.body, booking, transaction);
 
