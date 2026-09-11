@@ -1450,6 +1450,14 @@ exports.getBookingPaymentSummary = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Booking not found' });
     }
 
+    
+    const property = await Property.findByPk(booking.propertyId, {
+      attributes: [
+        'mealSubscriptionAmountTwoTimes',
+        'mealSubscriptionAmountFourTimes'
+      ]
+    });
+
     const PaymentTransactionModel = require('../models/paymentTransaction');
     const transactions = await PaymentTransactionModel.findAll({
       where: { bookingId: booking.id },
@@ -1510,8 +1518,16 @@ exports.getBookingPaymentSummary = async (req, res) => {
       refundReason: t.refundReason || null,
     }));
 
+    const bookingResponse = {
+      ...booking.toJSON(),
+      mealSubscriptionAmountTwoTimes:
+        property?.mealSubscriptionAmountTwoTimes ?? 0,
+      mealSubscriptionAmountFourTimes:
+        property?.mealSubscriptionAmountFourTimes ?? 0
+    };
+
     return res.json({
-      booking,
+      booking: bookingResponse,
       bookingType: booking.bookingType,
       paymentStatus: booking.paymentStatus,
       paymentPlan: {
