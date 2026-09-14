@@ -103,6 +103,21 @@ jobs:
             echo "No test script found. Skipping."
           fi
 
+      - name: Create Firebase service account
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_JSON" ]; then
+            echo "❌ FIREBASE_SERVICE_ACCOUNT_JSON is missing"
+            exit 1
+          fi
+
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" \
+            > src/Auth/serviceAccountKey.json
+
+          chmod 600 src/Auth/serviceAccountKey.json
+
+          echo "✅ Firebase service account created"
 
       # --------------------------------------------------------
       # Test staging build can start
