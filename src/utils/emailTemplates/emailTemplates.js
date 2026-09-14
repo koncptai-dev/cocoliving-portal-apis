@@ -1516,7 +1516,7 @@ eSign Document Status Alert
 </td>
 </tr>
 
-\${FOOTER}
+${FOOTER}
 
 </table>
 </td></tr>
@@ -1573,7 +1573,7 @@ eSign Document Status Alert
 </td>
 </tr>
 
-\${FOOTER}
+${FOOTER}
 
 </table>
 </td></tr>
