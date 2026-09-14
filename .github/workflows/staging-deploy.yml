@@ -114,7 +114,10 @@ jobs:
 
         run: |
           printf '%s\n' "$STAGING_ENV" > .env
-          cat .env
+          echo "Environment variables loaded:"
+          grep -E '^[A-Za-z_][A-Za-z0-9_]*=' .env | cut -d= -f1
+          grep '^ALISTE_ENV_PREFIX=' .env
+
           echo "Starting staging build..."
 
           npm run dev > /tmp/cocoliving-build.log 2>&1 &
