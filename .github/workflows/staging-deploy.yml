@@ -106,9 +106,9 @@ jobs:
 
 
       # --------------------------------------------------------
-      # Test production build can start
+      # Test staging build can start
       # --------------------------------------------------------
-      - name: Test production build
+      - name: Test staging build
         env:
           STAGING_ENV: ${{ secrets.STAGING_ENV }}
 

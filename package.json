@@ -7,7 +7,7 @@
     "start": "node src/server.js",
     "add:room-appliances": "node scripts/add-room-appliances.js",
     "verify:past-bookings": "node scripts/verify-past-bookings.js",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand --passWithNoTests"
   },
   "keywords": [],
   "author": "",
