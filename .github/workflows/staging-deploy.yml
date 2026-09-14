@@ -327,7 +327,7 @@ jobs:
 
           echo
           echo "Starting PM2..."
-          pm2 log "$APP_NAME"
+          pm2 log "$APP_NAME" --lines 50 --nostream
 
           echo
           echo "=========================================="
