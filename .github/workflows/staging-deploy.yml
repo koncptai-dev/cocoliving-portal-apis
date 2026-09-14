@@ -3,11 +3,11 @@ name: cocoliving-backend Staging  CI/CD
 on:
   pull_request:
     branches:
-      - developement
+      - development
     types: [opened, synchronize, labeled]
   push:
     branches:
-      - developement
+      - development
     paths-ignore:
           - '**/*.md'
           - 'docs/**'
