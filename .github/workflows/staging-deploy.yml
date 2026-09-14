@@ -113,10 +113,29 @@ jobs:
           STAGING_ENV: ${{ secrets.STAGING_ENV }}
 
         run: |
+          echo "Checking STAGING_ENV..."
+
+          if [ -z "$STAGING_ENV" ]; then
+            echo "❌ STAGING_ENV is EMPTY or unavailable"
+            exit 1
+          fi
+
+          echo "✅ STAGING_ENV exists"
+          echo "Secret length: ${#STAGING_ENV} characters"
+
           printf '%s\n' "$STAGING_ENV" > .env
-          echo "Environment variables loaded:"
-          grep -E '^[A-Za-z_][A-Za-z0-9_]*=' .env | cut -d= -f1
-          grep '^ALISTE_ENV_PREFIX=' .env
+
+          echo "Generated .env size:"
+          wc -c .env
+
+          echo "Environment variable names:"
+          grep -E '^[A-Za-z_][A-Za-z0-9_]*=' .env | cut -d= -f1 || {
+            echo "❌ No KEY=VALUE entries found in .env"
+            exit 1
+          }
+
+          echo "Checking selected non-secret values:"
+          grep -E '^(PORT|HOST|DB_HOST|DB_PORT|DB_NAME|PHONEPE_ENV|ALISTE_ENV_PREFIX)=' .env || true
 
           echo "Starting staging build..."
 
