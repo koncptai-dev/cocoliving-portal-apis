@@ -30,7 +30,7 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm ci
+        run: npm i --no-audit
 
       - name: Run Security Audit
         id: audit
@@ -395,7 +395,7 @@ jobs:
           echo "🧪 RUNNING TEST CASES"
           echo "=========================================="
 
-          npm test -- --runInBand
+          npm test
 
       - name: Comment on PR - Test failure
         if: failure()
