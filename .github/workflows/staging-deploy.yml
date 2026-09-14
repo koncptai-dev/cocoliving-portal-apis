@@ -37,7 +37,6 @@ jobs:
   build:
     name: Build and Test
     runs-on: ubuntu-latest
-    environment: staging
     services:
       postgres:
         image: postgres:15
