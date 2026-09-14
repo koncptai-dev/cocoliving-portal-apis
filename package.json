@@ -41,6 +41,7 @@
     "pg-hstore": "^2.3.4",
     "puppeteer": "^23.11.1",
     "qrcode": "^1.5.4",
+    "razorpay": "^2.9.8",
     "sanitize-html": "^2.17.5",
     "sequelize": "^6.37.7",
     "sharp": "^0.34.5",

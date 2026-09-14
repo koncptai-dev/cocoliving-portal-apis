@@ -61,6 +61,7 @@ require('./utils/cronJobs/rentDueUserCron');
 require('./utils/cronJobs/tenureEndingCron');
 require('./utils/cronJobs/aliste/checkoutRemovalCron');
 require('./utils/cronJobs/aliste/lowBalanceNotificationCron');
+require('./utils/cronJobs/esignStatusCron');
 
 app.use(
   cors({
@@ -74,8 +75,15 @@ app.use(
 app.post(
   "/api/payments-webhook",
   require("./middleware/rawBody"),
-  require("./controllers/PhonePeWebhookController").phonePeWebhook
+  require("./controllers/RazorpayWebhookController").razorpayWebhook
 );
+
+app.get('/api/health', (_req, res) => {
+  res.status(200).json({
+    statusCode: 200,
+    msg: "healthy"
+  });
+});
 
 app.use("/api/contracts/esign", (req, res, next) => {
   const requestDetails = {

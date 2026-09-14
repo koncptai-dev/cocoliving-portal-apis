@@ -1,0 +1,453 @@
+name: cocoliving-backend Staging  CI/CD
+
+on:
+  pull_request:
+    branches:
+      - developement
+  push:
+    branches:
+      - developement
+    paths-ignore:
+          - '**/*.md'
+          - 'docs/**'
+          - 'LICENSE'
+          - '.gitignore'
+          - 'scripts/**'
+  workflow_dispatch:
+
+concurrency:
+  group: cocoliving
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  APP_PATH: /home/staging.cocoliving.in/cocoliving-portal-apis
+  APP_NAME: stagging-coco-backend
+  APP_PORT: "8003"
+  NODE_VERSION: "20"
+
+jobs:
+
+  # ============================================================
+  # CI - BUILD / TEST
+  # ============================================================
+  build:
+    name: Build and Test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: ci_user
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: cocoliving_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci_user -d cocoliving_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    # env:
+    #   NODE_ENV: production
+
+    steps:
+
+      # --------------------------------------------------------
+      # Checkout
+      # --------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # --------------------------------------------------------
+      # Node 25
+      # --------------------------------------------------------
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      # --------------------------------------------------------
+      # Verify versions
+      # --------------------------------------------------------
+      - name: Verify Node and npm
+        run: |
+          node --version
+          npm --version
+
+      # --------------------------------------------------------
+      # Install dependencies
+      # --------------------------------------------------------
+      - name: Install dependencies
+        run: npm i --no-audit
+
+      # --------------------------------------------------------
+      # Tests
+      # --------------------------------------------------------
+      - name: Tests
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_USER: ci_user
+          DB_PASSWORD: ci_password
+          DB_NAME: cocoliving_ci
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.test ? 0 : 1)"; then
+            npm test
+          else
+            echo "No test script found. Skipping."
+          fi
+
+
+      # --------------------------------------------------------
+      # Test production build can start
+      # --------------------------------------------------------
+      - name: Test production build
+        env:
+          STAGING_ENV: ${{ secrets.STAGING_ENV }}
+
+        run: |
+          printf '%s\n' "$STAGING_ENV" > .env
+          cat .env
+          echo "Starting staging build..."
+
+          npm run dev > /tmp/cocoliving-build.log 2>&1 &
+          PID=$!
+
+          echo "Server PID: $PID"
+
+          cleanup() {
+            kill "$PID" 2>/dev/null || true
+          }
+
+          trap cleanup EXIT
+
+          echo "Waiting for application..."
+
+          for i in {1..30}; do
+
+            if curl \
+              --fail \
+              --silent \
+              --show-error \
+              --max-time 5 \
+              "http://127.0.0.1:8003/api/health" >/dev/null; then
+
+              echo "Staging build started successfully."
+              echo "Health check passed."
+
+              exit 0
+            fi
+
+            if ! kill -0 "$PID" 2>/dev/null; then
+              echo
+              echo "ERROR: Production server exited unexpectedly."
+              echo
+              echo "========== SERVER LOG =========="
+              cat /tmp/cocoliving-build.log || true
+              echo "================================"
+              exit 1
+            fi
+
+            echo "Attempt $i/30 failed. Waiting..."
+            sleep 1
+          done
+
+          echo
+          echo "ERROR: Production build did not become healthy."
+          echo
+          echo "========== SERVER LOG =========="
+          cat /tmp/cocoliving-build.log || true
+          echo "================================"
+
+          exit 1
+
+  # ============================================================
+  # DEPLOY TO VPS
+  # ============================================================
+  deploy:
+    name: Deploy to Staging VPS
+    needs: build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: development
+
+    steps:
+
+      # --------------------------------------------------------
+      # Configure SSH
+      # --------------------------------------------------------
+      - name: Configure SSH
+        env:
+          VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "$VPS_SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Verify SSH configuration
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_PORT: ${{ secrets.VPS_SSH_PORT }}
+        run: |
+          echo "VPS_HOST configured: $([ -n "$VPS_HOST" ] && echo yes || echo no)"
+          echo "VPS_USER configured: $([ -n "$VPS_USER" ] && echo yes || echo no)"
+          echo "VPS_SSH_PORT configured: $([ -n "$VPS_SSH_PORT" ] && echo yes || echo no)"
+
+          if [ -z "$VPS_HOST" ]; then
+            echo "ERROR: VPS_HOST is empty"
+            exit 1
+          fi
+
+          if [ -z "$VPS_USER" ]; then
+            echo "ERROR: VPS_USER is empty"
+            exit 1
+          fi
+
+          if [ -z "$VPS_SSH_PORT" ]; then
+            echo "ERROR: VPS_SSH_PORT is empty"
+            exit 1
+          fi
+
+          if ! [[ "$VPS_SSH_PORT" =~ ^[0-9]+$ ]]; then
+            echo "ERROR: VPS_SSH_PORT is not numeric"
+            exit 1
+          fi
+
+      # --------------------------------------------------------
+      # Deploy
+      # --------------------------------------------------------
+      - name: Deploy to VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_PORT: ${{ secrets.VPS_SSH_PORT }}
+        run: |
+          echo "Connecting to VPS..."
+
+          ssh \
+            -i ~/.ssh/deploy_key \
+            -p "$VPS_SSH_PORT" \
+            "$VPS_USER@$VPS_HOST" \
+            'bash -s' <<'REMOTE_SCRIPT'
+
+          set -Eeuo pipefail
+
+          APP_PATH="/home/staging.cocoliving.in/cocoliving-portal-apis"
+          APP_NAME="stagging-coco-backend"
+          APP_PORT="8003"
+
+          echo "=========================================="
+          echo "Cocoliving Staging Deployment"
+          echo "=========================================="
+
+          cd "$APP_PATH"
+
+          echo
+          echo "Current directory:"
+          pwd
+
+          echo
+          echo "Node:"
+          node --version
+
+          echo
+          echo "npm:"
+          npm --version
+
+          echo
+          echo "Git status:"
+          git status
+
+          echo
+          echo "Pulling latest code..."
+          git pull
+
+          echo
+          echo "Installing dependencies..."
+          npm i --no-audit
+
+          echo
+          echo "Starting PM2..."
+          pm2 start "$APP_NAME"
+
+          echo
+          echo "PM2 status:"
+          pm2 status
+
+          echo
+          echo "Starting PM2..."
+          pm2 log "$APP_NAME"
+
+          echo
+          echo "=========================================="
+          echo "Production deployment completed"
+          echo "=========================================="
+
+          REMOTE_SCRIPT
+
+      # --------------------------------------------------------
+      # Cleanup SSH credentials
+      # --------------------------------------------------------
+      - name: Cleanup SSH credentials
+        if: always()
+        run: |
+          rm -f ~/.ssh/deploy_key
+          rm -f ~/.ssh/known_hosts
+
+ # ============================================================
+  # TEAMS NOTIFICATION
+  # ============================================================
+  notify:
+    name: Teams Notification
+    needs:
+      - build
+      - deploy
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+
+      # --------------------------------------------------------
+      # Success
+      # --------------------------------------------------------
+      - name: Teams - Success
+        if: needs.build.result == 'success' && needs.deploy.result == 'success'
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.MS_TEAMS_WEBHOOK_URL }}
+        run: |
+          if [ -z "$TEAMS_WEBHOOK_URL" ]; then
+            echo "ERROR: TEAMS_WEBHOOK_URL is empty."
+            exit 1
+          fi
+
+          HTTP_CODE=$(curl \
+            --silent \
+            --show-error \
+            --output /tmp/teams-response.txt \
+            --write-out "%{http_code}" \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --data @- \
+            "$TEAMS_WEBHOOK_URL" <<EOF
+          {
+            "type": "message",
+            "attachments": [
+              {
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "contentUrl": null,
+                "content": {
+                  "\$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                  "type": "AdaptiveCard",
+                  "version": "1.2",
+                  "body": [
+                    {
+                      "type": "TextBlock",
+                      "text": "Cocoliving Deployment SUCCESS",
+                      "weight": "Bolder",
+                      "size": "Medium"
+                    },
+                    {
+                      "type": "FactSet",
+                      "facts": [
+                        {
+                          "title": "Branch",
+                          "value": "${GITHUB_REF_NAME}"
+                        },
+                        {
+                          "title": "Commit",
+                          "value": "${GITHUB_SHA}"
+                        },
+                        {
+                          "title": "Workflow",
+                          "value": "${GITHUB_WORKFLOW}"
+                        },
+                        {
+                          "title": "Run",
+                          "value": "#${GITHUB_RUN_NUMBER}"
+                        },
+                        {
+                          "title": "Build",
+                          "value": "SUCCESS"
+                        },
+                        {
+                          "title": "Deploy",
+                          "value": "SUCCESS"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+          EOF
+              )
+
+          echo "Teams HTTP status: $HTTP_CODE"
+          echo "Teams response:"
+          cat /tmp/teams-response.txt
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "ERROR: Teams webhook request failed."
+            exit 1
+          fi
+
+      # --------------------------------------------------------
+      # Failure
+      # --------------------------------------------------------
+      - name: Teams - Failure
+        if: always() && (needs.build.result != 'success' || needs.deploy.result != 'success')
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.MS_TEAMS_WEBHOOK_URL }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+        run: |
+          if [ -z "$TEAMS_WEBHOOK_URL" ]; then
+            echo "ERROR: TEAMS_WEBHOOK_URL is empty."
+            exit 1
+          fi
+
+          echo "Teams webhook secret is configured."
+          echo "Build result: $BUILD_RESULT"
+          echo "Deploy result: $DEPLOY_RESULT"
+
+
+          HTTP_CODE=$(curl \
+                --silent \
+                --show-error \
+                --output /tmp/teams-response.txt \
+                --write-out "%{http_code}" \
+                --request POST \
+                --header "Content-Type: application/json" \
+                --data @- \
+                "$TEAMS_WEBHOOK_URL" <<EOF
+              {
+                "text": "Cocoliving STAGING deployment FAILED\nBranch: ${GITHUB_REF_NAME}\nCommit: ${GITHUB_SHA}\nWorkflow: ${GITHUB_WORKFLOW}\nRun: ${GITHUB_RUN_NUMBER}\nBuild: falied\nDeploy: failed"
+              }
+              EOF
+              )
+
+              echo "Teams HTTP status: $HTTP_CODE"
+              echo "Teams response:"
+              cat /tmp/teams-response.txt
+
+              if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+                echo "ERROR: Teams webhook returned HTTP $HTTP_CODE"
+                exit 1
+              fi
+
+              echo "Teams webhook accepted the request."
