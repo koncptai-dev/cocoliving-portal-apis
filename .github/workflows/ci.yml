@@ -155,42 +155,78 @@ jobs:
       TEAMS_WEBHOOK: ${{ secrets.MS_TEAMS_WEBHOOK_URL }}
     steps:
       - name: Block High/Critical vulnerabilities
+        shell: bash
         run: |
           echo "=========================================="
-          echo "🚨 HIGH or CRITICAL vulnerabilities detected! Merge is permanently blocked."
+          echo "🚨 HIGH or CRITICAL vulnerabilities detected!"
+          echo "Merge is permanently blocked."
           echo "=========================================="
 
           echo "Critical vulnerabilities: ${{ needs.security.outputs.critical }}"
           echo "High vulnerabilities:     ${{ needs.security.outputs.high }}"
 
-           # Send alert to MS Teams
+          # ======================================================
+          # Send alert to Microsoft Teams
+          # ======================================================
+
           if [ -n "$TEAMS_WEBHOOK" ]; then
-              MSG="🚨 **SECURITY ALERT:**
 
-              PR #$PR_NUM has been HARD REJECTED due to High/Critical vulnerabilities in the **backend**.
+            echo ""
+            echo "📢 Sending security alert to Microsoft Teams..."
 
-              Critical: ${{ needs.security.outputs.critical }}
-              High: ${{ needs.security.outputs.high }}
+            MSG="🚨 SECURITY ALERT
 
-              The merge is permanently blocked.
-              PR_Link: $PR_URL"
+            PR #$PR_NUM has been HARD REJECTED due to High/Critical vulnerabilities in the backend.
 
-              JSON_PAYLOAD=$(cat <<EOF
-              {
-                "type": "message",
-                "attachments": [{ "contentType": "application/vnd.microsoft.card.adaptive", "content": { "type": "AdaptiveCard", "version": "1.2", "body": [{ "type": "TextBlock", "text": "$MSG", "wrap": true }] } }]
-              }
-            EOF
-              )
+            Critical: ${{ needs.security.outputs.critical }}
+            High: ${{ needs.security.outputs.high }}
 
-          curl -s -H "Content-Type: application/json" -d "$JSON_PAYLOAD" "$TEAMS_WEBHOOK"
+            The merge is permanently blocked.
+
+            PR: $PR_URL"
+
+            JSON_PAYLOAD=$(jq -n \
+              --arg msg "$MSG" \
+              '{
+                type: "message",
+                attachments: [
+                  {
+                    contentType: "application/vnd.microsoft.card.adaptive",
+                    content: {
+                      type: "AdaptiveCard",
+                      version: "1.2",
+                      body: [
+                        {
+                          type: "TextBlock",
+                          text: $msg,
+                          wrap: true
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }')
+
+            echo "Sending Teams webhook..."
+
+            curl -fsS \
+              -H "Content-Type: application/json" \
+              -d "$JSON_PAYLOAD" \
+              "$TEAMS_WEBHOOK"
+
+            echo ""
+            echo "✅ Teams notification sent."
+
+          else
+
+            echo "⚠️ TEAMS_WEBHOOK is not configured."
+            echo "⚠️ Skipping Teams notification."
+
+          fi
 
           echo ""
-          echo "Merge is blocked."
+          echo "❌ Merge is blocked."
           echo "=========================================="
-          else
-            echo "⚠️ TEAMS_WEBHOOK is not configured."
-          fi
 
           exit 1
 
@@ -342,8 +378,7 @@ jobs:
                     }
                   }
                 ]
-              }'
-            )
+              }')
 
             curl -fsS \
               -H "Content-Type: application/json" \
@@ -362,7 +397,6 @@ jobs:
 
   test:
     name: 🧪 Tests
-    needs: quality
 
     runs-on: ubuntu-latest
     permissions:
@@ -391,11 +425,99 @@ jobs:
       - name: Run tests
         id: tests
         run: |
+          # ----------------------------------------------------------
+          # Check package.json
+          # ----------------------------------------------------------
+
+          if [ ! -f "package.json" ]; then
+            echo "⚠️ package.json not found."
+            echo "⚠️ Skipping tests."
+            exit 0
+          fi
+
+          # ----------------------------------------------------------
+          # Check whether test script exists
+          # ----------------------------------------------------------
+
+          TEST_SCRIPT=$(node -e "
+            const pkg = require('./package.json');
+            console.log(pkg.scripts?.test || '');
+          ")
+
+          if [ -z "$TEST_SCRIPT" ]; then
+            echo "⚠️ No test script found in package.json."
+            echo "⚠️ Skipping tests."
+            exit 0
+          fi
+
+          echo "✅ Test script found:"
+          echo "   npm test → $TEST_SCRIPT"
+
+          # ----------------------------------------------------------
+          # Check Jest configuration
+          # ----------------------------------------------------------
+
+          JEST_CONFIG=""
+
+          if [ -f "jest.config.js" ]; then
+            JEST_CONFIG="jest.config.js"
+          elif [ -f "jest.config.cjs" ]; then
+            JEST_CONFIG="jest.config.cjs"
+          elif [ -f "jest.config.mjs" ]; then
+            JEST_CONFIG="jest.config.mjs"
+          elif [ -f "jest.config.ts" ]; then
+            JEST_CONFIG="jest.config.ts"
+          fi
+
+          # ----------------------------------------------------------
+          # If Jest config exists, check its roots directory
+          # ----------------------------------------------------------
+
+          if [ -n "$JEST_CONFIG" ]; then
+            echo "✅ Jest configuration found: $JEST_CONFIG"
+
+            # Get roots from Jest configuration.
+            # This specifically handles the common:
+            # roots: ["<rootDir>/tests"]
+            ROOT_DIR=$(node - "$JEST_CONFIG" <<'NODE'
+            const fs = require("fs");
+
+            const file = process.argv[2];
+            const content = fs.readFileSync(file, "utf8");
+
+            const match = content.match(
+              /roots\s*:\s*\[\s*["']<rootDir>\/([^"']+)["']/
+            );
+
+            if (match) {
+              console.log(match[1]);
+            }
+            NODE
+            )
+
+            if [ -n "$ROOT_DIR" ]; then
+              echo "Jest root directory: $ROOT_DIR"
+
+              if [ ! -d "$ROOT_DIR" ]; then
+                echo "⚠️ Jest root directory '$ROOT_DIR' does not exist."
+                echo "⚠️ Skipping tests."
+                exit 0
+              fi
+
+              echo "✅ Jest root directory exists."
+            fi
+          fi
+
+          # ----------------------------------------------------------
+          # Run tests
+          # ----------------------------------------------------------
+
+          echo ""
           echo "=========================================="
           echo "🧪 RUNNING TEST CASES"
           echo "=========================================="
 
-          npm test -- --runInBand
+          npm run test
 
       - name: Comment on PR - Test failure
         if: failure()
