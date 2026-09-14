@@ -1,10 +1,6 @@
 name: cocoliving-backend Staging  CI/CD
 
 on:
-  pull_request:
-    branches:
-      - development
-    types: [opened, synchronize, labeled]
   push:
     branches:
       - development
