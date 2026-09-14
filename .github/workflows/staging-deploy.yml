@@ -142,14 +142,14 @@ jobs:
           echo "Generated .env size:"
           wc -c .env
 
-          echo "Environment variable names:"
-          grep -E '^[A-Za-z_][A-Za-z0-9_]*=' .env | cut -d= -f1 || {
-            echo "❌ No KEY=VALUE entries found in .env"
-            exit 1
-          }
+          # echo "Environment variable names:"
+          # grep -E '^[A-Za-z_][A-Za-z0-9_]*=' .env | cut -d= -f1 || {
+          #   echo "❌ No KEY=VALUE entries found in .env"
+          #   exit 1
+          # }
 
-          echo "Checking selected non-secret values:"
-          grep -E '^(PORT|HOST|DB_HOST|DB_PORT|DB_NAME|PHONEPE_ENV|ALISTE_ENV_PREFIX)=' .env || true
+          # echo "Checking selected non-secret values:"
+          # grep -E '^(PORT|HOST|DB_HOST|DB_PORT|DB_NAME|PHONEPE_ENV|ALISTE_ENV_PREFIX)=' .env || true
 
           echo "Starting staging build..."
 
@@ -371,6 +371,66 @@ jobs:
             exit 1
           fi
 
+          JSON_PAYLOAD=$(jq -n \
+            --arg branch "$GITHUB_REF_NAME" \
+            --arg commit "$GITHUB_SHA" \
+            --arg workflow "$GITHUB_WORKFLOW" \
+            --arg run "$GITHUB_RUN_NUMBER" \
+            '{
+              type: "message",
+              attachments: [
+                {
+                  contentType: "application/vnd.microsoft.card.adaptive",
+                  contentUrl: null,
+                  content: {
+                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                    type: "AdaptiveCard",
+                    version: "1.2",
+                    body: [
+                      {
+                        type: "TextBlock",
+                        text: "Cocoliving Deployment SUCCESS",
+                        weight: "Bolder",
+                        size: "Medium"
+                      },
+                      {
+                        type: "FactSet",
+                        facts: [
+                          {
+                            title: "Branch",
+                            value: $branch
+                          },
+                          {
+                            title: "Commit",
+                            value: $commit
+                          },
+                          {
+                            title: "Workflow",
+                            value: $workflow
+                          },
+                          {
+                            title: "Run",
+                            value: ("#" + $run)
+                          },
+                          {
+                            title: "Build",
+                            value: "SUCCESS"
+                          },
+                          {
+                            title: "Deploy",
+                            value: "SUCCESS"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }'
+          )
+
+          echo "Sending Teams success notification..."
+
           HTTP_CODE=$(curl \
             --silent \
             --show-error \
@@ -378,61 +438,9 @@ jobs:
             --write-out "%{http_code}" \
             --request POST \
             --header "Content-Type: application/json" \
-            --data @- \
-            "$TEAMS_WEBHOOK_URL" <<EOF
-          {
-            "type": "message",
-            "attachments": [
-              {
-                "contentType": "application/vnd.microsoft.card.adaptive",
-                "contentUrl": null,
-                "content": {
-                  "\$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                  "type": "AdaptiveCard",
-                  "version": "1.2",
-                  "body": [
-                    {
-                      "type": "TextBlock",
-                      "text": "Cocoliving Deployment SUCCESS",
-                      "weight": "Bolder",
-                      "size": "Medium"
-                    },
-                    {
-                      "type": "FactSet",
-                      "facts": [
-                        {
-                          "title": "Branch",
-                          "value": "${GITHUB_REF_NAME}"
-                        },
-                        {
-                          "title": "Commit",
-                          "value": "${GITHUB_SHA}"
-                        },
-                        {
-                          "title": "Workflow",
-                          "value": "${GITHUB_WORKFLOW}"
-                        },
-                        {
-                          "title": "Run",
-                          "value": "#${GITHUB_RUN_NUMBER}"
-                        },
-                        {
-                          "title": "Build",
-                          "value": "SUCCESS"
-                        },
-                        {
-                          "title": "Deploy",
-                          "value": "SUCCESS"
-                        }
-                      ]
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-          EOF
-              )
+            --data "$JSON_PAYLOAD" \
+            "$TEAMS_WEBHOOK_URL"
+          )
 
           echo "Teams HTTP status: $HTTP_CODE"
           echo "Teams response:"
@@ -442,6 +450,8 @@ jobs:
             echo "ERROR: Teams webhook request failed."
             exit 1
           fi
+
+          echo "Teams webhook accepted the request."
 
       # --------------------------------------------------------
       # Failure
@@ -462,29 +472,86 @@ jobs:
           echo "Build result: $BUILD_RESULT"
           echo "Deploy result: $DEPLOY_RESULT"
 
+          JSON_PAYLOAD=$(jq -n \
+            --arg branch "$GITHUB_REF_NAME" \
+            --arg commit "$GITHUB_SHA" \
+            --arg workflow "$GITHUB_WORKFLOW" \
+            --arg run "$GITHUB_RUN_NUMBER" \
+            --arg build "$BUILD_RESULT" \
+            --arg deploy "$DEPLOY_RESULT" \
+            '{
+              type: "message",
+              attachments: [
+                {
+                  contentType: "application/vnd.microsoft.card.adaptive",
+                  contentUrl: null,
+                  content: {
+                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                    type: "AdaptiveCard",
+                    version: "1.2",
+                    body: [
+                      {
+                        type: "TextBlock",
+                        text: "Cocoliving STAGING Deployment FAILED",
+                        weight: "Bolder",
+                        size: "Medium"
+                      },
+                      {
+                        type: "FactSet",
+                        facts: [
+                          {
+                            title: "Branch",
+                            value: $branch
+                          },
+                          {
+                            title: "Commit",
+                            value: $commit
+                          },
+                          {
+                            title: "Workflow",
+                            value: $workflow
+                          },
+                          {
+                            title: "Run",
+                            value: ("#" + $run)
+                          },
+                          {
+                            title: "Build",
+                            value: $build
+                          },
+                          {
+                            title: "Deploy",
+                            value: $deploy
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }'
+          )
+
+          echo "Sending Teams failure notification..."
 
           HTTP_CODE=$(curl \
-                --silent \
-                --show-error \
-                --output /tmp/teams-response.txt \
-                --write-out "%{http_code}" \
-                --request POST \
-                --header "Content-Type: application/json" \
-                --data @- \
-                "$TEAMS_WEBHOOK_URL" <<EOF
-              {
-                "text": "Cocoliving STAGING deployment FAILED\nBranch: ${GITHUB_REF_NAME}\nCommit: ${GITHUB_SHA}\nWorkflow: ${GITHUB_WORKFLOW}\nRun: ${GITHUB_RUN_NUMBER}\nBuild: falied\nDeploy: failed"
-              }
-              EOF
-              )
+            --silent \
+            --show-error \
+            --output /tmp/teams-response.txt \
+            --write-out "%{http_code}" \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --data "$JSON_PAYLOAD" \
+            "$TEAMS_WEBHOOK_URL"
+          )
 
-              echo "Teams HTTP status: $HTTP_CODE"
-              echo "Teams response:"
-              cat /tmp/teams-response.txt
+          echo "Teams HTTP status: $HTTP_CODE"
+          echo "Teams response:"
+          cat /tmp/teams-response.txt
 
-              if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-                echo "ERROR: Teams webhook returned HTTP $HTTP_CODE"
-                exit 1
-              fi
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "ERROR: Teams webhook returned HTTP $HTTP_CODE"
+            exit 1
+          fi
 
-              echo "Teams webhook accepted the request."
+          echo "Teams webhook accepted the request."
