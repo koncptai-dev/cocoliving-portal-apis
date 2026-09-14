@@ -78,6 +78,13 @@ app.post(
   require("./controllers/RazorpayWebhookController").razorpayWebhook
 );
 
+app.get('/api/health', (_req, res) => {
+  res.status(200).json({
+    statusCode: 200,
+    msg: "healthy"
+  });
+});
+
 app.use("/api/contracts/esign", (req, res, next) => {
   const requestDetails = {
     method: req.method,
