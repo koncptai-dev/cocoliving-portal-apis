@@ -362,7 +362,7 @@ jobs:
 
   test:
     name: 🧪 Tests
-    needs: quality
+    # needs: quality
 
     runs-on: ubuntu-latest
     permissions:

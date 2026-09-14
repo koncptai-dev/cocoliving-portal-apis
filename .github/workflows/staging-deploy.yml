@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - developement
+    types: [opened, synchronize, labeled]
   push:
     branches:
       - developement
