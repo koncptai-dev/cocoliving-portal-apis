@@ -70,12 +70,10 @@ async function getDraftBookingAccessFilter(user, baseWhere = {}) {
         whereClause.propertyId = {
             [Op.in]: accessContext.accessiblePropertyIds
         };
-        whereClause.createdByRole = 3;
         return { accessDenied: false, whereClause, accessContext };
     }
 
     if (accessContext.isSuperAdmin) {
-        whereClause.createdByRole = 1;
         return { accessDenied: false, whereClause, accessContext };
     }
 
@@ -482,7 +480,7 @@ async function convertDraftBookingToRealRecords(draftBooking, draftPaymentTransa
     }, { transaction });
 }
 
-function formatBookingOption(booking) {
+function formatBookingOption(booking, currentUser = null) {
     const userName = booking.user?.fullName || `User ${booking.userId}`;
     const propertyName = booking.property?.name || "Property";
     const roomNumber = booking.room?.roomNumber ? `Room ${booking.room.roomNumber}` : booking.roomType;
@@ -502,6 +500,9 @@ function formatBookingOption(booking) {
         paymentStatus: booking.paymentStatus,
         totalAmount: Number(booking.totalAmount || 0),
         remainingAmount: Number(booking.remainingAmount || 0),
+        createdByRole: booking.createdByRole,
+        createdByAdminId: booking.createdByAdminId,
+        canEdit: currentUser ? Number(booking.createdByAdminId) === Number(currentUser.id) : undefined
     };
 }
 
@@ -929,12 +930,12 @@ exports.draftBooking=async(req,res)=>{
 
         if (
             isUpdatingExistingDraft &&
-            isPropertyAdmin &&
             Number(overlappingDraftBooking.createdByAdminId) !== Number(req.user?.id)
         ) {
             await transaction.rollback();
+            await logApiCall(req, res, 403, `Draft booking update failed - only creator can edit (ID: ${overlappingDraftBooking.id})`, "Draft Booking", overlappingDraftBooking.id);
             return res.status(403).json({
-                message: "This user already has an active draft booking created by another admin for this period."
+                message: "This draft booking can only be edited by the admin who created it."
             });
         }
 
@@ -1149,7 +1150,7 @@ exports.getBookingPaymentFormData = async (req, res) => {
 
         const response = {
             success: true,
-            bookings: bookings.map(formatBookingOption),
+            bookings: bookings.map((b) => formatBookingOption(b, req.user)),
             selectedBooking: null
         };
 
@@ -1195,7 +1196,7 @@ exports.getBookingPaymentFormData = async (req, res) => {
             const monthlyRent = Number(selectedBooking.monthlyRent || selectedBooking.room?.monthlyRent || 0);
 
             response.selectedBooking = {
-                ...formatBookingOption(selectedBooking),
+                ...formatBookingOption(selectedBooking, req.user),
                 checkInDate: selectedBooking.checkInDate,
                 checkOutDate: selectedBooking.checkOutDate,
                 duration: selectedBooking.duration,
@@ -1378,7 +1379,10 @@ exports.getDraftBookingDetails = async (req, res) => {
                 totalMonthlyAmount: Number(booking.totalMonthlyAmount || 0),
                 isRentIncludingMeals: Boolean(booking.isRentIncludingMeals),
                 mealPlan: booking.mealPlan || "NONE",
-                assignedItems: booking.assignedItems || []
+                assignedItems: booking.assignedItems || [],
+                createdByRole: booking.createdByRole,
+                createdByAdminId: booking.createdByAdminId,
+                canEdit: Number(booking.createdByAdminId) === Number(req.user?.id)
             },
             payment: {
                 bookingReference: `BKG-${String(booking.id).padStart(4, "0")}`,
@@ -1483,6 +1487,15 @@ exports.reviewBookingPayment = async (req, res) => {
         if (booking.status === "draft_discard") {
             await transaction.rollback();
             return res.status(400).json({ success: false, message: "Discarded draft booking cannot be edited" });
+        }
+
+        if (Number(booking.createdByAdminId) !== Number(req.user?.id)) {
+            await transaction.rollback();
+            await logApiCall(req, res, 403, `Reviewed draft booking payment - only creator can edit (ID: ${bookingId})`, "Draft Booking", booking.id);
+            return res.status(403).json({
+                success: false,
+                message: "Only the admin who created this draft booking can edit its payment details"
+            });
         }
 
         const { errors, review } = await buildBookingPaymentReview(req.body, booking, transaction);
@@ -1641,6 +1654,15 @@ exports.confirmBookingPayment = async (req, res) => {
             await transaction.rollback();
             await logApiCall(req, res, 404, `Confirmed draft booking payment - booking not found (ID: ${bookingId})`, "Draft Booking", req.user?.id || 0);
             return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        if (Number(booking.createdByAdminId) !== Number(req.user?.id)) {
+            await transaction.rollback();
+            await logApiCall(req, res, 403, `Confirmed draft booking payment - only creator can confirm (ID: ${bookingId})`, "Draft Booking", booking.id);
+            return res.status(403).json({
+                success: false,
+                message: "Only the admin who created this draft booking can confirm it"
+            });
         }
 
         const latestTransaction = await getLatestDraftPaymentTransaction(booking.id, transaction);
