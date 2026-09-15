@@ -4,18 +4,22 @@ const path = require("path");
 const { Contract, Booking } = require("../../models");
 const idtoEsignService = require("../idtoEsignService");
 const { mailsender } = require("../emailService");
-const {
-  idtoEsignAlertEmail,
-  devEsignAlertEmail,
-} = require("../emailTemplates/emailTemplates");
+const { idtoEsignAlertEmail } = require("../emailTemplates/emailTemplates");
 
 let isCronRunning = false;
 
 /**
- * Sends failure alert emails to IDTO and Dev teams on every 5 consecutive fails
+ * Sends failure alert emails to IDTO team only once per contract
  */
 async function sendFailureAlertEmails(contract, docketId, documentId, signingStatus) {
   try {
+    if (contract.emailAlertSent) {
+      console.info("[esignStatusCron] Alert email already sent for this contract, skipping", {
+        contractId: contract.id,
+        bookingId: contract.bookingId,
+      });
+      return;
+    }
     const alertRecipients = (process.env.ESIGN_ALERT_EMAIL || "")
       .split(",")
       .map((email) => email.trim())
@@ -27,6 +31,34 @@ async function sendFailureAlertEmails(contract, docketId, documentId, signingSta
       );
       return;
     }
+    let userName = 'N/A';
+    let userEmail = 'N/A';
+    let userPhone = 'N/A';
+    let propertyName = 'N/A';
+    let roomNumber = 'N/A';
+
+    try {
+      const booking = await Booking.findByPk(contract.bookingId, {
+        include: [
+          { model: require("../../models").User, as: "user" },
+          {
+            model: require("../../models").Rooms,
+            as: "room",
+            include: [{ model: require("../../models").Property, as: "property" }]
+          }
+        ]
+      });
+
+      if (booking) {
+        userName = booking.user?.fullName || 'N/A';
+        userEmail = booking.user?.email || 'N/A';
+        userPhone = booking.user?.phone || 'N/A';
+        propertyName = booking.room?.property?.name || 'N/A';
+        roomNumber = booking.room?.roomNumber || 'N/A';
+      }
+    } catch (fetchErr) {
+      console.error("[esignStatusCron] Failed to fetch booking details for email:", fetchErr.message);
+    }
 
     const template = idtoEsignAlertEmail({
       contractId: contract.id,
@@ -35,6 +67,11 @@ async function sendFailureAlertEmails(contract, docketId, documentId, signingSta
       documentId,
       signingStatus,
       fetchAttemptCount: contract.fetchAttemptCount,
+      userName,
+      userEmail,
+      userPhone,
+      propertyName,
+      roomNumber
     });
 
     await mailsender(
@@ -43,10 +80,15 @@ async function sendFailureAlertEmails(contract, docketId, documentId, signingSta
       template.html,
       template.attachments
     );
+    contract.emailAlertSent = true;
+    await contract.save().catch((err) => {
+      console.error("[esignStatusCron] Failed to update emailAlertSent flag:", err.message);
+    });
 
-    console.info("esignCron: consecutive failure alert email sent", {
+    console.info("[esignStatusCron] Failure alert email sent (first time)", {
       contractId: contract.id,
       bookingId: contract.bookingId,
+      userName,
       fetchAttemptCount: contract.fetchAttemptCount,
       recipients: alertRecipients,
     });
@@ -95,10 +137,41 @@ async function checkEsignStatus() {
           continue;
         }
 
-        const documentResponse = await idtoEsignService.fetchEsignDocument({
-          docket_id: docketId,
-          document_id: documentId,
-        });
+        let documentResponse;
+        try {
+          documentResponse = await Promise.race([
+            idtoEsignService.fetchEsignDocument({
+              docket_id: docketId,
+              document_id: documentId,
+            }),
+            new Promise((_, reject) =>
+              setTimeout(
+                () => reject(new Error("API call timeout after 180 seconds")),
+                180000
+              )
+            ),
+          ]);
+        } catch (timeoutErr) {
+          contract.esignRawResponse = {
+            ...(contract.esignRawResponse || {}),
+            lastDocumentFetchError: {
+              message: timeoutErr.message,
+              status: "timeout",
+              timestamp: new Date(),
+            },
+          };
+          await contract.save().catch((err) => {
+            console.error("[esignStatusCron] Failed to save timeout error:", err.message);
+          });
+
+          console.error("[esignStatusCron] API call timed out", {
+            contractId: contract.id,
+            docketId,
+            documentId,
+            error: timeoutErr.message,
+          });
+          continue;
+        }
 
         const signedPdfContent = documentResponse?.content;
         const signingStatus = documentResponse?.signing_status;
@@ -120,7 +193,7 @@ async function checkEsignStatus() {
           typeof signedPdfContent !== "string"
         ) {
           contract.fetchAttemptCount = (contract.fetchAttemptCount || 0) + 1;
-          console.info("esignCron: signed PDF is not ready yet", {
+          console.info("[esignStatusCron] Signed PDF is not ready yet", {
             contractId: contract.id,
             docketId,
             documentId,
@@ -130,9 +203,11 @@ async function checkEsignStatus() {
             fetchAttemptCount: contract.fetchAttemptCount,
           });
 
-          await contract.save();
+          await contract.save().catch((err) => {
+            console.error("[esignStatusCron] Failed to save fetchAttemptCount:", err.message);
+          });
 
-          if (contract.fetchAttemptCount % 5 === 0) {
+          if (contract.fetchAttemptCount === 5) {
             await sendFailureAlertEmails(
               contract,
               docketId,
@@ -143,35 +218,63 @@ async function checkEsignStatus() {
 
           continue;
         }
-
-        contract.esignStatus = "COMPLETED";
-        contract.signedAt = new Date();
-
         const finalPath = path.join(
           __dirname,
           `../../uploads/contracts/contract-${contract.bookingId}.pdf`
         );
         const dir = path.dirname(finalPath);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(finalPath, Buffer.from(signedPdfContent, "base64"));
-        contract.signedPdfPath = finalPath;
 
-        console.info("esignCron: signed PDF saved", {
-          contractId: contract.id,
-          bookingId: contract.bookingId,
-          docketId,
-          documentId: documentResponse?.document_id || documentId,
-          filePath: finalPath,
-          fileSizeBytes: fs.statSync(finalPath).size,
-        });
+        try {
+          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(finalPath, Buffer.from(signedPdfContent, "base64"));
 
-        await contract.save();
+          contract.esignStatus = "COMPLETED";
+          contract.signedAt = new Date();
+          contract.signedPdfPath = finalPath;
 
-        const booking = await Booking.findByPk(contract.bookingId);
-        if (booking) {
-          booking.contractStatus = "SIGNED";
-          booking.adminContractStatus = "NOT_SIGNED";
-          await booking.save();
+          console.info("[esignStatusCron] Signed PDF saved", {
+            contractId: contract.id,
+            bookingId: contract.bookingId,
+            docketId,
+            documentId: documentResponse?.document_id || documentId,
+            filePath: finalPath,
+            fileSizeBytes: fs.statSync(finalPath).size,
+          });
+
+          await contract.save().catch((err) => {
+            console.error("[esignStatusCron] Failed to save contract with signed PDF path:", err.message);
+          });
+          const booking = await Booking.findByPk(contract.bookingId);
+          if (booking) {
+            booking.contractStatus = "SIGNED";
+            booking.adminContractStatus = "NOT_SIGNED";
+            await booking.save().catch((err) => {
+              console.error("[esignStatusCron] Failed to update booking status:", err.message);
+            });
+          } else {
+            console.warn("[esignStatusCron] Booking not found", {
+              contractId: contract.id,
+              bookingId: contract.bookingId,
+            });
+          }
+        } catch (fileErr) {
+          console.error("[esignStatusCron] Error saving PDF file:", fileErr.message, {
+            contractId: contract.id,
+            finalPath,
+            error: fileErr,
+          });
+
+          contract.esignRawResponse = {
+            ...(contract.esignRawResponse || {}),
+            lastDocumentFetchError: {
+              message: fileErr.message,
+              status: "file_write_error",
+              timestamp: new Date(),
+            },
+          };
+          await contract.save().catch((err) => {
+            console.error("[esignStatusCron] Failed to save file error:", err.message);
+          });
         }
       } catch (err) {
         contract.esignRawResponse = {
@@ -182,7 +285,9 @@ async function checkEsignStatus() {
             timestamp: new Date(),
           },
         };
-        await contract.save().catch(() => {});
+        await contract.save().catch((saveErr) => {
+          console.error("[esignStatusCron] Failed to save error details:", saveErr.message);
+        });
 
         console.error("[esignStatusCron] Error processing contract", {
           contractId: contract.id,

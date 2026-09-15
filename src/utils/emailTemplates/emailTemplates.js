@@ -1471,6 +1471,20 @@ ${FOOTER}
 }
 
 function idtoEsignAlertEmail(data = {}) {
+  const {
+    contractId = 'N/A',
+    bookingId = 'N/A',
+    docketId = 'N/A',
+    documentId = 'N/A',
+    signingStatus = 'Unknown',
+    fetchAttemptCount = 0,
+    userName = 'N/A',
+    userEmail = 'N/A',
+    userPhone = 'N/A',
+    propertyName = 'N/A',
+    roomNumber = 'N/A'
+  } = data;
+
   return {
     attachments: [
       { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
@@ -1503,71 +1517,46 @@ padding:28px 28px 90px;">
 <td align="center" style="background:#f3efe9;padding:0 24px 40px;">
 <div style="background:#f3efe9;border-radius:80px 80px 0 0;padding:40px 24px 0;max-width:520px;margin:-60px auto 0;">
 
-<h1 style="margin:0 0 16px;font-size:32px;font-weight:700;">
-eSign Document Status Alert
+<h1 style="margin:0 0 16px;font-size:32px;font-weight:700;color:#D36517;">
+⚠️ eSign Document Pending Signature
 </h1>
 
-<!-- Content field kept empty for later addition -->
-<div style="background:#ffffff;padding:24px;border-radius:12px;margin:24px 0;text-align:left;font-size:15px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+<p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#555;">
+A rental agreement document is still awaiting signature. Please follow up with the resident.
+</p>
+
+<div style="background:#fff3cd;padding:16px;border-left:4px solid #ffc107;margin:20px 0;border-radius:4px;">
+<p style="margin:0;font-size:14px;color:#856404;">
+<strong>⏱️ Current Status: ${signingStatus}</strong><br/>
+This document has been checked ${fetchAttemptCount} times and is still pending signature.
+</p>
+</div>
+
+<div style="background:#ffffff;padding:24px;border-radius:12px;margin:24px 0;text-align:left;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+
+<strong style="color:#4F3421;">Resident Information:</strong><br/><br/>
+<strong>Name:</strong> ${userName}<br/>
+<strong>Email:</strong> ${userEmail}<br/>
+<strong>Phone:</strong> ${userPhone}<br/><br/>
+
+<strong style="color:#4F3421;">Booking Details:</strong><br/>
+<strong>Property:</strong> ${propertyName}<br/>
+<strong>Room:</strong> ${roomNumber}<br/>
+<strong>Booking ID:</strong> ${bookingId}<br/><br/>
+
+<strong style="color:#4F3421;">System Reference:</strong><br/>
+<strong>Contract ID:</strong> ${contractId}<br/>
+<strong>IDTO Docket ID:</strong> ${docketId}<br/>
+<strong>IDTO Document ID:</strong> ${documentId}
 
 </div>
 
-</div>
-</td>
-</tr>
-
-${FOOTER}
-
-</table>
-</td></tr>
-</table>
-</body>
-</html>
-`
-  };
-}
-
-function devEsignAlertEmail(data = {}) {
-  return {
-    attachments: [
-      { filename: 'logo.png', path: path.join(__dirname, 'assets/logo.png'), cid: 'logo' },
-      { filename: 'bg-pattern.png', path: path.join(__dirname, 'assets/bg-pattern.png'), cid: 'bg' },
-      ...FOOTER_ATTACHMENTS
-    ],
-    html: `
-<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8" /></head>
-
-<body style="margin:0;background:#f3efe9;font-family:'Rethink Sans','Inter','Segoe UI',Arial,sans-serif;">
-<table width="100%" align="center">
-<tr><td align="center">
-
-<table width="600" style="max-width:600px;">
-
-<tr>
-<td align="center"
-style="background-color:#4F3421;
-background-image:url(cid:bg);
-background-repeat:repeat;
-background-size:400px 400px;
-padding:28px 28px 90px;">
-<img src="cid:logo" width="140" />
-</td>
-</tr>
-
-<tr>
-<td align="center" style="background:#f3efe9;padding:0 24px 40px;">
-<div style="background:#f3efe9;border-radius:80px 80px 0 0;padding:40px 24px 0;max-width:520px;margin:-60px auto 0;">
-
-<h1 style="margin:0 0 16px;font-size:32px;font-weight:700;">
-eSign Document Status Alert
-</h1>
-
-<!-- Content field kept empty for later addition -->
-<div style="background:#ffffff;padding:24px;border-radius:12px;margin:24px 0;text-align:left;font-size:15px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-
-</div>
+<p style="margin:16px 0;font-size:14px;line-height:1.8;color:#333;">
+<strong>Action Required:</strong><br/><br/>
+1. <strong>Contact the resident</strong> via email or phone to confirm they have received the e-signing invitation<br/>
+2. <strong>If they have already e-signed:</strong> Wait for the next automatic fetch cycle (system checks every 3 hours). The document should be available within the next 3 hours.<br/>
+3. <strong>If the document status still hasn't updated even after successfull esign from resident , update Rohit.rathod@koncpt.ai <br/>
+</p>
 
 </div>
 </td>
@@ -1603,7 +1592,6 @@ module.exports = {
   contractSignedEmail,
   waiveOffSubmittedAdminEmail,
   idtoEsignAlertEmail,
-  devEsignAlertEmail,
   FOOTER,
   FOOTER_ATTACHMENTS
 };
