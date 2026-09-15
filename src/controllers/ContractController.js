@@ -379,7 +379,7 @@ exports.getContract = async (req, res) => {
       return res.status(400).json({ message: "Booking not approved" });
 
     const isOwner = booking.userId === req.user.id;
-    const isAdmin = req.user.role === 1;
+    const isAdmin = req.user.role === 1 || req.user.role === 3;
 
     if (!isOwner && !isAdmin)
       return res.status(403).json({ message: "Unauthorized" });
