@@ -12,6 +12,61 @@ const { mailsender } = require('../utils/emailService');
 const { logApiCall } = require("../helpers/auditLog");
 const { smsSender } = require('../utils/smsService');
 
+exports.me = async (req, res) => {
+    try {
+        const account = req.user;
+        let permissions = {};
+        let pages = [];
+        let properties = [];
+
+        if (account.role !== 1 && (account.role === 3 || account.userType === 'admin')) {
+            const permissionRecord = await UserPermission.findOne({
+                where: { userId: account.id }
+            });
+
+            if (permissionRecord) {
+                permissions = permissionRecord.permissions || {};
+                properties = permissionRecord.properties || [];
+
+                const pageIds = (permissionRecord.pages || []).filter(Boolean);
+                if (pageIds.length) {
+                    const assignedPages = await Pages.findAll({
+                        where: { id: pageIds },
+                        attributes: ['id', 'page_name']
+                    });
+
+                    pages = assignedPages.map((page) => ({
+                        id: page.id,
+                        name: page.page_name
+                    }));
+                }
+            }
+        }
+
+        return res.status(200).json({
+            success: true,
+            account: {
+                id: account.id,
+                fullName: account.fullName,
+                email: account.email,
+                userType: account.userType,
+                role: account.role,
+                roleName: account.roleName,
+                phone: account.phone,
+                status: account.status
+            },
+            permissions,
+            pages,
+            properties
+        });
+    } catch (err) {
+        return res.status(500).json({
+            message: 'Failed to fetch current user details',
+            error: err.message
+        });
+    }
+};
+
 //for admin and superadmin 
 exports.login = async (req, res) => {
     try {
