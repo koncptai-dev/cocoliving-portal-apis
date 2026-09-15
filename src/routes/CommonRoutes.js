@@ -8,6 +8,8 @@ const authenticateToken =  require('../middleware/auth');
 // create Route
 router.post("/login", validateLogin, validate, CommonController.login);
 
+router.get("/me", authenticateToken, CommonController.me);
+
 router.post("/check-email", CommonController.checkEmail);
 
 // user otp login   
