@@ -17,8 +17,8 @@ router.get("/template", authenticateToken, authorizeRole(1,3), csvController.dow
 //Normal Routes
 router.post("/", authenticateToken, authorizeRole(1,3),authorizePage("Inventory Management","write"), controller.addInventory);
 router.get("/", authenticateToken, authorizeRole(1,3), authorizePage("Inventory Management","read"), controller.getAllInventory);
-router.get("/:id", authenticateToken, authorizePage("Inventory Management","read"), controller.getInventoryById);
-router.post("/by-ids",authenticateToken, authorizePage("Inventory Management","read"), controller.getInventoryByIds);
+router.get("/:id", authenticateToken, authorizeRole(1,3), controller.getInventoryById);
+router.post("/by-ids",authenticateToken, authorizeRole(1,3), controller.getInventoryByIds);
 router.get("/qr/inventory/:inventoryId", authenticateToken, authorizeRole(1,3), authorizePage("Inventory Management","read"), controller.generateInventoryQr );
 router.get("/qr/room/:roomId", authenticateToken, authorizeRole(1,3), authorizePage("Room Management","read"), controller.generateRoomQrZip);
 router.get("/qr/property/:propertyId", authenticateToken, authorizeRole(1,3), authorizePage("Property Management","read"), controller.generatePropertyQrZip);
