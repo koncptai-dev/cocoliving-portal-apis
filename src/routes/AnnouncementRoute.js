@@ -16,7 +16,7 @@ router.put("/edit/:announcementId",authMiddleware,authorizeRole(1,3),Announcemen
 router.get("/getAllUserTypes",authMiddleware,authorizeRole(1,3), AnnouncementController.getAllUserTypes);
 
 //patch request to update announcement status(admin)
-router.patch('/:id/toggle-status',authorizeRole(1,3), AnnouncementController.toggleEventStatus);
+router.patch('/:id/toggle-status',authMiddleware, authorizeRole(1,3), AnnouncementController.toggleEventStatus);
 
 //get user specific announcement
 router.get('/user-announcements', authMiddleware, AnnouncementController.getAnnouncement);
