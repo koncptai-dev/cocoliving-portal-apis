@@ -148,10 +148,7 @@ async function main() {
     }
 
     const property = await Property.findOne({
-      where: sequelize.where(
-        sequelize.fn('LOWER', sequelize.fn('TRIM', sequelize.col('name'))),
-        propertyName.toLowerCase()
-      ),
+      where: { id: 1 },
     });
 
     if (!property) {
