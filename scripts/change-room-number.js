@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-
+const XLSX = require('xlsx');
 const Booking = require('../src/models/bookRoom');
 const Rooms = require('../src/models/rooms');
 const Property = require('../src/models/property');
@@ -66,14 +66,43 @@ function logLine(mode, msg) {
   console.log(`[${mode.toUpperCase()}] ${msg}`);
 }
 
+function cellToStr(val) {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'number') {
+    return Number.isInteger(val) ? String(val) : String(val).replace(/\.0+$/, '');
+  }
+  return String(val).trim();
+}
+const REQUIRED_SHEET_NAME = 'ROOM CHANGE';
+
 async function main() {
   const { file, mode } = parseArgs();
   const isWrite = mode === 'write';
 
   console.log(`\n========== changeRoomNumber.js — mode: ${mode.toUpperCase()} ==========\n`);
 
-  const raw = fs.readFileSync(path.resolve(file), 'utf8');
-  const rows = parseCsv(raw);
+  const resolvedPath = path.resolve(file);
+  const ext = path.extname(resolvedPath).toLowerCase();
+
+  let rows;
+  if (ext === '.xlsx' || ext === '.xls') {
+    const workbook = XLSX.readFile(resolvedPath);
+    if (!workbook.SheetNames.includes(REQUIRED_SHEET_NAME)) {
+      console.error(
+        `❌ Sheet "${REQUIRED_SHEET_NAME}" not found in ${file}. ` +
+        `Available sheets: ${workbook.SheetNames.join(', ')}. Aborting — nothing was read or changed.`
+      );
+      process.exit(1);
+    }
+
+    console.log(`Workbook sheets: ${workbook.SheetNames.join(', ')}`);
+    console.log(`Using sheet: "${REQUIRED_SHEET_NAME}" only\n`);
+    rows = XLSX.utils.sheet_to_json(workbook.Sheets[REQUIRED_SHEET_NAME], { defval: '', raw: true });
+  } else {
+    const raw = fs.readFileSync(resolvedPath, 'utf8');
+    rows = parseCsv(raw);
+  }
+
   console.log(`Loaded ${rows.length} rows from ${file}\n`);
 
   const results = [];
@@ -95,10 +124,10 @@ async function main() {
   }
 
   for (const row of rows) {
-    const propertyName = (row['Property Name'] || '').trim();
-    const phoneRaw = row['Resident Phone'] || '';
-    const targetRoomNumberRaw = (row['Room Number'] || row['Room Number '] || '').trim();
-    const sheetCurrentRoomNumberRaw = (row['SYSTEM ROOM NO'] || '').trim();
+    const propertyName = cellToStr(row['Property Name']);
+    const phoneRaw = cellToStr(row['Resident Phone']);
+    const targetRoomNumberRaw = cellToStr(row['Room Number'] || row['Room Number ']);
+    const sheetCurrentRoomNumberRaw = cellToStr(row['SYSTEM ROOM NO']);
 
     const phone = normalizePhone(phoneRaw);
     const entry = {
