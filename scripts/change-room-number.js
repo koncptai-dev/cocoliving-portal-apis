@@ -1,11 +1,11 @@
 const fs = require('fs');
 const path = require('path');
 
-const Booking = require('../models/bookRoom');
-const Rooms = require('../models/rooms');
-const Property = require('../models/property');
-const User = require('../models/user');
-const { sequelize, Op } = require('../models');
+const Booking = require('../src/models/bookRoom');
+const Rooms = require('../src/models/rooms');
+const Property = require('../src/models/property');
+const User = require('../src/models/user');
+const { sequelize, Op } = require('../src/models');
 function parseArgs() {
   const args = process.argv.slice(2);
   const out = { file: null, mode: 'dry-run' };

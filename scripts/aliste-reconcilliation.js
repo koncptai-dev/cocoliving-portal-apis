@@ -1,15 +1,15 @@
 const { Op } = require('sequelize');
 
-const Booking = require('../models/bookRoom');
-const Rooms = require('../models/rooms');
-const Property = require('../models/property');
-const User = require('../models/user');
+const Booking = require('../src/models/bookRoom');
+const Rooms = require('../src/models/rooms');
+const Property = require('../src/models/property');
+const User = require('../src/models/user');
 
 const {
   getRoomUsers,
   addUserToRoom,
   removeUserFromRoom,
-} = require('../utils/aliste/alisteApi');
+} = require('../src/utils/aliste/alisteApi');
 
 function parseArgs() {
   const args = process.argv.slice(2);
