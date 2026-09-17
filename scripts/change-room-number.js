@@ -5,7 +5,8 @@ const Booking = require('../src/models/bookRoom');
 const Rooms = require('../src/models/rooms');
 const Property = require('../src/models/property');
 const User = require('../src/models/user');
-const { sequelize, Op } = require('../src/models');
+const { sequelize } = require('../src/models');
+const { Op } = require("sequelize");
 function parseArgs() {
   const args = process.argv.slice(2);
   const out = { file: null, mode: 'dry-run' };
@@ -112,7 +113,7 @@ async function main() {
   async function getStatusCount(roomId) {
     if (!statusCountCache.has(roomId)) {
       const c = await Booking.count({
-        where: { roomId, status: { [Op.in]: ['approved', 'active'] } },
+        where: { roomId, status: 'approved' },
       });
       statusCountCache.set(roomId, c);
     }
@@ -178,7 +179,7 @@ async function main() {
     const booking = await Booking.findOne({
       where: {
         userId: user.id,
-        status: { [Op.in]: ['approved', 'active'] },
+        status: 'approved',
       },
       include: [{ model: Rooms, as: 'room', include: [{ model: Property, as: 'property' }] }],
       order: [['createdAt', 'DESC']],
