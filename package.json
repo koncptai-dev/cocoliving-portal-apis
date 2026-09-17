@@ -7,6 +7,8 @@
     "start": "node src/server.js",
     "add:room-appliances": "node scripts/add-room-appliances.js",
     "verify:past-bookings": "node scripts/verify-past-bookings.js",
+    "aliste:reconcile": "node scripts/aliste-reconcilliation.js",
+    "rooms:fix-numbers": "node scripts/change-room-number.js",
     "test": "jest --runInBand"
   },
   "keywords": [],
