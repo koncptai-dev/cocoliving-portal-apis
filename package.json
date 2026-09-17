@@ -9,6 +9,7 @@
     "verify:past-bookings": "node scripts/verify-past-bookings.js",
     "aliste:reconcile": "node scripts/aliste-reconcilliation.js",
     "rooms:fix-numbers": "node scripts/change-room-number.js",
+    "aliste:summary": "node scripts/final-summary.js",
     "test": "jest --runInBand --passWithNoTests"
   },
   "keywords": [],
