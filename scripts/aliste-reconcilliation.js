@@ -99,7 +99,8 @@ async function main() {
     where: {
       roomId: { [Op.in]: roomIds },
       status: 'approved',
-      checkInDate: { [Op.gte]: today },
+      checkInDate: { [Op.lte]: today },
+      checkOutDate: { [Op.gte]: today },
     },
     include: [
       { model: User, as: 'user' },
