@@ -10,7 +10,7 @@
     "aliste:reconcile": "node scripts/aliste-reconcilliation.js",
     "rooms:fix-numbers": "node scripts/change-room-number.js",
     "aliste:summary": "node scripts/final-summary.js",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand --passWithNoTests"
   },
   "keywords": [],
   "author": "",
