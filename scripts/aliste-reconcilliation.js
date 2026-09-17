@@ -4,7 +4,7 @@ const Booking = require('../src/models/bookRoom');
 const Rooms = require('../src/models/rooms');
 const Property = require('../src/models/property');
 const User = require('../src/models/user');
-
+require('../src/models');
 const {
   getRoomUsers,
   addUserToRoom,
