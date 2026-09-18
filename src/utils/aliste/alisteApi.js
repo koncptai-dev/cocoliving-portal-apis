@@ -108,6 +108,14 @@ async function createTicket(payload) {
   );
 }
 
+async function getRoomUsers(roomId) {
+  return alisteRequest(
+    '/integration/room/users/details',
+    'POST', 
+    { roomId: String(roomId)}
+  );
+}
+
 module.exports = {
   integrateProperty,
   initiateRecharge,
@@ -117,4 +125,5 @@ module.exports = {
   getPropertyRooms,
   getRechargeHistory,
   createTicket,
+  getRoomUsers
 };

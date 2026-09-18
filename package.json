@@ -7,6 +7,9 @@
     "start": "node src/server.js",
     "add:room-appliances": "node scripts/add-room-appliances.js",
     "verify:past-bookings": "node scripts/verify-past-bookings.js",
+    "aliste:reconcile": "node scripts/aliste-reconcilliation.js",
+    "rooms:fix-numbers": "node scripts/change-room-number.js",
+    "aliste:summary": "node scripts/final-summary.js",
     "test": "jest --runInBand --passWithNoTests"
   },
   "keywords": [],
@@ -45,6 +48,7 @@
     "sanitize-html": "^2.17.5",
     "sequelize": "^6.37.7",
     "sharp": "^0.34.5",
+    "xlsx": "^0.18.5",
     "xml2js": "^0.6.2"
   },
   "devDependencies": {
