@@ -502,7 +502,9 @@ function formatBookingOption(booking, currentUser = null) {
         remainingAmount: Number(booking.remainingAmount || 0),
         createdByRole: booking.createdByRole,
         createdByAdminId: booking.createdByAdminId,
-        canEdit: currentUser ? Number(booking.createdByAdminId) === Number(currentUser.id) : undefined
+        canEdit: currentUser
+            ? (Number(currentUser.role) === 1 || Number(booking.createdByAdminId) === Number(currentUser.id))
+            : undefined
     };
 }
 
@@ -927,13 +929,16 @@ exports.draftBooking=async(req,res)=>{
         });
 
         const isUpdatingExistingDraft = Boolean(overlappingDraftBooking);
+        const isSuperAdmin = Number(req.user?.role) === 1;
+        const isCreator = Number(overlappingDraftBooking?.createdByAdminId) === Number(req.user?.id);
 
         if (
             isUpdatingExistingDraft &&
-            Number(overlappingDraftBooking.createdByAdminId) !== Number(req.user?.id)
+            !isSuperAdmin &&
+            !isCreator
         ) {
             await transaction.rollback();
-            await logApiCall(req, res, 403, `Draft booking update failed - only creator can edit (ID: ${overlappingDraftBooking.id})`, "Draft Booking", overlappingDraftBooking.id);
+            await logApiCall(req, res, 403, `Draft booking update failed - only creator or super admin can edit (ID: ${overlappingDraftBooking.id})`, "Draft Booking", overlappingDraftBooking.id);
             return res.status(403).json({
                 message: "This draft booking can only be edited by the admin who created it."
             });
@@ -1382,7 +1387,7 @@ exports.getDraftBookingDetails = async (req, res) => {
                 assignedItems: booking.assignedItems || [],
                 createdByRole: booking.createdByRole,
                 createdByAdminId: booking.createdByAdminId,
-                canEdit: Number(booking.createdByAdminId) === Number(req.user?.id)
+                canEdit: Number(req.user?.role) === 1 || Number(booking.createdByAdminId) === Number(req.user?.id)
             },
             payment: {
                 bookingReference: `BKG-${String(booking.id).padStart(4, "0")}`,
@@ -1489,7 +1494,10 @@ exports.reviewBookingPayment = async (req, res) => {
             return res.status(400).json({ success: false, message: "Discarded draft booking cannot be edited" });
         }
 
-        if (Number(booking.createdByAdminId) !== Number(req.user?.id)) {
+        const isSuperAdmin = Number(req.user?.role) === 1;
+        const isCreator = Number(booking.createdByAdminId) === Number(req.user?.id);
+
+        if (!isSuperAdmin && !isCreator) {
             await transaction.rollback();
             await logApiCall(req, res, 403, `Reviewed draft booking payment - only creator can edit (ID: ${bookingId})`, "Draft Booking", booking.id);
             return res.status(403).json({
@@ -1656,7 +1664,10 @@ exports.confirmBookingPayment = async (req, res) => {
             return res.status(404).json({ success: false, message: "Booking not found" });
         }
 
-        if (Number(booking.createdByAdminId) !== Number(req.user?.id)) {
+        const isSuperAdmin = Number(req.user?.role) === 1;
+        const isCreator = Number(booking.createdByAdminId) === Number(req.user?.id);
+
+        if (!isSuperAdmin && !isCreator) {
             await transaction.rollback();
             await logApiCall(req, res, 403, `Confirmed draft booking payment - only creator can confirm (ID: ${bookingId})`, "Draft Booking", booking.id);
             return res.status(403).json({
@@ -1680,18 +1691,16 @@ exports.confirmBookingPayment = async (req, res) => {
         const isCreatedBySuperAdmin = Number(booking.createdByRole) === 1;
         const waiveOffEnabled = Boolean(latestTransaction?.waiveCurrentMonthRent);
 
-        if (isCreatedByPropertyAdmin) {
+        if (isSuperAdmin || isCreatedBySuperAdmin) {
+            booking.status = "draft_confirmed";
+            await markDraftBookingAsConfirmed(booking, transaction);
+        } else if (isCreatedByPropertyAdmin) {
             if (waiveOffEnabled) {
                 booking.status = "draft_submitted";
             } else {
                 booking.status = "draft_confirmed";
                 await markDraftBookingAsConfirmed(booking, transaction);
-                // TODO: add property-admin no-waive confirmation logic.
             }
-        } else if (isCreatedBySuperAdmin) {
-            booking.status = "draft_confirmed";
-            await markDraftBookingAsConfirmed(booking, transaction);
-            // TODO: add super-admin confirmation logic.
         } else {
             await transaction.rollback();
             return res.status(400).json({
@@ -1847,7 +1856,10 @@ exports.cancelDraftBooking = async (req, res) => {
             return res.status(404).json({ success: false, message: "Booking not found" });
         }
 
-        if (Number(booking.createdByAdminId) !== Number(req.user?.id)) {
+        const isSuperAdmin = Number(req.user?.role) === 1;
+        const isCreator = Number(booking.createdByAdminId) === Number(req.user?.id);
+
+        if (!isSuperAdmin && !isCreator) {
             await transaction.rollback();
             return res.status(403).json({ success: false, message: "Only the booking creator can cancel this booking" });
         }
@@ -1916,7 +1928,10 @@ exports.discardDraftBooking = async (req, res) => {
             return res.status(404).json({ success: false, message: "Booking not found" });
         }
 
-        if (Number(booking.createdByAdminId) !== Number(req.user?.id)) {
+        const isSuperAdmin = Number(req.user?.role) === 1;
+        const isCreator = Number(booking.createdByAdminId) === Number(req.user?.id);
+
+        if (!isSuperAdmin && !isCreator) {
             await transaction.rollback();
             return res.status(403).json({ success: false, message: "Only the booking creator can discard this booking" });
         }
