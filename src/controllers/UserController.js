@@ -435,12 +435,14 @@ exports.editUserProfile = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
+    const isAdmin = Number(user.role) === 1 || Number(user.role) === 3;
+
     // Phone update check first
     if (updates.phone !== undefined && updates.phone !== null) {
 
       const newPhone = updates.phone.trim();
 
-      if (user.isPhoneVerified && newPhone !== user.phone) {
+      if (user.isPhoneVerified && !isAdmin && newPhone !== user.phone) {
         await logApiCall(req, res, 400, `Updated user profile - phone cannot be edited after verification (ID: ${id})`, "user", parseInt(id));
         return res.status(400).json({
           message: "Phone number cannot be edited after verification"
@@ -473,8 +475,8 @@ exports.editUserProfile = async (req, res) => {
     if (updates.email !== undefined && updates.email !== null) {
       const newEmail = updates.email.trim();
 
-      // if already verified → block update 
-      if (user.isEmailVerified) {
+      // if already verified → block update for normal users
+      if (user.isEmailVerified && !isAdmin && newEmail !== user.email) {
         return res.status(400).json({
           message: "Email cannot be edited after verification"
         });
