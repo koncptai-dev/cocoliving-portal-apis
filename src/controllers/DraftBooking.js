@@ -1760,6 +1760,7 @@ exports.confirmBookingPayment = async (req, res) => {
         const isActorSuperAdmin = Number(req.user?.role) === 1;
         const isActorPropertyAdmin = Number(req.user?.role) === 3;
         const isCreatedBySuperAdmin = Number(booking.createdByRole) === 1;
+        const isCreatedByPropertyAdmin = Number(booking.createdByRole) === 3;
         const waiveOffEnabled = Boolean(latestTransaction?.waiveCurrentMonthRent);
 
         if (isCreatedByPropertyAdmin || isCreatedBySuperAdmin) {
