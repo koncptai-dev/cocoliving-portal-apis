@@ -100,6 +100,23 @@ const PaymentTransaction = sequelize.define(
       allowNull: false,
       defaultValue: false,
     },
+    waiveOffNote: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    bypassPaymentValidation: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    paymentValidationBypassReason: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    confirmationText: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
     securityDepositType: {
       type: DataTypes.STRING,
       allowNull: true,

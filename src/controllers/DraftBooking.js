@@ -1,4 +1,4 @@
-const moment = require("moment");
+﻿const moment = require("moment");
 const sequelize = require("../config/database");
 const { Op } = require("sequelize");
 const {
@@ -165,7 +165,7 @@ function buildErrorPayload(err, fallbackMessage = "Server error") {
     };
 }
 
-async function notifySuperAdminsForWaiveOffSubmission(booking, actorUser) {
+async function notifySuperAdminsForWaiveOffSubmission(booking, actorUser, waiveOffNote) {
     try {
         const superAdmins = await User.findAll({
             where: {
@@ -180,12 +180,14 @@ async function notifySuperAdminsForWaiveOffSubmission(booking, actorUser) {
         const recipientEmails = [...new Set(superAdmins.map((admin) => admin.email).filter(Boolean))];
         if (recipientEmails.length === 0) return;
 
-        const subject = `Waive-off request submitted for Draft Booking #${booking.id}`;
+        const subject = `Wave off applied ΓÇö Draft Booking #${booking.id} confirmed`;
         const template = waiveOffSubmittedAdminEmail({
             bookingId: booking.id,
             propertyId: booking.propertyId,
             submittedByName: actorUser?.fullName,
-            submittedByEmail: actorUser?.email
+            submittedByEmail: actorUser?.email,
+            waiveOffNote: waiveOffNote || null,
+            isDirectConfirmation: true
         });
 
         await sendEmail({
@@ -197,6 +199,13 @@ async function notifySuperAdminsForWaiveOffSubmission(booking, actorUser) {
     } catch (error) {
         console.error("[notifySuperAdminsForWaiveOffSubmission]", error);
     }
+}
+
+function appendAdminAttribution(note, actorUser, actionLabel) {
+    const adminName = actorUser?.fullName || "Admin";
+    const timestamp = moment().format("DD/MM/YYYY HH:mm:ss");
+    const attribution = `ΓÇö ${actionLabel} by ${adminName} on ${timestamp}`;
+    return note ? `${note}\n\n${attribution}` : attribution;
 }
 
 function normalizeSecurityDepositType(type) {
@@ -264,6 +273,8 @@ function calculateWaiveOffForRemainingDays(checkInDate, monthlyRent, waiveEnable
         amount: waivedAmount
     };
 }
+
+exports.calculateWaiveOffForRemainingDays = calculateWaiveOffForRemainingDays;
 
 function calculateAdvanceRent(checkInDate, monthlyRent, advanceMonths) {
     if (!advanceMonths || advanceMonths <= 0) {
@@ -492,6 +503,10 @@ async function convertDraftBookingToRealRecords(draftBooking, draftPaymentTransa
         additionalDetails: true,
         totalAmountReceived: paymentTransaction.totalAmountReceived,
         waiveCurrentMonthRent: paymentTransaction.waiveCurrentMonthRent,
+        waiveOffNote: paymentTransaction.waiveOffNote || null,
+        bypassPaymentValidation: paymentTransaction.bypassPaymentValidation || false,
+        paymentValidationBypassReason: paymentTransaction.paymentValidationBypassReason || null,
+        confirmationText: paymentTransaction.confirmationText || null,
         securityDepositType: paymentTransaction.securityDepositType,
         securityDepositAmount: paymentTransaction.securityDepositAmount,
         advanceRentAmount: paymentTransaction.advanceRentAmount,
@@ -540,7 +555,7 @@ function formatBookingOption(booking, currentUser = null, accessiblePropertyIds 
     };
 }
 
-async function buildBookingPaymentReview(payload, booking, transaction = null) {
+async function buildBookingPaymentReview(payload, booking, transaction = null, bypassAmountMismatch = false) {
     const {
         totalAmountReceived,
         totalAmountReceivedRent,
@@ -729,7 +744,7 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
 
     const computedTotal = Math.round(security + advance + meal + amc);
 
-    if (Math.round(received) !== computedTotal) {
+    if (!bypassAmountMismatch && Math.round(received) !== computedTotal) {
         errors.push("Total Amount Received must equal Security Deposit + Advance Rent + Meal Subscription + AMC Charges");
     }
 
@@ -777,6 +792,7 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
                 totalAmountReceived: Math.round(received),
                 expectedTotal: computedTotal,
                 difference: Math.round(received) - computedTotal,
+                validationBypassed: bypassAmountMismatch,
                 panRequired: false,
                 gstApplicableOnInvoice: received > 20000,
                 invoiceStatus: "PENDING_ACCOUNTANT_APPROVAL"
@@ -1342,6 +1358,10 @@ exports.getDraftBookingDetails = async (req, res) => {
                 latestTransaction?.waiveCurrentMonthRent ??
                 reviewInputs.waiveCurrentMonthRent ??
                 false,
+            waiveOffNote:
+                latestTransaction?.waiveOffNote ??
+                reviewInputs.waiveOffNote ??
+                null,
             securityDepositType:
                 latestTransaction?.securityDepositType ??
                 reviewInputs.securityDepositType ??
@@ -1373,6 +1393,12 @@ exports.getDraftBookingDetails = async (req, res) => {
             panCardNumber:
                 latestTransaction?.panCardNumber ??
                 reviewInputs.panCardNumber ??
+                null,
+            bypassPaymentValidation:
+                latestTransaction?.bypassPaymentValidation ??
+                false,
+            paymentValidationBypassReason:
+                latestTransaction?.paymentValidationBypassReason ??
                 null
         };
 
@@ -1422,6 +1448,7 @@ exports.getDraftBookingDetails = async (req, res) => {
                 bookingReference: `BKG-${String(booking.id).padStart(4, "0")}`,
                 rentReceived: Number(paymentFieldSource.rentAmount || 0),
                 waiveOff,
+                waiveOffNote: paymentFieldSource.waiveOffNote || '',
                 securityDepositType: paymentFieldSource.securityDepositType,
                 securityDepositAmount: Number(paymentFieldSource.securityDepositAmount || 0),
                 advanceRent: Number(paymentFieldSource.advanceRentAmount || 0),
@@ -1431,6 +1458,8 @@ exports.getDraftBookingDetails = async (req, res) => {
                 amcCharges: Number(paymentFieldSource.amcChargesAmount || 0),
                 panCardNumber: paymentFieldSource.panCardNumber,
                 totalAmountReceived: Number(paymentFieldSource.totalAmountReceived || 0),
+                bypassPaymentValidation: Boolean(paymentFieldSource.bypassPaymentValidation),
+                paymentValidationBypassReason: paymentFieldSource.paymentValidationBypassReason || '',
                 totalCollected: Math.round(totalCollected),
                 latestTransaction: latestTransaction
                     ? {
@@ -1462,7 +1491,14 @@ exports.reviewBookingPayment = async (req, res) => {
     const transaction = await sequelize.transaction();
 
     try {
-        const { bookingId, paymentType = "CASH", paymentDate } = req.body;
+        const {
+            bookingId,
+            paymentType = "CASH",
+            paymentDate,
+            bypassPaymentValidation = false,
+            paymentValidationBypassReason,
+            waiveOffNote
+        } = req.body;
         const adminId = req.user?.id || null;
 
         if (!bookingId) {
@@ -1484,6 +1520,14 @@ exports.reviewBookingPayment = async (req, res) => {
         if (paymentDate && !isValidDateFormat(paymentDate, "DD/MM/YYYY")) {
             await transaction.rollback();
             return res.status(400).json({ success: false, message: "paymentDate must be in DD/MM/YYYY format" });
+        }
+
+        if (bypassPaymentValidation && !paymentValidationBypassReason) {
+            await transaction.rollback();
+            return res.status(400).json({
+                success: false,
+                message: "paymentValidationBypassReason is required when bypassing payment validation"
+            });
         }
 
         const access = await getDraftBookingAccessFilter(req.user);
@@ -1534,7 +1578,16 @@ exports.reviewBookingPayment = async (req, res) => {
             });
         }
 
-        const { errors, review } = await buildBookingPaymentReview(req.body, booking, transaction);
+        const { errors, review } = await buildBookingPaymentReview(req.body, booking, transaction, Boolean(bypassPaymentValidation));
+
+        if (review.inputs.waiveCurrentMonthRent && !waiveOffNote) {
+            await transaction.rollback();
+            return res.status(400).json({
+                success: false,
+                message: "waiveOffNote is required when waiving off current month rent"
+            });
+        }
+
 
         if (errors.length > 0) {
             await transaction.rollback();
@@ -1593,7 +1646,13 @@ exports.reviewBookingPayment = async (req, res) => {
                     invoiceStatus: "PENDING_ACCOUNTANT_APPROVAL",
                     invoiceNote: "Invoice is generated only after accountant approval"
                 },
-                confirmed: true
+                confirmed: true,
+                waiveOffNote: review.inputs.waiveCurrentMonthRent ? appendAdminAttribution(waiveOffNote, req.user, "Waived off") : null,
+                bypassPaymentValidation: Boolean(bypassPaymentValidation),
+                paymentValidationBypassReason: bypassPaymentValidation ? (paymentValidationBypassReason || null) : null,
+                confirmationText: bypassPaymentValidation
+                    ? `I confirm to the booking amount received to be Γé╣${review.calculated.totalAmountReceived} when the calculated amount is Γé╣${review.calculated.expectedTotal}. Signed by ${req.user?.fullName || "Admin"} at ${moment().format("DD/MM/YYYY HH:mm:ss")}`
+                    : null
             }, { transaction });
         } else {
             paymentTransaction.amount = amountPaise;
@@ -1611,6 +1670,12 @@ exports.reviewBookingPayment = async (req, res) => {
             paymentTransaction.mealSubscriptionDurationMonths = review.inputs.mealSubscriptionDurationMonths;
             paymentTransaction.amcChargesAmount = review.inputs.amcCharges;
             paymentTransaction.panCardNumber = review.inputs.panCardNumber;
+            paymentTransaction.waiveOffNote = review.inputs.waiveCurrentMonthRent ? appendAdminAttribution(waiveOffNote, req.user, "Waived off") : null;
+            paymentTransaction.bypassPaymentValidation = Boolean(bypassPaymentValidation);
+            paymentTransaction.paymentValidationBypassReason = bypassPaymentValidation ? (paymentValidationBypassReason || null) : null;
+            paymentTransaction.confirmationText = bypassPaymentValidation
+                ? `I confirm to the booking amount received to be Γé╣${review.calculated.totalAmountReceived} when the calculated amount is Γé╣${review.calculated.expectedTotal}. Signed by ${req.user?.fullName || "Admin"} at ${moment().format("DD/MM/YYYY HH:mm:ss")}`
+                : (paymentTransaction.confirmationText || null);
             paymentTransaction.rawResponse = {
                 ...(paymentTransaction.rawResponse || {}),
                 manuallyCreated: true,
@@ -1717,19 +1782,10 @@ exports.confirmBookingPayment = async (req, res) => {
         const isActorSuperAdmin = Number(req.user?.role) === 1;
         const isActorPropertyAdmin = Number(req.user?.role) === 3;
         const isCreatedBySuperAdmin = Number(booking.createdByRole) === 1;
+        const isCreatedByPropertyAdmin = Number(booking.createdByRole) === 3;
         const waiveOffEnabled = Boolean(latestTransaction?.waiveCurrentMonthRent);
 
-        if (isActorSuperAdmin) {
-            booking.status = "draft_confirmed";
-            await markDraftBookingAsConfirmed(booking, transaction);
-        } else if (isActorPropertyAdmin) {
-            if (waiveOffEnabled) {
-                booking.status = "draft_submitted";
-            } else {
-                booking.status = "draft_confirmed";
-                await markDraftBookingAsConfirmed(booking, transaction);
-            }
-        } else if (isCreatedBySuperAdmin) {
+        if (isCreatedByPropertyAdmin || isCreatedBySuperAdmin) {
             booking.status = "draft_confirmed";
             await markDraftBookingAsConfirmed(booking, transaction);
         } else {
@@ -1743,14 +1799,8 @@ exports.confirmBookingPayment = async (req, res) => {
         await booking.save({ transaction });
         await transaction.commit();
 
-        const shouldNotifySuperAdminForWaiveOff =
-            isActorPropertyAdmin &&
-            waiveOffEnabled &&
-            previousStatus !== "draft_submitted" &&
-            booking.status === "draft_submitted";
-
-        if (shouldNotifySuperAdminForWaiveOff) {
-            await notifySuperAdminsForWaiveOffSubmission(booking, req.user);
+        if (waiveOffEnabled && isCreatedByPropertyAdmin) {
+            await notifySuperAdminsForWaiveOffSubmission(booking, req.user, latestTransaction?.waiveOffNote);
         }
 
         await logApiCall(req, res, 200, `Confirmed draft booking payment (Booking ID: ${booking.id})`, "Draft Booking", booking.id);
