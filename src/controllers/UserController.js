@@ -435,7 +435,7 @@ exports.editUserProfile = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const isAdmin = Number(user.role) === 1 || Number(user.role) === 3;
+    const isAdmin = Number(req.user.role) === 1 || Number(req.user.role) === 3;
 
     // Phone update check first
     if (updates.phone !== undefined && updates.phone !== null) {
