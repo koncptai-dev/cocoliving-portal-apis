@@ -165,7 +165,7 @@ function buildErrorPayload(err, fallbackMessage = "Server error") {
     };
 }
 
-async function notifySuperAdminsForWaiveOffSubmission(booking, actorUser) {
+async function notifySuperAdminsForWaiveOffSubmission(booking, actorUser, waiveOffNote) {
     try {
         const superAdmins = await User.findAll({
             where: {
@@ -180,12 +180,14 @@ async function notifySuperAdminsForWaiveOffSubmission(booking, actorUser) {
         const recipientEmails = [...new Set(superAdmins.map((admin) => admin.email).filter(Boolean))];
         if (recipientEmails.length === 0) return;
 
-        const subject = `Waive-off request submitted for Draft Booking #${booking.id}`;
+        const subject = `Wave off applied — Draft Booking #${booking.id} confirmed`;
         const template = waiveOffSubmittedAdminEmail({
             bookingId: booking.id,
             propertyId: booking.propertyId,
             submittedByName: actorUser?.fullName,
-            submittedByEmail: actorUser?.email
+            submittedByEmail: actorUser?.email,
+            waiveOffNote: waiveOffNote || null,
+            isDirectConfirmation: true
         });
 
         await sendEmail({
@@ -492,6 +494,10 @@ async function convertDraftBookingToRealRecords(draftBooking, draftPaymentTransa
         additionalDetails: true,
         totalAmountReceived: paymentTransaction.totalAmountReceived,
         waiveCurrentMonthRent: paymentTransaction.waiveCurrentMonthRent,
+        waiveOffNote: paymentTransaction.waiveOffNote || null,
+        bypassPaymentValidation: paymentTransaction.bypassPaymentValidation || false,
+        paymentValidationBypassReason: paymentTransaction.paymentValidationBypassReason || null,
+        confirmationText: paymentTransaction.confirmationText || null,
         securityDepositType: paymentTransaction.securityDepositType,
         securityDepositAmount: paymentTransaction.securityDepositAmount,
         advanceRentAmount: paymentTransaction.advanceRentAmount,
@@ -540,7 +546,7 @@ function formatBookingOption(booking, currentUser = null, accessiblePropertyIds 
     };
 }
 
-async function buildBookingPaymentReview(payload, booking, transaction = null) {
+async function buildBookingPaymentReview(payload, booking, transaction = null, bypassAmountMismatch = false) {
     const {
         totalAmountReceived,
         totalAmountReceivedRent,
@@ -729,7 +735,7 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
 
     const computedTotal = Math.round(security + advance + meal + amc);
 
-    if (Math.round(received) !== computedTotal) {
+    if (!bypassAmountMismatch && Math.round(received) !== computedTotal) {
         errors.push("Total Amount Received must equal Security Deposit + Advance Rent + Meal Subscription + AMC Charges");
     }
 
@@ -777,6 +783,7 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
                 totalAmountReceived: Math.round(received),
                 expectedTotal: computedTotal,
                 difference: Math.round(received) - computedTotal,
+                validationBypassed: bypassAmountMismatch,
                 panRequired: false,
                 gstApplicableOnInvoice: received > 20000,
                 invoiceStatus: "PENDING_ACCOUNTANT_APPROVAL"
@@ -1462,7 +1469,14 @@ exports.reviewBookingPayment = async (req, res) => {
     const transaction = await sequelize.transaction();
 
     try {
-        const { bookingId, paymentType = "CASH", paymentDate } = req.body;
+        const {
+            bookingId,
+            paymentType = "CASH",
+            paymentDate,
+            bypassPaymentValidation = false,
+            paymentValidationBypassReason,
+            waiveOffNote
+        } = req.body;
         const adminId = req.user?.id || null;
 
         if (!bookingId) {
@@ -1484,6 +1498,14 @@ exports.reviewBookingPayment = async (req, res) => {
         if (paymentDate && !isValidDateFormat(paymentDate, "DD/MM/YYYY")) {
             await transaction.rollback();
             return res.status(400).json({ success: false, message: "paymentDate must be in DD/MM/YYYY format" });
+        }
+
+        if (bypassPaymentValidation && !paymentValidationBypassReason) {
+            await transaction.rollback();
+            return res.status(400).json({
+                success: false,
+                message: "paymentValidationBypassReason is required when bypassing payment validation"
+            });
         }
 
         const access = await getDraftBookingAccessFilter(req.user);
@@ -1534,7 +1556,16 @@ exports.reviewBookingPayment = async (req, res) => {
             });
         }
 
-        const { errors, review } = await buildBookingPaymentReview(req.body, booking, transaction);
+        const { errors, review } = await buildBookingPaymentReview(req.body, booking, transaction, Boolean(bypassPaymentValidation));
+
+        if (review.inputs.waiveCurrentMonthRent && !waiveOffNote) {
+            await transaction.rollback();
+            return res.status(400).json({
+                success: false,
+                message: "waiveOffNote is required when waiving off current month rent"
+            });
+        }
+
 
         if (errors.length > 0) {
             await transaction.rollback();
@@ -1593,7 +1624,13 @@ exports.reviewBookingPayment = async (req, res) => {
                     invoiceStatus: "PENDING_ACCOUNTANT_APPROVAL",
                     invoiceNote: "Invoice is generated only after accountant approval"
                 },
-                confirmed: true
+            confirmed: true,
+                waiveOffNote: review.inputs.waiveCurrentMonthRent ? (waiveOffNote || null) : null,
+                bypassPaymentValidation: Boolean(bypassPaymentValidation),
+                paymentValidationBypassReason: bypassPaymentValidation ? (paymentValidationBypassReason || null) : null,
+                confirmationText: bypassPaymentValidation
+                    ? `I confirm to the booking amount received to be ₹${review.calculated.totalAmountReceived} when the calculated amount is ₹${review.calculated.expectedTotal}. Signed by ${req.user?.fullName || "Admin"} at ${moment().format("DD/MM/YYYY HH:mm:ss")}`
+                    : null
             }, { transaction });
         } else {
             paymentTransaction.amount = amountPaise;
@@ -1611,6 +1648,12 @@ exports.reviewBookingPayment = async (req, res) => {
             paymentTransaction.mealSubscriptionDurationMonths = review.inputs.mealSubscriptionDurationMonths;
             paymentTransaction.amcChargesAmount = review.inputs.amcCharges;
             paymentTransaction.panCardNumber = review.inputs.panCardNumber;
+            paymentTransaction.waiveOffNote = review.inputs.waiveCurrentMonthRent ? (waiveOffNote || null) : null;
+            paymentTransaction.bypassPaymentValidation = Boolean(bypassPaymentValidation);
+            paymentTransaction.paymentValidationBypassReason = bypassPaymentValidation ? (paymentValidationBypassReason || null) : null;
+            paymentTransaction.confirmationText = bypassPaymentValidation
+                ? `I confirm to the booking amount received to be ₹${review.calculated.totalAmountReceived} when the calculated amount is ₹${review.calculated.expectedTotal}. Signed by ${req.user?.fullName || "Admin"} at ${moment().format("DD/MM/YYYY HH:mm:ss")}`
+                : (paymentTransaction.confirmationText || null);
             paymentTransaction.rawResponse = {
                 ...(paymentTransaction.rawResponse || {}),
                 manuallyCreated: true,
@@ -1719,17 +1762,7 @@ exports.confirmBookingPayment = async (req, res) => {
         const isCreatedBySuperAdmin = Number(booking.createdByRole) === 1;
         const waiveOffEnabled = Boolean(latestTransaction?.waiveCurrentMonthRent);
 
-        if (isActorSuperAdmin) {
-            booking.status = "draft_confirmed";
-            await markDraftBookingAsConfirmed(booking, transaction);
-        } else if (isActorPropertyAdmin) {
-            if (waiveOffEnabled) {
-                booking.status = "draft_submitted";
-            } else {
-                booking.status = "draft_confirmed";
-                await markDraftBookingAsConfirmed(booking, transaction);
-            }
-        } else if (isCreatedBySuperAdmin) {
+        if (isCreatedByPropertyAdmin || isCreatedBySuperAdmin) {
             booking.status = "draft_confirmed";
             await markDraftBookingAsConfirmed(booking, transaction);
         } else {
@@ -1743,14 +1776,8 @@ exports.confirmBookingPayment = async (req, res) => {
         await booking.save({ transaction });
         await transaction.commit();
 
-        const shouldNotifySuperAdminForWaiveOff =
-            isActorPropertyAdmin &&
-            waiveOffEnabled &&
-            previousStatus !== "draft_submitted" &&
-            booking.status === "draft_submitted";
-
-        if (shouldNotifySuperAdminForWaiveOff) {
-            await notifySuperAdminsForWaiveOffSubmission(booking, req.user);
+        if (waiveOffEnabled && isCreatedByPropertyAdmin) {
+            await notifySuperAdminsForWaiveOffSubmission(booking, req.user, latestTransaction?.waiveOffNote);
         }
 
         await logApiCall(req, res, 200, `Confirmed draft booking payment (Booking ID: ${booking.id})`, "Draft Booking", booking.id);
