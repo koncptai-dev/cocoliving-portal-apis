@@ -204,7 +204,7 @@ async function notifySuperAdminsForWaiveOffSubmission(booking, actorUser, waiveO
 function appendAdminAttribution(note, actorUser, actionLabel) {
     const adminName = actorUser?.fullName || "Admin";
     const timestamp = moment().format("DD/MM/YYYY HH:mm:ss");
-    const attribution = `ΓÇö ${actionLabel} by ${adminName} on ${timestamp}`;
+    const attribution = `— ${actionLabel} by ${adminName} on ${timestamp}`;
     return note ? `${note}\n\n${attribution}` : attribution;
 }
 
