@@ -201,6 +201,13 @@ async function notifySuperAdminsForWaiveOffSubmission(booking, actorUser, waiveO
     }
 }
 
+function appendAdminAttribution(note, actorUser, actionLabel) {
+    const adminName = actorUser?.fullName || "Admin";
+    const timestamp = moment().format("DD/MM/YYYY HH:mm:ss");
+    const attribution = `— ${actionLabel} by ${adminName} on ${timestamp}`;
+    return note ? `${note}\n\n${attribution}` : attribution;
+}
+
 function normalizeSecurityDepositType(type) {
     const normalized = String(type || "").trim().toUpperCase();
 
@@ -1380,6 +1387,12 @@ exports.getDraftBookingDetails = async (req, res) => {
             panCardNumber:
                 latestTransaction?.panCardNumber ??
                 reviewInputs.panCardNumber ??
+                null,
+            bypassPaymentValidation:
+                latestTransaction?.bypassPaymentValidation ??
+                false,
+            paymentValidationBypassReason:
+                latestTransaction?.paymentValidationBypassReason ??
                 null
         };
 
@@ -1438,6 +1451,8 @@ exports.getDraftBookingDetails = async (req, res) => {
                 amcCharges: Number(paymentFieldSource.amcChargesAmount || 0),
                 panCardNumber: paymentFieldSource.panCardNumber,
                 totalAmountReceived: Number(paymentFieldSource.totalAmountReceived || 0),
+                bypassPaymentValidation: Boolean(paymentFieldSource.bypassPaymentValidation),
+                paymentValidationBypassReason: paymentFieldSource.paymentValidationBypassReason || '',
                 totalCollected: Math.round(totalCollected),
                 latestTransaction: latestTransaction
                     ? {
@@ -1624,8 +1639,8 @@ exports.reviewBookingPayment = async (req, res) => {
                     invoiceStatus: "PENDING_ACCOUNTANT_APPROVAL",
                     invoiceNote: "Invoice is generated only after accountant approval"
                 },
-            confirmed: true,
-                waiveOffNote: review.inputs.waiveCurrentMonthRent ? (waiveOffNote || null) : null,
+                confirmed: true,
+                waiveOffNote: review.inputs.waiveCurrentMonthRent ? appendAdminAttribution(waiveOffNote, req.user, "Waived off") : null,
                 bypassPaymentValidation: Boolean(bypassPaymentValidation),
                 paymentValidationBypassReason: bypassPaymentValidation ? (paymentValidationBypassReason || null) : null,
                 confirmationText: bypassPaymentValidation
@@ -1648,7 +1663,7 @@ exports.reviewBookingPayment = async (req, res) => {
             paymentTransaction.mealSubscriptionDurationMonths = review.inputs.mealSubscriptionDurationMonths;
             paymentTransaction.amcChargesAmount = review.inputs.amcCharges;
             paymentTransaction.panCardNumber = review.inputs.panCardNumber;
-            paymentTransaction.waiveOffNote = review.inputs.waiveCurrentMonthRent ? (waiveOffNote || null) : null;
+            paymentTransaction.waiveOffNote = review.inputs.waiveCurrentMonthRent ? appendAdminAttribution(waiveOffNote, req.user, "Waived off") : null;
             paymentTransaction.bypassPaymentValidation = Boolean(bypassPaymentValidation);
             paymentTransaction.paymentValidationBypassReason = bypassPaymentValidation ? (paymentValidationBypassReason || null) : null;
             paymentTransaction.confirmationText = bypassPaymentValidation
