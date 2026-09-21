@@ -118,6 +118,23 @@ const DraftPaymentTransaction = sequelize.define(
     confirmed: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
+    },
+    waiveOffNote: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    bypassPaymentValidation: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    paymentValidationBypassReason: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    confirmationText: {
+      type: DataTypes.TEXT,
+      allowNull: true,
     }
   },
   {

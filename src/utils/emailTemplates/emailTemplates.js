@@ -1387,10 +1387,9 @@ ${FOOTER}
 `
   };
 }
-
-function waiveOffSubmittedAdminEmail({ bookingId, propertyId, submittedByName, submittedByEmail }) {
+function waiveOffSubmittedAdminEmail({ bookingId, propertyId, submittedByName, submittedByEmail, waiveOffNote, isDirectConfirmation }) {
   const normalizedBaseUrl = BASE_URL ? String(BASE_URL).replace(/\/$/, '') : '';
-  const reviewUrl = normalizedBaseUrl
+  const bookingUrl = normalizedBaseUrl
     ? `${normalizedBaseUrl}/admin/booking-review/${bookingId}`
     : `#`;
 
@@ -1427,32 +1426,32 @@ padding:28px 28px 90px;">
 <div style="background:#f3efe9;border-radius:80px 80px 0 0;padding:40px 24px 0;max-width:520px;margin:-60px auto 0;">
 
 <h1 style="margin:0 0 16px;font-size:32px;font-weight:700;">
-Waive-off Request Submitted
+Wave Off Applied
 </h1>
 
 <p style="font-size:15px;line-height:1.6;">
-A property admin has submitted a waive-off request for review.
+A property admin has waived off the current month rent for a booking. The booking has been <strong>automatically confirmed</strong> — no action is required from you.
 </p>
 
 <div style="background:#ffffff;padding:24px;border-radius:12px;margin:24px 0;text-align:left;font-size:15px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
 <strong>Draft Booking ID:</strong> ${bookingId}<br/>
 <strong>Property ID:</strong> ${propertyId || 'N/A'}<br/>
-<strong>Submitted By:</strong> ${submittedByName || 'Property Admin'}<br/>
-<strong>Submitted By Email:</strong> ${submittedByEmail || 'N/A'}
+<strong>Applied By:</strong> ${submittedByName || 'Property Admin'}<br/>
+<strong>Admin Email:</strong> ${submittedByEmail || 'N/A'}${waiveOffNote ? `<br/><br/><strong>Reason / Note:</strong><br/>${waiveOffNote}` : ''}
 </div>
 
 <p style="font-size:15px;margin:20px 0;">
-Please review this request from the admin panel.
+You can view the confirmed booking details in the admin panel.
 </p>
 
-<a href="${reviewUrl}"
+<a href="${bookingUrl}"
 style="display:inline-block;padding:14px 32px;background:#D36517;color:#fff;text-decoration:none;border-radius:24px;font-weight:600;">
-Review Waive-off Request
+View Booking
 </a>
 
 <p style="font-size:13px;line-height:1.6;margin:16px 0;color:#666;word-break:break-all;">
 If the button does not work, open this link:<br/>
-<a href="${reviewUrl}" style="color:#4F3421;">${reviewUrl}</a>
+<a href="${bookingUrl}" style="color:#4F3421;">${bookingUrl}</a>
 </p>
 
 </div>
