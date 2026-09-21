@@ -132,6 +132,7 @@ exports.getUserTransactions = async (req, res) => {
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
         invoicePdfPath: r.invoicePdfPath,
+        waiveCurrentMonthRent: r.waiveCurrentMonthRent,
         additionalDetails: r.additionalDetails === true,
         ...(r.additionalDetails === true && {
           advanceRent: r.advanceRentAmount,
