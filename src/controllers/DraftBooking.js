@@ -274,6 +274,8 @@ function calculateWaiveOffForRemainingDays(checkInDate, monthlyRent, waiveEnable
     };
 }
 
+exports.calculateWaiveOffForRemainingDays = calculateWaiveOffForRemainingDays;
+
 function calculateAdvanceRent(checkInDate, monthlyRent, advanceMonths) {
     if (!advanceMonths || advanceMonths <= 0) {
         return 0;
