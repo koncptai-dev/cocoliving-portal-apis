@@ -6,9 +6,9 @@ const { getOrderStatus } = require('../utils/phonepe/phonepeApi');
 const { Op } = require('sequelize');
 const { logApiCall } = require("../helpers/auditLog");
 const { calculateBookingFinancials, validateOfflinePaymentPayload } = require('../helpers/bookingEditUtils');
+const { calculateWaiveOffForRemainingDays } = require('./DraftBooking');
 const { buildBookingPaymentReview, normalizeBoolean, normalizeMealPlan } = require('../helpers/bookingPaymentReview');
 const { Property, Rooms } = require('../models');
-// const { generateAndSendInvoice } = require('../utils/invoiceService');
 const { generateAndSendAcknowledgementReceipt } = require('../utils/acknowledgementReceiptService');
 exports.checkOrderStatus = async (req, res) => {
   try {
@@ -107,10 +107,27 @@ exports.getUserTransactions = async (req, res) => {
       order: [['createdAt', 'DESC']],
       offset,
       limit,
+      include: [
+        {
+          model: Booking,
+          as: 'booking',
+          attributes: ['id', 'checkInDate', 'monthlyRent'],
+          required: false,
+        }
+      ],
     });
 
     const payments = rows.map((r) => {
       const amountPaise = Number(r.amount || 0);
+      let waivedAmount = 0;
+      if (r.waiveCurrentMonthRent) {
+        const waiveOff = calculateWaiveOffForRemainingDays(
+          r.booking?.checkInDate,
+          r.booking?.monthlyRent,
+          true
+        );
+        waivedAmount = waiveOff.amount;
+      }
       return {
         id: r.id,
         merchantOrderId: r.merchantOrderId,
@@ -132,7 +149,7 @@ exports.getUserTransactions = async (req, res) => {
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
         invoicePdfPath: r.invoicePdfPath,
-        waiveCurrentMonthRent: r.waiveCurrentMonthRent,
+        waiveCurrentMonthRent: waivedAmount,
         additionalDetails: r.additionalDetails === true,
         ...(r.additionalDetails === true && {
           advanceRent: r.advanceRentAmount,
