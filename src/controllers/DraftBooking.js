@@ -1356,6 +1356,10 @@ exports.getDraftBookingDetails = async (req, res) => {
                 latestTransaction?.waiveCurrentMonthRent ??
                 reviewInputs.waiveCurrentMonthRent ??
                 false,
+            waiveOffNote:
+                latestTransaction?.waiveOffNote ??
+                reviewInputs.waiveOffNote ??
+                null,
             securityDepositType:
                 latestTransaction?.securityDepositType ??
                 reviewInputs.securityDepositType ??
@@ -1442,6 +1446,7 @@ exports.getDraftBookingDetails = async (req, res) => {
                 bookingReference: `BKG-${String(booking.id).padStart(4, "0")}`,
                 rentReceived: Number(paymentFieldSource.rentAmount || 0),
                 waiveOff,
+                waiveOffNote: paymentFieldSource.waiveOffNote || '',
                 securityDepositType: paymentFieldSource.securityDepositType,
                 securityDepositAmount: Number(paymentFieldSource.securityDepositAmount || 0),
                 advanceRent: Number(paymentFieldSource.advanceRentAmount || 0),
