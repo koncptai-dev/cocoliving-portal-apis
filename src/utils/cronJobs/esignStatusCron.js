@@ -303,7 +303,7 @@ async function checkEsignStatus() {
   }
 }
 
-cron.schedule("*/5 * * * *", checkEsignStatus, {
+cron.schedule("0 */3 * * *", checkEsignStatus, {
   timezone: "Asia/Kolkata",
 });
 
