@@ -1,4 +1,5 @@
 const moment = require("moment");
+const momentTz = require("moment-timezone");
 const sequelize = require("../config/database");
 const { Op } = require("sequelize");
 const {
@@ -203,7 +204,7 @@ async function notifySuperAdminsForWaiveOffSubmission(booking, actorUser, waiveO
 
 function appendAdminAttribution(note, actorUser, actionLabel) {
     const adminName = actorUser?.fullName || "Admin";
-    const timestamp = moment().format("DD/MM/YYYY HH:mm:ss");
+    const timestamp = momentTz().tz("Asia/Kolkata").format("DD/MM/YYYY HH:mm:ss");
     const attribution = `— ${actionLabel} by ${adminName} on ${timestamp}`;
     return note ? `${note}\n\n${attribution}` : attribution;
 }
@@ -1651,7 +1652,7 @@ exports.reviewBookingPayment = async (req, res) => {
                 bypassPaymentValidation: Boolean(bypassPaymentValidation),
                 paymentValidationBypassReason: bypassPaymentValidation ? (paymentValidationBypassReason || null) : null,
                 confirmationText: bypassPaymentValidation
-                    ? `I confirm to the booking amount received to be ₹${review.calculated.totalAmountReceived} when the calculated amount is ₹${review.calculated.expectedTotal}. Signed by ${req.user?.fullName || "Admin"} at ${moment().format("DD/MM/YYYY HH:mm:ss")}`
+                    ? `I confirm to the booking amount received to be INR ${review.calculated.totalAmountReceived} when the calculated amount is INR ${review.calculated.expectedTotal}. Signed by ${req.user?.fullName || "Admin"} at ${momentTz().tz("Asia/Kolkata").format("DD/MM/YYYY HH:mm:ss")}`
                     : null
             }, { transaction });
         } else {
@@ -1674,7 +1675,7 @@ exports.reviewBookingPayment = async (req, res) => {
             paymentTransaction.bypassPaymentValidation = Boolean(bypassPaymentValidation);
             paymentTransaction.paymentValidationBypassReason = bypassPaymentValidation ? (paymentValidationBypassReason || null) : null;
             paymentTransaction.confirmationText = bypassPaymentValidation
-                ? `I confirm to the booking amount received to be ₹${review.calculated.totalAmountReceived} when the calculated amount is ₹${review.calculated.expectedTotal}. Signed by ${req.user?.fullName || "Admin"} at ${moment().format("DD/MM/YYYY HH:mm:ss")}`
+                ? `I confirm to the booking amount received to be INR ${review.calculated.totalAmountReceived} when the calculated amount is INR ${review.calculated.expectedTotal}. Signed by ${req.user?.fullName || "Admin"} at ${momentTz().tz("Asia/Kolkata").format("DD/MM/YYYY HH:mm:ss")}`
                 : (paymentTransaction.confirmationText || null);
             paymentTransaction.rawResponse = {
                 ...(paymentTransaction.rawResponse || {}),
