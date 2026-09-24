@@ -9,6 +9,7 @@ exports.getAuditLogs = async (req, res) => {
       page = 1,
       limit = 20,
       role,
+      type,
       startDate,
       endDate,
       sortBy = "date",
@@ -59,6 +60,17 @@ exports.getAuditLogs = async (req, res) => {
       order = [["createdAt", validSortOrder]];
     }
 
+    const userWhere = {};
+    if (type) {
+      if (type === "admin") {
+        userWhere.role = {
+          [Op.in]: [1, 3],
+        };
+      } else if (type === "user") {
+        userWhere.role = 2;
+      }
+    }
+
     const { count, rows: auditLogs } = await AuditLog.findAndCountAll({
       where,
       include: [
@@ -66,6 +78,7 @@ exports.getAuditLogs = async (req, res) => {
           model: User,
           as: "user",
           attributes: ["id", "fullName"],
+          where: userWhere,
         },
       ],
       order,
