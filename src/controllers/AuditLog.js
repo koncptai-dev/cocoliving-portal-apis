@@ -10,6 +10,7 @@ exports.getAuditLogs = async (req, res) => {
       limit = 20,
       role,
       type,
+      search,
       startDate,
       endDate,
       sortBy = "date",
@@ -68,6 +69,22 @@ exports.getAuditLogs = async (req, res) => {
         };
       } else if (type === "user") {
         userWhere.role = 2;
+      }
+    }
+
+    if (search && search.trim()) {
+      const searchTerm = `%${search.trim()}%`;
+
+      where[Op.or] = [
+        { description: { [Op.iLike]: searchTerm } },
+        { role: { [Op.iLike]: searchTerm } },
+        { "$user.fullName$": { [Op.iLike]: searchTerm } },
+      ];
+
+      if (!isNaN(Number(search))) {
+        where[Op.or].push({
+          userId: Number(search),
+        });
       }
     }
 
