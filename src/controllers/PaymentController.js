@@ -318,9 +318,16 @@ exports.getRefundInfo = async (req, res) => {
       },
     });
 
-    const paidPaise = tx.amount;
-    const refundedPaise = successfulRefunds || 0;
-    const maxRefundable = Math.max(paidPaise - refundedPaise, 0);
+    const paidPaise = Number(tx.amount || 0);
+    const refundedPaise = Number(successfulRefunds || 0);
+    const feePaise = Math.max(Math.round(Number(tx.rawResponse?.webhookPayload?.fee)) || 0, 0);
+    let maxRefundable = Math.max(paidPaise - refundedPaise - feePaise, 0);
+
+    if (String(tx.type || '').toUpperCase() === 'SECURITY_DEPOSIT' && tx.bookingId) {
+      const deductions = await DepositDeduction.findAll({ where: { bookingId: tx.bookingId } });
+      const deductionsPaise = deductions.reduce((s, d) => s + Math.round(Number(d.amount || 0) * 100), 0);
+      maxRefundable = Math.max(maxRefundable - deductionsPaise, 0);
+    }
 
     await logApiCall(req, res, 200, `Viewed refund info for transaction (ID: ${txId})`, "payment", parseInt(txId));
     return res.json({
@@ -329,7 +336,7 @@ exports.getRefundInfo = async (req, res) => {
       paidPaise,
       refundedPaise,
       maxRefundablePaise: maxRefundable,
-      maxRefundableRupees: Math.round(maxRefundable / 100),
+      maxRefundableRupees: Number((maxRefundable / 100).toFixed(2)),
     });
   } catch (err) {
     console.error('Refund Info Error:', err);
