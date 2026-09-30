@@ -14,10 +14,10 @@ router.get("/getAllUsers",authMiddleware,authorizeRole(1,3),authorizePage("User 
 router.get('/getNormalUsers', authMiddleware, authorizeRole(1,3), UserByAdminController.getNormalUsers);
 
 //for admin user
-router.post('/create-admin-user', authMiddleware, UserByAdminController.createAdminUser);
+router.post('/create-admin-user', authMiddleware, authorizeRole(1), UserByAdminController.createAdminUser);
 router.get("/getAlladminUsers",authMiddleware, UserByAdminController.getAllAdminUsers);
 router.get("/getAdminById/:id", authMiddleware, UserByAdminController.getAdminById);
-router.put("/admin/:id",authMiddleware,UserByAdminController.editAdminUser)
-router.put("/toggle-status/:id", authMiddleware, UserByAdminController.toggleAdminStatus);
+router.put("/admin/:id",authMiddleware, authorizeRole(1), UserByAdminController.editAdminUser)
+router.put("/toggle-status/:id", authMiddleware, authorizeRole(1), UserByAdminController.toggleAdminStatus);
 
 module.exports = router;
