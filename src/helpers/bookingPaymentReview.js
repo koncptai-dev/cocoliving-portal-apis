@@ -1,5 +1,6 @@
 const moment = require("moment");
 const UserKYC = require("../models/userKYC");
+const { getMealMonths } = require("./mealSubscriptionUtils");
 
 function toRupees(value) {
   if (value === undefined || value === null || value === "") return 0;
@@ -109,6 +110,7 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
     rentAmount,
     currentMonthRent,
     waiveCurrentMonthRent = false,
+    waiveFirstMonthMeal,
     securityDepositType,
     securityDepositAmount,
     securityDeposit,
@@ -150,6 +152,14 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
 
   if (!depositType) {
     errors.push("securityDepositType must be 1+1, 1+2 or DYNAMIC");
+  }
+
+  const normalizedWaiveFirstMonthMeal = normalizeBoolean(waiveFirstMonthMeal);
+
+  if (normalizedWaiveFirstMonthMeal === null) {
+    errors.push(
+      "waiveFirstMonthMeal must be true or false"
+    );
   }
 
   const received = toRupees(totalAmountReceived ?? totalAmountReceivedRent);
@@ -235,9 +245,6 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
     errors.push("advanceRentDurationMonths cannot exceed booking duration");
   }
 
-  if (mealMonths !== null && mealMonths > bookingDurationMonths) {
-    errors.push("mealSubscriptionDurationMonths cannot exceed booking duration");
-  }
 
   const expectedAdvanceRentAmount =
     advanceMonths === null
@@ -266,12 +273,31 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
   }
 
   if (normalizedBookingMealPlan !== "NONE" && !Boolean(booking.isRentIncludingMeals)) {
+    const availableMealMonths = getMealMonths(booking);
+
     if (mealMonths === null && Math.round(meal) > 0) {
-      errors.push("mealSubscriptionDurationMonths is required when mealSubscriptionAmount is greater than 0");
+      errors.push(
+        "mealSubscriptionDurationMonths is required when mealSubscriptionAmount is greater than 0"
+      );
     }
 
     if (mealMonths !== null) {
-      const expectedMealSubscriptionAmount = Math.round(configuredMealPerMonth * mealMonths);
+      if (mealMonths > availableMealMonths.length) {
+        errors.push(
+          `mealSubscriptionDurationMonths cannot exceed ${availableMealMonths.length} calendar month(s) for this booking`
+        );
+      }
+
+      const billableMealMonths = Math.max(
+        Number(mealMonths) -
+          (Boolean(normalizedWaiveFirstMonthMeal) ? 1 : 0),
+        0
+      );
+
+      const expectedMealSubscriptionAmount = Math.round(
+        configuredMealPerMonth * billableMealMonths
+      );
+
       if (Math.round(meal) !== expectedMealSubscriptionAmount) {
         errors.push(
           `mealSubscriptionAmount must be ${expectedMealSubscriptionAmount} for ${mealMonths} month(s) with ${normalizedBookingMealPlan}`
@@ -311,6 +337,7 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
         totalAmountReceived: Math.round(received),
         rentAmount: Math.round(rent),
         waiveCurrentMonthRent: Boolean(waiveOffRequested),
+        waiveFirstMonthMeal: Boolean(normalizedWaiveFirstMonthMeal),
         securityDepositType: depositType,
         securityDepositAmount: Math.round(security),
         advanceRent: Math.round(advance),
@@ -329,6 +356,7 @@ async function buildBookingPaymentReview(payload, booking, transaction = null) {
         mealSubscriptionDurationMonths: mealMonths,
         amcCharges: Math.round(amc),
         waiveOff: waiveOffDetails,
+        waiveFirstMonthMeal: Boolean(normalizedWaiveFirstMonthMeal),
         totalAmountReceived: Math.round(received),
         expectedTotal: computedTotal,
         difference: Math.round(received) - computedTotal,

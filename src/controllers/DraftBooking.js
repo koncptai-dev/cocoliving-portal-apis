@@ -18,6 +18,7 @@ const UserKYC = require("../models/userKYC");
 const { logApiCall } = require("../helpers/auditLog");
 const { sendEmail } = require("../utils/sendEmail");
 const { waiveOffSubmittedAdminEmail } = require("../utils/emailTemplates/emailTemplates");
+const { syncOfflineMealSubscription } = require("../helpers/mealSubscriptionUtils");
 
 async function getAccessiblePropertyIds(user) {
     if (!user) return [];
@@ -515,6 +516,7 @@ async function convertDraftBookingToRealRecords(draftBooking, draftPaymentTransa
         mealAmount: draftBooking.mealAmount,
         mealSubscriptionAmount: paymentTransaction.mealSubscriptionAmount,
         mealSubscriptionDurationMonths: paymentTransaction.mealSubscriptionDurationMonths,
+        waiveFirstMonthMeal: paymentTransaction.waiveFirstMonthMeal,
         amcChargesAmount: paymentTransaction.amcChargesAmount,
         panCardNumber: paymentTransaction.panCardNumber,
         createdByAdminId: paymentTransaction.createdByAdminId,
@@ -526,6 +528,17 @@ async function convertDraftBookingToRealRecords(draftBooking, draftPaymentTransa
             draftPaymentTransactionId: paymentTransaction.id
         }
     }, { transaction });
+
+    if (
+        realBooking &&
+        paymentTransaction.mealSubscriptionAmount > 0
+    ) {
+        await syncOfflineMealSubscription({
+            booking: realBooking,
+            paymentTransaction,
+            transaction,
+        });
+    }
 }
 
 function formatBookingOption(booking, currentUser = null, accessiblePropertyIds = null) {
@@ -564,6 +577,7 @@ async function buildBookingPaymentReview(payload, booking, transaction = null, b
         rentAmount,
         currentMonthRent,
         waiveCurrentMonthRent = false,
+        waiveFirstMonthMeal,
         securityDepositType,
         securityDepositAmount,
         securityDeposit,
@@ -589,6 +603,13 @@ async function buildBookingPaymentReview(payload, booking, transaction = null, b
 
     if (waiveOffRequested === null) {
         errors.push("waiveOff must be true or false");
+    }
+    const waiveFirstMonthMealRequested = normalizeBoolean(waiveFirstMonthMeal);
+
+    if (waiveFirstMonthMealRequested === null) {
+        errors.push(
+            "waiveFirstMonthMeal must be true or false"
+        );
     }
 
     const baseMonthlyRent = Math.round(Number(
@@ -730,7 +751,10 @@ async function buildBookingPaymentReview(payload, booking, transaction = null, b
         }
 
         if (mealMonths !== null) {
-            const expectedMealSubscriptionAmount = Math.round(configuredMealPerMonth * mealMonths);
+
+            const billableMealMonths = Math.max( Number(mealMonths) - (Boolean(waiveFirstMonthMealRequested) ? 1 : 0), 0 );
+            const expectedMealSubscriptionAmount = Math.round( configuredMealPerMonth * billableMealMonths );
+
             if (Math.round(meal) !== expectedMealSubscriptionAmount) {
                 errors.push(
                     `mealSubscriptionAmount must be ${expectedMealSubscriptionAmount} for ${mealMonths} month(s) with ${normalizedBookingMealPlan}`
@@ -779,7 +803,8 @@ async function buildBookingPaymentReview(payload, booking, transaction = null, b
                 mealSubscriptionAmount: Math.round(meal),
                 mealSubscriptionDurationMonths: mealMonths,
                 amcCharges: Math.round(amc),
-                panCardNumber: finalPanNumber || null
+                panCardNumber: finalPanNumber || null,
+                waiveFirstMonthMeal: Boolean(waiveFirstMonthMealRequested),
             },
             calculated: {
                 rentAmount: Math.round(rent),
@@ -796,7 +821,8 @@ async function buildBookingPaymentReview(payload, booking, transaction = null, b
                 validationBypassed: bypassAmountMismatch,
                 panRequired: false,
                 gstApplicableOnInvoice: received > 20000,
-                invoiceStatus: "PENDING_ACCOUNTANT_APPROVAL"
+                invoiceStatus: "PENDING_ACCOUNTANT_APPROVAL",
+                waiveFirstMonthMeal: Boolean(waiveFirstMonthMealRequested),
             }
         }
     };
@@ -1628,6 +1654,7 @@ exports.reviewBookingPayment = async (req, res) => {
                 totalAmountReceived: review.inputs.totalAmountReceived,
                 rentAmount: review.inputs.rentAmount,
                 waiveCurrentMonthRent: review.inputs.waiveCurrentMonthRent,
+                waiveFirstMonthMeal : review.inputs.waiveFirstMonthMeal,
                 securityDepositType: review.inputs.securityDepositType,
                 securityDepositAmount: review.inputs.securityDepositAmount,
                 advanceRentAmount: review.inputs.advanceRent,
@@ -1663,6 +1690,7 @@ exports.reviewBookingPayment = async (req, res) => {
             paymentTransaction.totalAmountReceived = review.inputs.totalAmountReceived;
             paymentTransaction.rentAmount = review.inputs.rentAmount;
             paymentTransaction.waiveCurrentMonthRent = review.inputs.waiveCurrentMonthRent;
+            paymentTransaction.waiveFirstMonthMeal = review.inputs.waiveFirstMonthMeal;
             paymentTransaction.securityDepositType = review.inputs.securityDepositType;
             paymentTransaction.securityDepositAmount = review.inputs.securityDepositAmount;
             paymentTransaction.advanceRentAmount = review.inputs.advanceRent;

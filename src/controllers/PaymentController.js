@@ -2,6 +2,7 @@ const sequelize = require('../config/database');
 const PaymentTransaction = require('../models/paymentTransaction');
 const Booking = require('../models/bookRoom');
 const User = require('../models/user');
+const DepositDeduction = require('../models/depositDeduction');
 const {
   fetchOrder,
   fetchPayment,
@@ -13,6 +14,7 @@ const { calculateWaiveOffForRemainingDays } = require('./DraftBooking');
 const { buildBookingPaymentReview, normalizeBoolean, normalizeMealPlan } = require('../helpers/bookingPaymentReview');
 const { Property, Rooms } = require('../models');
 const { generateAndSendAcknowledgementReceipt } = require('../utils/acknowledgementReceiptService');
+const { syncOfflineMealSubscription } = require("../helpers/mealSubscriptionUtils");
 
 exports.checkOrderStatus = async (req, res) => {
   try {
@@ -313,7 +315,7 @@ exports.getRefundInfo = async (req, res) => {
     const successfulRefunds = await PaymentTransaction.sum('amount', {
       where: {
         originalMerchantOrderId: originalOrderId,
-        status: 'SUCCESS',
+        status: { [Op.in]: ['SUCCESS','PENDING'] },
         type: 'REFUND',
       },
     });
@@ -630,6 +632,19 @@ exports.createInitialOfflinePayment = async (req, res) => {
         review
       });
     }
+    
+    if (
+      review.inputs.waiveFirstMonthMeal &&
+      review.inputs.mealSubscriptionDurationMonths < 1
+    ) {
+      await transaction.rollback();
+
+      return res.status(400).json({
+        success: false,
+        message:
+          "waiveFirstMonthMeal requires at least 1 meal subscription month",
+      });
+    }
 
     const amountReceived = review.calculated.totalAmountReceived;
     const amountPaise = Math.round(amountReceived * 100);
@@ -656,6 +671,7 @@ exports.createInitialOfflinePayment = async (req, res) => {
 
       totalAmountReceived: review.inputs.totalAmountReceived,
       waiveCurrentMonthRent: review.inputs.waiveCurrentMonthRent,
+      waiveFirstMonthMeal: review.inputs.waiveFirstMonthMeal,
       securityDepositType: review.inputs.securityDepositType,
       securityDepositAmount: review.inputs.securityDepositAmount,
       advanceRentAmount: review.inputs.advanceRent,
@@ -678,6 +694,14 @@ exports.createInitialOfflinePayment = async (req, res) => {
         flow: 'initial-offline-payment'
       }
     }, { transaction });
+    
+    if ( paymentTransaction.mealSubscriptionAmount > 0 ) {
+      await syncOfflineMealSubscription({
+        booking,
+        paymentTransaction,
+        transaction,
+      });
+    }
 
     await generateAndSendAcknowledgementReceipt(paymentTransaction);
 

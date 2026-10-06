@@ -20,6 +20,10 @@ const { mailsender } = require('../utils/emailService');
 const {
   generateAndSendAcknowledgementReceipt,
 } = require('../utils/acknowledgementReceiptService');
+const {
+  syncOfflineMealSubscription,
+  applyRefundToMealSubscription,
+} = require("../helpers/mealSubscriptionUtils");
 
 function parseRoot(req) {
   const rawBody =
@@ -148,9 +152,19 @@ async function sendAcknowledgementReceiptIfNeeded(tx) {
 async function recomputeBookingTotals(booking, t = null) {
   const rows = await sequelize.query(
     `SELECT
-       COALESCE(SUM(CASE WHEN type != 'REFUND' AND status = 'SUCCESS' THEN amount + COALESCE("discountAmount", 0) * 100 ELSE 0 END), 0) as paid
-     FROM payment_transactions
-     WHERE "bookingId" = :bookingId`,
+      COALESCE(
+        SUM(
+          CASE
+            WHEN type NOT IN ('REFUND', 'MEAL_SUBSCRIPTION')
+              AND status = 'SUCCESS'
+            THEN amount + COALESCE("discountAmount", 0) * 100
+            ELSE 0
+          END
+        ),
+        0
+      ) AS paid
+    FROM payment_transactions
+    WHERE "bookingId" = :bookingId`,
     {
       replacements: { bookingId: booking.id },
       type: sequelize.QueryTypes.SELECT,
@@ -296,6 +310,16 @@ async function handleRefund(root) {
             originalOrderId,
         },
       });
+
+    if (
+      refundTx.status === "SUCCESS" &&
+      origTx?.type === "MEAL_SUBSCRIPTION"
+    ) {
+      await applyRefundToMealSubscription({
+        originalTransaction: origTx,
+        refundAmountPaise: refundTx.amount,
+      });
+    }
 
     const bookingId =
       origTx?.bookingId ||
@@ -514,6 +538,45 @@ async function handleOrderSuccess(
       await tx.save({
         transaction: t,
       });
+
+      if (tx.type === "MEAL_SUBSCRIPTION") {
+        if (!tx.bookingId) {
+          console.warn(
+            "[WEBHOOK][MEAL] Missing bookingId",
+            tx.id
+          );
+          return;
+        }
+
+        const booking = await Booking.findByPk(
+          tx.bookingId,
+          {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          }
+        );
+
+        if (!booking) {
+          console.warn(
+            "[WEBHOOK][MEAL] Booking not found",
+            {
+              txId: tx.id,
+              bookingId: tx.bookingId,
+            }
+          );
+          return;
+        }
+
+        await syncOfflineMealSubscription({
+          booking,
+          paymentTransaction: tx,
+          transaction: t,
+        });
+
+        await sendAcknowledgementReceiptIfNeeded(tx);
+
+        return;
+      }
 
       if (tx.type === 'EXTENSION') {
         const extensionData =
