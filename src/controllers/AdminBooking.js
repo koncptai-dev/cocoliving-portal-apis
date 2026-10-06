@@ -22,6 +22,8 @@ const BookingOnboarding = require("../models/bookingOnboarding");
 const DepositDeduction = require('../models/depositDeduction');
 const RoomTransfer = require('../models/roomTransfer');
 const { calculateBookingFinancials } = require('../helpers/bookingEditUtils');
+const { getMealMonths } = require("../helpers/mealSubscriptionUtils");
+const MealSubscription = require("../models/mealSubscription");
 
 const buildErrorPayload = (err, fallbackMessage = "Internal server error") => ({
   message: err?.message || fallbackMessage,
@@ -1415,6 +1417,26 @@ exports.editOfflineBooking = async (req, res) => {
     booking.remainingAmount = financials.remainingAmount;
     await booking.save({ transaction: t });
 
+    const validMealMonths = new Set(
+      getMealMonths(booking)
+    );
+
+    const mealRows = await MealSubscription.findAll({
+      where: {
+        bookingId: booking.id,
+        status: "PENDING",
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    for (const mealRow of mealRows) {
+      if (!validMealMonths.has(mealRow.billingMonth)) {
+        mealRow.status = "CANCELLED";
+        await mealRow.save({ transaction: t });
+      }
+    }
+
     await t.commit();
     committed = true;
 
@@ -1540,6 +1562,25 @@ exports.updateOfflineBookingDuration = async (req, res) => {
         ? "PARTIAL"
         : "INITIATED";
     await booking.save({ transaction: t });
+
+    const validMealMonths = new Set( getMealMonths(booking) );
+
+    const pendingMealRows =
+      await MealSubscription.findAll({
+        where: {
+          bookingId: booking.id,
+          status: "PENDING",
+        },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+    for (const row of pendingMealRows) {
+      if (!validMealMonths.has(row.billingMonth)) {
+        row.status = "CANCELLED";
+        await row.save({ transaction: t });
+      }
+    }
 
     await t.commit();
     committed = true;

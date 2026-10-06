@@ -19,7 +19,14 @@ const BookingExtension = require('../models/bookingExtension');
 const UserKYC = require('../models/userKYC');
 const Coupon = require('../models/coupon');
 const DepositDeduction = require('../models/depositDeduction');
+const MealSubscription = require("../models/mealSubscription");
 
+const {
+  getMealMonths,
+  getPayableMealMonths,
+  getMealRate,
+  getMealSubscriptionCoverage,
+} = require("../helpers/mealSubscriptionUtils");
 const { initiateRecharge } = require('../utils/aliste/alisteApi');
 const { logApiCall } = require("../helpers/auditLog");
 
@@ -1239,7 +1246,7 @@ exports.initiateRefund = async (req, res) => {
     for (const r of allRefundTxs) {
       const rr = r.rawResponse || {};
       if (rr && rr.originalMerchantOrderId === origMerchantOrderId) {
-        if (r.status === 'SUCCESS') refundedPaiseSoFar += Number(r.amount || 0);
+        if (r.status === 'SUCCESS'|| r.status === 'PENDING') refundedPaiseSoFar += Number(r.amount || 0);
       }
     }
 
@@ -1306,14 +1313,21 @@ exports.initiateRefund = async (req, res) => {
     draftRefund.rawResponse = Object.assign({}, draftRefund.rawResponse || {}, { originalMerchantOrderId: origMerchantOrderId, merchantRefundId: finalMerchantRefundId });
     await draftRefund.save();
 
-    const refundResp = await createRefund(
-      originalTx.providerPaymentId,
-      reqAmountPaise,
-      {
-        originalMerchantOrderId: origMerchantOrderId,
-        merchantRefundId: finalMerchantRefundId,
+    let refundResp;
+      try {
+        refundResp = await createRefund(
+          originalTx.providerPaymentId,
+          reqAmountPaise,
+          { originalMerchantOrderId: origMerchantOrderId, merchantRefundId: finalMerchantRefundId }
+        );
+      } catch (rzpErr) {
+        draftRefund.status = 'FAILED';
+        draftRefund.rawResponse = Object.assign({}, draftRefund.rawResponse || {}, {
+          razorpayError: rzpErr?.error || rzpErr?.message || String(rzpErr),
+        });
+        await draftRefund.save();
+        throw rzpErr;
       }
-    );
 
     draftRefund.provider = 'RAZORPAY';
     draftRefund.providerRefundId = refundResp.id;
@@ -1333,31 +1347,27 @@ exports.initiateRefund = async (req, res) => {
         : 'PENDING';
 
     await draftRefund.save();
-    const user = await User.findByPk(originalTx.userId);
-    let propertyName = '-';
-
-    if (originalTx.bookingId) {
-      const booking = await Booking.findByPk(originalTx.bookingId);
-      if (booking?.propertyId) {
-        const property = await Property.findByPk(booking.propertyId);
-        propertyName = property?.name || '-';
+    try {
+      const user = await User.findByPk(originalTx.userId);
+      let propertyName = '-';
+      if (originalTx.bookingId) {
+        const booking = await Booking.findByPk(originalTx.bookingId);
+        if (booking?.propertyId) {
+          const property = await Property.findByPk(booking.propertyId);
+          propertyName = property?.name || '-';
+        }
       }
+      const email = refundInitiatedEmail({
+        userName: user?.fullName || 'Guest',
+        bookingId: originalTx.bookingId,
+        propertyName,
+        refundAmount: amountRupees,
+        reason: reason.trim()
+      });
+      await mailsender(user.email, 'Refund Initiated - Coco Living', email.html, email.attachments);
+    } catch (mailErr) {
+      console.error('[refund] email failed (refund already created):', mailErr.message);
     }
-
-    const email = refundInitiatedEmail({
-      userName: user.fullName || 'Guest',
-      bookingId: originalTx.bookingId,
-      propertyName,
-      refundAmount: amountRupees,
-      reason: reason.trim()
-    });
-
-    await mailsender(
-      user.email,
-      'Refund Initiated - Coco Living',
-      email.html,
-      email.attachments
-    );
 
     await logApiCall(req, res, 200, `Initiated refund (Refund ID: ${draftRefund.id}, Transaction ID: ${transactionId}, Amount: ₹${amountRupees})`, "payment", actorId);
     return res.json({ success: true, message: 'Refund initiated', refundTransaction: draftRefund });
@@ -1466,7 +1476,7 @@ exports.getBookingPaymentSummary = async (req, res) => {
     });
 
     const totalPaidPaise = transactions
-      .filter(t => t.status === 'SUCCESS' && t.type !== 'REFUND')
+      .filter(t => t.status === 'SUCCESS' && t.type !== 'REFUND' && t.type !== 'MEAL_SUBSCRIPTION')
       .reduce((s, t) => s + Number(t.amount || 0), 0);
 
     const netPaidPaise = totalPaidPaise;
@@ -1793,6 +1803,268 @@ exports.initiateElectricityRecharge = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message,
+    });
+  }
+};
+
+exports.initiateMealSubscription = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { bookingId, months } = req.body;
+
+    if (!userId || !bookingId) {
+      return res.status(400).json({
+        success: false,
+        message: "bookingId is required",
+      });
+    }
+
+    const requestedMonths = Number(months);
+
+    if (
+      !Number.isInteger(requestedMonths) ||
+      requestedMonths <= 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "months must be a positive integer",
+      });
+    }
+
+    const booking = await Booking.findByPk(bookingId);
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found",
+      });
+    }
+
+    if (Number(booking.userId) !== Number(userId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized booking access",
+      });
+    }
+
+    if (
+      booking.status !== "approved" &&
+      booking.status !== "active"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Meal subscription is available only for approved/active bookings",
+      });
+    }
+
+    if (
+      booking.isRentIncludingMeals ||
+      !booking.mealPlan ||
+      booking.mealPlan === "NONE"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Meal subscription is not enabled for this booking",
+      });
+    }
+
+    const payableMonths = getPayableMealMonths(booking);
+
+    const existingRows = await getMealSubscriptionCoverage(booking.id);
+
+    const alreadyPaidMonths = existingRows
+      .filter(
+        (row) =>
+          row.status === "PAID" ||
+          row.status === "PARTIALLY_REFUNDED"
+      )
+      .map((row) => row.billingMonth);
+
+    const unpaidPayableMonths = payableMonths.filter(
+      (month) => !alreadyPaidMonths.includes(month)
+    );
+
+    if (requestedMonths > unpaidPayableMonths.length) {
+      return res.status(400).json({
+        success: false,
+        message: `Only ${unpaidPayableMonths.length} unpaid meal subscription month(s) are available`,
+      });
+    }
+
+    const monthsToPay = unpaidPayableMonths.slice(
+      0,
+      requestedMonths
+    );
+
+    if (monthsToPay.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No unpaid meal subscription months available",
+      });
+    }
+
+    const amountRupees =
+      monthlyRate * monthsToPay.length;
+
+    const amountPaise =
+      Math.round(amountRupees * 100);
+
+    const tx = await PaymentTransaction.create({
+      userId,
+      bookingId,
+      amount: amountPaise,
+      type: "MEAL_SUBSCRIPTION",
+      status: "PENDING",
+      paymentMode: "ONLINE",
+      merchantOrderId: `MEAL-TMP-${Date.now()}`,
+      mealSubscriptionAmount: amountRupees,
+      mealSubscriptionDurationMonths:
+        monthsToPay.length,
+      meta: {
+        billingMonths: monthsToPay,
+        monthlyRate,
+        mealPlan: booking.mealPlan,
+      },
+    });
+
+    tx.merchantOrderId = `MEAL-${tx.id}`;
+
+    await tx.save();
+
+    const order =
+      await createRazorpayOrderForTransaction({
+        transaction: tx,
+        userId,
+        metadata: {
+          bookingId: String(booking.id),
+          billingMonths: monthsToPay.join(","),
+          mealPlan: booking.mealPlan,
+          client: "mobile-app",
+        },
+      });
+
+    return res.json({
+      success: true,
+      merchantOrderId: tx.merchantOrderId,
+      transactionId: tx.id,
+      razorpay: {
+        orderId: order.id,
+        amount: order.amount,
+        currency: order.currency,
+        paymentMode: "SDK",
+      },
+      billingMonths: monthsToPay,
+      monthlyRate,
+      amountRupees,
+    });
+  } catch (err) {
+    console.error(
+      "[MEAL_SUBSCRIPTION] initiate error",
+      err
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Server error",
+    });
+  }
+};
+exports.getMealSubscription = async (req, res) => {
+  try {
+    const bookingId = req.params.bookingId;
+    const userId = req.user?.id;
+    const role = Number(req.user?.role);
+
+    if (!bookingId) {
+      return res.status(400).json({
+        success: false,
+        message: "bookingId is required",
+      });
+    }
+
+    const booking = await Booking.findByPk(bookingId, {
+      attributes: [
+        "id",
+        "userId",
+        "propertyId",
+        "checkInDate",
+        "checkOutDate",
+        "duration",
+        "mealPlan",
+        "isRentIncludingMeals",
+        "bookingSource",
+        "status",
+      ],
+    });
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found",
+      });
+    }
+
+    // Users can only access their own booking.
+    // Admin roles can access any booking.
+    if (
+      role === 2 &&
+      Number(booking.userId) !== Number(userId)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized booking access",
+      });
+    }
+
+    const subscriptions = await MealSubscription.findAll({
+      where: {
+        bookingId: booking.id,
+      },
+      order: [
+        ["billingMonth", "ASC"],
+        ["createdAt", "ASC"],
+      ],
+    });
+
+    const property = await Property.findByPk(booking.propertyId, {
+      attributes: [
+        "id",
+        "name",
+        "mealSubscriptionAmountTwoTimes",
+        "mealSubscriptionAmountFourTimes",
+      ],
+    });
+
+    const monthlyRate = getMealRate(
+      property,
+      booking.mealPlan
+    );
+
+    return res.json({
+      success: true,
+      booking: {
+        id: booking.id,
+        userId: booking.userId,
+        propertyId: booking.propertyId,
+        checkInDate: booking.checkInDate,
+        checkOutDate: booking.checkOutDate,
+        duration: booking.duration,
+        mealPlan: booking.mealPlan,
+        isRentIncludingMeals: booking.isRentIncludingMeals,
+        bookingSource: booking.bookingSource,
+        status: booking.status,
+      },
+      meal: {
+        monthlyRate,
+        subscriptions,
+      },
+    });
+  } catch (err) {
+    console.error("[MEAL_SUBSCRIPTION] get error:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Server error",
     });
   }
 };

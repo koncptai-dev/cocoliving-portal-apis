@@ -37,6 +37,7 @@ const DepositDeduction = require("./depositDeduction");
 const RoomTransfer = require("./roomTransfer");
 const DraftBooking = require("./draftBooking");
 const DraftPaymentTransaction = require("./draftPaymentTransaction");
+const MealSubscription = require("./mealSubscription");
 
 User.hasOne(UserKYC, {
   foreignKey: "userId",
@@ -282,6 +283,26 @@ GuestVisit.belongsTo(Booking, { foreignKey: "bookingId", as: "booking" });
 Rooms.hasMany(GuestVisit, { foreignKey: "roomId", as: "roomGuestVisits", onDelete: "CASCADE" });
 GuestVisit.belongsTo(Rooms, { foreignKey: "roomId", as: "room" });
 
+Booking.hasMany(MealSubscription, {
+  foreignKey: "bookingId",
+  as: "mealSubscriptions",
+});
+
+MealSubscription.belongsTo(Booking, {
+  foreignKey: "bookingId",
+  as: "booking",
+});
+
+MealSubscription.belongsTo(PaymentTransaction, {
+  foreignKey: "paymentTransactionId",
+  as: "paymentTransaction",
+});
+
+PaymentTransaction.hasOne(MealSubscription, {
+  foreignKey: "paymentTransactionId",
+  as: "mealSubscription",
+});
+
 module.exports = {
   sequelize,
   SupportTicket,
@@ -319,5 +340,6 @@ module.exports = {
   DepositDeduction,
   RoomTransfer,
   DraftBooking,
-  DraftPaymentTransaction
+  DraftPaymentTransaction,
+  MealSubscription,
 }

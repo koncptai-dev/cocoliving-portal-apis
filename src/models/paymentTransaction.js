@@ -61,7 +61,7 @@ const PaymentTransaction = sequelize.define(
       comment: 'Amount in paise (integer)',
     },
     type: {
-      type: DataTypes.ENUM('INITIAL', 'PREBOOK', 'FULL', 'REMAINING','SECURITY_DEPOSIT','MONTHLY_RENT', 'REFUND', 'EXTENSION', 'BOOK_DEPOSIT','OFFLINE', 'ELECTRICITY_RECHARGE'),
+      type: DataTypes.ENUM('INITIAL', 'PREBOOK', 'FULL', 'REMAINING','SECURITY_DEPOSIT','MONTHLY_RENT', 'REFUND', 'EXTENSION', 'BOOK_DEPOSIT','OFFLINE', 'ELECTRICITY_RECHARGE','MEAL_SUBSCRIPTION'),
       allowNull: false,
     },
     status: {
@@ -114,6 +114,10 @@ const PaymentTransaction = sequelize.define(
     waiveCurrentMonthRent: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
+      defaultValue: false,
+    },
+    waiveFirstMonthMeal: {
+      type: DataTypes.BOOLEAN,
       defaultValue: false,
     },
     waiveOffNote: {

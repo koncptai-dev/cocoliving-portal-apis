@@ -31,4 +31,6 @@ router.post('/initiate-extension',authenticateToken,parentNotAllowed,authorizeRo
 
 router.post('/initiate-electricity-recharge', authenticateToken, BookingPaymentController.initiateElectricityRecharge );
 
+router.post( '/initiate-meal-recharge',authenticateToken,parentNotAllowed,authorizeRole(2),BookingPaymentController.initiateMealSubscription );
+
 module.exports = router;
