@@ -22,13 +22,21 @@ const DepositDeduction = require('../models/depositDeduction');
 const MealSubscription = require("../models/mealSubscription");
 
 const {
-  getMealMonths,
   getPayableMealMonths,
   getMealRate,
-  getMealSubscriptionCoverage,
+  getMealCoverage,
+  VALID_MEAL_PLANS,
+  COUNTED_STATUSES,
 } = require("../helpers/mealSubscriptionUtils");
+
 const { initiateRecharge } = require('../utils/aliste/alisteApi');
 const { logApiCall } = require("../helpers/auditLog");
+class MealHttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
 
 function canonicalizeMetadata(metadata) {
   if (!metadata || typeof metadata !== 'object') return '{}';
@@ -1810,139 +1818,147 @@ exports.initiateElectricityRecharge = async (req, res) => {
 exports.initiateMealSubscription = async (req, res) => {
   try {
     const userId = req.user?.id;
-    const { bookingId, months } = req.body;
-
+    const { bookingId, months, mealPlan } = req.body;
+ 
     if (!userId || !bookingId) {
-      return res.status(400).json({
-        success: false,
-        message: "bookingId is required",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "bookingId is required" });
     }
-
+ 
     const requestedMonths = Number(months);
-
-    if (
-      !Number.isInteger(requestedMonths) ||
-      requestedMonths <= 0
-    ) {
+    if (!Number.isInteger(requestedMonths) || requestedMonths <= 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: "months must be a positive integer" });
+    }
+ 
+    if (!VALID_MEAL_PLANS.includes(mealPlan)) {
       return res.status(400).json({
         success: false,
-        message: "months must be a positive integer",
+        message: "Please select a 2 times or 4 times meal plan",
       });
     }
 
-    const booking = await Booking.findByPk(bookingId);
+    const { tx, monthsToPay, monthlyRate, amountRupees, booking } =
+      await Booking.sequelize.transaction(async (t) => {
+        const booking = await Booking.findByPk(bookingId, {
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+ 
+        if (!booking) throw new MealHttpError(404, "Booking not found");
+ 
+        if (Number(booking.userId) !== Number(userId)) {
+          throw new MealHttpError(403, "Unauthorized booking access");
+        }
+ 
+        if (booking.status !== "approved" && booking.status !== "active") {
+          throw new MealHttpError(
+            400,
+            "Meal subscription is available only for approved/active bookings"
+          );
+        }
 
-    if (!booking) {
-      return res.status(404).json({
-        success: false,
-        message: "Booking not found",
+        if (booking.bookingSource !== "OFFLINE" || booking.isRentIncludingMeals) {
+          throw new MealHttpError(
+            400,
+            "Your meal subscription is included in your monthly rent"
+          );
+        }
+ 
+        const property = await Property.findByPk(booking.propertyId, {
+          attributes: [
+            "id",
+            "mealSubscriptionAmountTwoTimes",
+            "mealSubscriptionAmountFourTimes",
+          ],
+          transaction: t,
+        });
+ 
+        const monthlyRate = getMealRate(property, mealPlan);
+        if (!monthlyRate || monthlyRate <= 0) {
+          throw new MealHttpError(400, "Meal rate is not configured for this plan");
+        }
+        await PaymentTransaction.update(
+          { status: "FAILED" },
+          {
+            where: {
+              bookingId: booking.id,
+              userId,
+              type: "MEAL_SUBSCRIPTION",
+              status: "PENDING",
+            },
+            transaction: t,
+          }
+        );
+ 
+        const payableMonths = getPayableMealMonths(booking);
+        const { paidMonthToRow } = await getMealCoverage(booking.id, t);
+ 
+        const unpaidPayableMonths = payableMonths.filter(
+          (m) => !paidMonthToRow.has(m)
+        );
+ 
+        if (unpaidPayableMonths.length === 0) {
+          throw new MealHttpError(400, "No unpaid meal subscription months available");
+        }
+ 
+        if (requestedMonths > unpaidPayableMonths.length) {
+          throw new MealHttpError(
+            400,
+            `Only ${unpaidPayableMonths.length} unpaid meal subscription month(s) are available`
+          );
+        }
+        const monthsToPay = unpaidPayableMonths.slice(0, requestedMonths);
+        const amountRupees = monthlyRate * monthsToPay.length;
+ 
+        const tx = await PaymentTransaction.create(
+          {
+            userId,
+            bookingId: booking.id,
+            amount: Math.round(amountRupees * 100),
+            type: "MEAL_SUBSCRIPTION",
+            status: "PENDING",
+            paymentMode: "ONLINE",
+            merchantOrderId: `MEAL-TMP-${Date.now()}`,
+            mealSubscriptionAmount: amountRupees,
+            mealSubscriptionDurationMonths: monthsToPay.length,
+            meta: {
+              billingMonths: monthsToPay,
+              monthlyRate,
+              mealPlan,
+            },
+          },
+          { transaction: t }
+        );
+ 
+        tx.merchantOrderId = `MEAL-${tx.id}`;
+        await tx.save({ transaction: t });
+ 
+        return { tx, monthsToPay, monthlyRate, amountRupees, booking };
       });
-    }
-
-    if (Number(booking.userId) !== Number(userId)) {
-      return res.status(403).json({
-        success: false,
-        message: "Unauthorized booking access",
-      });
-    }
-
-    if (
-      booking.status !== "approved" &&
-      booking.status !== "active"
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Meal subscription is available only for approved/active bookings",
-      });
-    }
-
-    if (
-      booking.isRentIncludingMeals ||
-      !booking.mealPlan ||
-      booking.mealPlan === "NONE"
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Meal subscription is not enabled for this booking",
-      });
-    }
-
-    const payableMonths = getPayableMealMonths(booking);
-
-    const existingRows = await getMealSubscriptionCoverage(booking.id);
-
-    const alreadyPaidMonths = existingRows
-      .filter(
-        (row) =>
-          row.status === "PAID" ||
-          row.status === "PARTIALLY_REFUNDED"
-      )
-      .map((row) => row.billingMonth);
-
-    const unpaidPayableMonths = payableMonths.filter(
-      (month) => !alreadyPaidMonths.includes(month)
-    );
-
-    if (requestedMonths > unpaidPayableMonths.length) {
-      return res.status(400).json({
-        success: false,
-        message: `Only ${unpaidPayableMonths.length} unpaid meal subscription month(s) are available`,
-      });
-    }
-
-    const monthsToPay = unpaidPayableMonths.slice(
-      0,
-      requestedMonths
-    );
-
-    if (monthsToPay.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "No unpaid meal subscription months available",
-      });
-    }
-
-    const amountRupees =
-      monthlyRate * monthsToPay.length;
-
-    const amountPaise =
-      Math.round(amountRupees * 100);
-
-    const tx = await PaymentTransaction.create({
-      userId,
-      bookingId,
-      amount: amountPaise,
-      type: "MEAL_SUBSCRIPTION",
-      status: "PENDING",
-      paymentMode: "ONLINE",
-      merchantOrderId: `MEAL-TMP-${Date.now()}`,
-      mealSubscriptionAmount: amountRupees,
-      mealSubscriptionDurationMonths:
-        monthsToPay.length,
-      meta: {
-        billingMonths: monthsToPay,
-        monthlyRate,
-        mealPlan: booking.mealPlan,
-      },
-    });
-
-    tx.merchantOrderId = `MEAL-${tx.id}`;
-
-    await tx.save();
-
-    const order =
-      await createRazorpayOrderForTransaction({
+ 
+    let order;
+    try {
+      order = await createRazorpayOrderForTransaction({
         transaction: tx,
         userId,
         metadata: {
           bookingId: String(booking.id),
           billingMonths: monthsToPay.join(","),
-          mealPlan: booking.mealPlan,
+          mealPlan,
           client: "mobile-app",
         },
       });
-
+    } catch (orderErr) {
+      await PaymentTransaction.update(
+        { status: "FAILED" },
+        { where: { id: tx.id } }
+      );
+      throw orderErr;
+    }
+ 
     return res.json({
       success: true,
       merchantOrderId: tx.merchantOrderId,
@@ -1953,20 +1969,20 @@ exports.initiateMealSubscription = async (req, res) => {
         currency: order.currency,
         paymentMode: "SDK",
       },
+      mealPlan,
       billingMonths: monthsToPay,
+      monthsCount: monthsToPay.length,
       monthlyRate,
       amountRupees,
     });
   } catch (err) {
-    console.error(
-      "[MEAL_SUBSCRIPTION] initiate error",
-      err
-    );
-
-    return res.status(500).json({
-      success: false,
-      message: err.message || "Server error",
-    });
+    if (err instanceof MealHttpError) {
+      return res.status(err.status).json({ success: false, message: err.message });
+    }
+    console.error("[MEAL_SUBSCRIPTION] initiate error", err);
+    return res
+      .status(500)
+      .json({ success: false, message: err.message || "Server error" });
   }
 };
 exports.getMealSubscription = async (req, res) => {
@@ -1974,14 +1990,13 @@ exports.getMealSubscription = async (req, res) => {
     const bookingId = req.params.bookingId;
     const userId = req.user?.id;
     const role = Number(req.user?.role);
-
+ 
     if (!bookingId) {
-      return res.status(400).json({
-        success: false,
-        message: "bookingId is required",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "bookingId is required" });
     }
-
+ 
     const booking = await Booking.findByPk(bookingId, {
       attributes: [
         "id",
@@ -1996,36 +2011,27 @@ exports.getMealSubscription = async (req, res) => {
         "status",
       ],
     });
-
+ 
     if (!booking) {
-      return res.status(404).json({
-        success: false,
-        message: "Booking not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Booking not found" });
     }
-
-    // Users can only access their own booking.
-    // Admin roles can access any booking.
-    if (
-      role === 2 &&
-      Number(booking.userId) !== Number(userId)
-    ) {
-      return res.status(403).json({
-        success: false,
-        message: "Unauthorized booking access",
-      });
+ 
+    if (role === 2 && Number(booking.userId) !== Number(userId)) {
+      return res
+        .status(403)
+        .json({ success: false, message: "Unauthorized booking access" });
     }
-
+ 
     const subscriptions = await MealSubscription.findAll({
-      where: {
-        bookingId: booking.id,
-      },
+      where: { bookingId: booking.id },
       order: [
-        ["billingMonth", "ASC"],
+        ["startMonth", "ASC"],
         ["createdAt", "ASC"],
       ],
     });
-
+ 
     const property = await Property.findByPk(booking.propertyId, {
       attributes: [
         "id",
@@ -2034,12 +2040,42 @@ exports.getMealSubscription = async (req, res) => {
         "mealSubscriptionAmountFourTimes",
       ],
     });
-
-    const monthlyRate = getMealRate(
-      property,
-      booking.mealPlan
-    );
-
+ 
+    const rates = {
+      "2_TIMES": getMealRate(property, "2_TIMES"),
+      "4_TIMES": getMealRate(property, "4_TIMES"),
+    };
+ 
+    const mealApplicable =
+      booking.bookingSource === "OFFLINE" && !booking.isRentIncludingMeals;
+ 
+    const payableMonths = mealApplicable ? getPayableMealMonths(booking) : [];
+ 
+    const paidMonthToRow = new Map();
+    for (const row of subscriptions) {
+      if (!COUNTED_STATUSES.includes(row.status)) continue;
+      for (const m of row.billingMonths || []) paidMonthToRow.set(m, row);
+    }
+ 
+    const allMonths = Array.from(
+      new Set([...payableMonths, ...paidMonthToRow.keys()])
+    ).sort();
+ 
+    const timeline = allMonths.map((m) => {
+      const row = paidMonthToRow.get(m);
+      return {
+        billingMonth: m,
+        status: row ? row.status : "UNPAID",
+        mealPlan: row ? row.mealPlan : null,
+        monthlyRate: row ? row.monthlyRate : null,
+        isWaived: Boolean(row && row.waivedFirstMonth && m === row.startMonth),
+        paymentTransactionId: row ? row.paymentTransactionId : null,
+        paidAt: row ? row.paidAt : null,
+      };
+    });
+ 
+    const unpaidMonths = payableMonths.filter((m) => !paidMonthToRow.has(m));
+ 
     return res.json({
       success: true,
       booking: {
@@ -2055,16 +2091,19 @@ exports.getMealSubscription = async (req, res) => {
         status: booking.status,
       },
       meal: {
-        monthlyRate,
+        applicable: mealApplicable,
+        rates,
         subscriptions,
+        timeline,
+        installmentsPaid: paidMonthToRow.size,
+        installmentsRemaining: unpaidMonths.length,
+        nextUnpaidMonth: unpaidMonths[0] || null,
       },
     });
   } catch (err) {
     console.error("[MEAL_SUBSCRIPTION] get error:", err);
-
-    return res.status(500).json({
-      success: false,
-      message: err.message || "Server error",
-    });
+    return res
+      .status(500)
+      .json({ success: false, message: err.message || "Server error" });
   }
 };
