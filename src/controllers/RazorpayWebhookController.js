@@ -573,8 +573,6 @@ async function handleOrderSuccess(
           transaction: t,
         });
 
-        await sendAcknowledgementReceiptIfNeeded(tx);
-
         return;
       }
 

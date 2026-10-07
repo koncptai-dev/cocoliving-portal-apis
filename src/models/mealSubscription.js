@@ -21,16 +21,45 @@ const MealSubscription = sequelize.define(
       allowNull: true,
     },
 
-    billingMonth: {
+    mealPlan: {
+      type: DataTypes.ENUM("2_TIMES", "4_TIMES"),
+      allowNull: false,
+    },
+
+    monthlyRate: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    },
+
+    billingMonths: {
+      type: DataTypes.JSON,
+      allowNull: false,
+    },
+
+    startMonth: {
       type: DataTypes.STRING(7),
       allowNull: false,
-      comment: "Billing month in YYYY-MM format",
+    },
+
+    endMonth: {
+      type: DataTypes.STRING(7),
+      allowNull: false,
+    },
+
+    monthsCount: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    },
+
+    waivedFirstMonth: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
     },
 
     amount: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      comment: "Meal subscription amount in INR",
     },
 
     status: {
@@ -38,6 +67,7 @@ const MealSubscription = sequelize.define(
         "PENDING",
         "PAID",
         "PARTIALLY_REFUNDED",
+        "REFUNDED",
         "FAILED",
         "CANCELLED"
       ),
@@ -62,22 +92,10 @@ const MealSubscription = sequelize.define(
     timestamps: true,
 
     indexes: [
-      {
-        unique: true,
-        fields: ["bookingId", "billingMonth"],
-      },
-      {
-        fields: ["bookingId"],
-      },
-      {
-        fields: ["paymentTransactionId"],
-      },
-      {
-        fields: ["billingMonth"],
-      },
-      {
-        fields: ["status"],
-      },
+      { unique: true, fields: ["paymentTransactionId"] },
+      { fields: ["bookingId", "startMonth"] },
+      { fields: ["bookingId"] },
+      { fields: ["status"] },
     ],
   }
 );
