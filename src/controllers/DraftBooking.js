@@ -1389,6 +1389,10 @@ exports.getDraftBookingDetails = async (req, res) => {
                 latestTransaction?.waiveOffNote ??
                 reviewInputs.waiveOffNote ??
                 null,
+            waiveFirstMonthMeal:
+                latestTransaction?.waiveFirstMonthMeal ??
+                reviewInputs.waiveFirstMonthMeal ??
+                false,
             securityDepositType:
                 latestTransaction?.securityDepositType ??
                 reviewInputs.securityDepositType ??
@@ -1476,6 +1480,7 @@ exports.getDraftBookingDetails = async (req, res) => {
                 rentReceived: Number(paymentFieldSource.rentAmount || 0),
                 waiveOff,
                 waiveOffNote: paymentFieldSource.waiveOffNote || '',
+                waiveFirstMonthMeal: paymentFieldSource.waiveFirstMonthMeal || false,
                 securityDepositType: paymentFieldSource.securityDepositType,
                 securityDepositAmount: Number(paymentFieldSource.securityDepositAmount || 0),
                 advanceRent: Number(paymentFieldSource.advanceRentAmount || 0),
