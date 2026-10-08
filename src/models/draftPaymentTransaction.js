@@ -71,6 +71,10 @@ const DraftPaymentTransaction = sequelize.define(
       allowNull: false,
       defaultValue: false,
     },
+    waiveFirstMonthMeal: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
     securityDepositType: {
       type: DataTypes.STRING,
       allowNull: true,
