@@ -306,12 +306,16 @@ jobs:
           git status
 
           echo
+          echo "Restore dependencies..."
+          git restore package-lock.json
+
+          echo
           echo "Pulling latest code..."
           git pull
 
           echo
           echo "Installing dependencies..."
-          npm i --no-audit
+          npm ci --no-audit
 
           echo
           echo "Starting PM2..."
