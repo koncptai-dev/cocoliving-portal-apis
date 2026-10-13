@@ -2,6 +2,7 @@ const sequelize = require('../config/database');
 const PaymentTransaction = require('../models/paymentTransaction');
 const Booking = require('../models/bookRoom');
 const User = require('../models/user');
+const DepositDeduction = require('../models/depositDeduction');
 const {
   fetchOrder,
   fetchPayment,
