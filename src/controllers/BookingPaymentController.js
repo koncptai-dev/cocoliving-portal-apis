@@ -1244,7 +1244,8 @@ exports.initiateRefund = async (req, res) => {
     }
 
     const originalAmountPaise = Number(originalTx.amount || 0);
-    let refundablePaise = Math.max(originalAmountPaise - refundedPaiseSoFar, 0);
+    const feePaise = Math.max(Math.round(Number(originalTx.rawResponse?.webhookPayload?.fee)) || 0, 0);
+    let refundablePaise = Math.max(originalAmountPaise - refundedPaiseSoFar - feePaise, 0);
 
     // If refunding a security deposit, subtract any deposit deductions (fines)
     try {
