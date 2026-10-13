@@ -1633,15 +1633,32 @@ exports.getRoomTransferDetails = async (req, res) => {
     }
 
     // Fetch available rooms in same property excluding current room
-    const availableRooms = await Rooms.findAll({
+    const rooms = await Rooms.findAll({
       where: {
         propertyId: booking.room?.propertyId || null,
-        status: 'available',
-        id: { [Op.ne]: booking.roomId }
+        id: { [Op.ne]: booking.roomId },
+        status: { [Op.ne]: 'unavailable' }
       },
-      attributes: ['id', 'roomNumber', 'roomType', 'floorNumber'],
+      attributes: ['id', 'roomNumber', 'roomType', 'floorNumber', 'capacity'],
+      include: [{
+        model: Booking,
+        as: 'bookings',
+        attributes: ['id'],
+        where: { status: { [Op.notIn]: ['rejected', 'cancelled'] } },
+        required: false
+      }],
       order: [['roomNumber', 'ASC']]
     });
+
+    const availableRooms = rooms
+      .filter(r => (r.bookings?.length || 0) < r.capacity)
+      .map(r => ({
+        id: r.id,
+        roomNumber: r.roomNumber,
+        roomType: r.roomType,
+        floorNumber: r.floorNumber,
+        occupancy: `${r.bookings?.length || 0}/${r.capacity}`
+      }));
 
     await logApiCall(
       req,
