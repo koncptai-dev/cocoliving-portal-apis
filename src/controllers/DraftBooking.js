@@ -1036,11 +1036,12 @@ exports.draftBooking=async(req,res)=>{
 
         let mealAmount = 0
         if (normalizedMealPlan == "2_TIMES") {
-            mealAmount = property.mealSubscriptionAmountTwoTimes
+            mealAmount = Number(property.mealSubscriptionAmountTwoTimes || 0)
         } else if (normalizedMealPlan == "4_TIMES") {
-            mealAmount = property.mealSubscriptionAmountFourTimes
+            mealAmount = Number(property.mealSubscriptionAmountFourTimes || 0)
         }
-        const finalTotalMonthlyAmount = Math.round(finalMonthlyRent + mealAmount);
+        const mealAmountToAdd = rentIncludesMeals ? 0 : mealAmount;
+        const finalTotalMonthlyAmount = Math.round(finalMonthlyRent + mealAmountToAdd);
 
         const securityDeposit = Number(room.depositAmount ?? finalTotalMonthlyAmount * 2);
         const totalAmount = Math.round(finalTotalMonthlyAmount * normalizedDuration + securityDeposit);
